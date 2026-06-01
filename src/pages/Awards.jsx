@@ -53,6 +53,23 @@ function Skeleton({ height = 120 }) {
   )
 }
 
+// Detect if a season is Winter 2026 by checking if any of its months are Jan–Mar 2026
+function isWinter2026(season, months) {
+  if (!season) return false
+  const seasonMonths = months.filter(m => m.season_id === season.id)
+  return seasonMonths.some(m => {
+    const [year, month] = m.month_year.split('-').map(Number)
+    return year === 2026 && month <= 3
+  })
+}
+
+// For a given season, check if user is eligible (Zack excluded from Winter 2026)
+function isUserEligibleForSeason(userName, seasonIsWinter2026) {
+  if (!seasonIsWinter2026) return true
+  const isZack = userName.toLowerCase().includes('zack') || userName.toLowerCase().includes('anjoorian')
+  return !isZack
+}
+
 // ─── Poster Thumbnail ────────────────────────────────────────────────────────
 
 function PosterThumb({ posterUrl, title }) {
@@ -171,7 +188,518 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
   )
 }
 
+// ─── Big Poster Hero Card ────────────────────────────────────────────────────
+
+function BigPosterCard({ emoji, label, movie, avgScore, noData }) {
+  const initials = (movie?.title ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('')
+    .toUpperCase()
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.025)',
+      border: '1px solid rgba(255,255,255,0.07)',
+      borderRadius: '14px',
+      padding: '16px',
+      width: '100%',
+      boxSizing: 'border-box',
+    }}>
+      <p style={{
+        fontFamily: "'DM Mono',monospace",
+        fontSize: '10px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.18em',
+        color: '#374151',
+        margin: '0 0 14px',
+      }}>
+        {emoji} {label}
+      </p>
+
+      {noData ? (
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+          Not enough data
+        </p>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', minWidth: 0 }}>
+          {/* Poster */}
+          <div style={{
+            flexShrink: 0,
+            width: '64px',
+            height: '90px',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            background: 'rgba(255,255,255,0.05)',
+          }}>
+            {movie?.poster_url ? (
+              <img
+                src={`https://image.tmdb.org/t/p/w185${movie.poster_url}`}
+                alt={movie.title}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => { e.target.style.display = 'none' }}
+              />
+            ) : (
+              <div style={{
+                width: '100%', height: '100%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span style={{
+                  fontFamily: "'Bebas Neue',sans-serif",
+                  color: 'rgba(255,255,255,0.15)',
+                  fontSize: '13px',
+                }}>
+                  {initials}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Text */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{
+              fontFamily: "'Bebas Neue',sans-serif",
+              fontSize: '1.8rem',
+              letterSpacing: '0.03em',
+              color: 'white',
+              margin: '0 0 6px',
+              lineHeight: 1.05,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {movie?.title ?? '—'}
+            </p>
+            {movie?.year_released && (
+              <p style={{
+                fontFamily: "'DM Mono',monospace",
+                fontSize: '10px',
+                color: '#4b5563',
+                margin: '0 0 8px',
+                letterSpacing: '0.06em',
+              }}>
+                {movie.year_released}
+              </p>
+            )}
+            <div style={{
+              display: 'inline-block',
+              background: 'var(--accent, rgba(255,255,255,0.1))',
+              borderRadius: '6px',
+              padding: '4px 10px',
+            }}>
+              <span style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                fontSize: '1.1rem',
+                color: 'white',
+                letterSpacing: '0.04em',
+              }}>
+                {fmt(avgScore)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Stat Mini Card ──────────────────────────────────────────────────────────
+
+function StatMiniCard({ label, value }) {
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.025)',
+      border: '1px solid rgba(255,255,255,0.07)',
+      borderRadius: '14px',
+      padding: '16px',
+      flex: '1 1 calc(50% - 5px)',
+      minWidth: 0,
+      boxSizing: 'border-box',
+    }}>
+      <p style={{
+        fontFamily: "'DM Mono',monospace",
+        fontSize: '9px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.18em',
+        color: '#374151',
+        margin: '0 0 6px',
+      }}>
+        {label}
+      </p>
+      <p style={{
+        fontFamily: "'Bebas Neue',sans-serif",
+        fontSize: '1.7rem',
+        color: 'white',
+        margin: 0,
+        lineHeight: 1,
+        letterSpacing: '0.02em',
+      }}>
+        {value ?? '—'}
+      </p>
+    </div>
+  )
+}
+
 // ─── Award computations ──────────────────────────────────────────────────────
+
+// ─── Season Awards computation ───────────────────────────────────────────────
+
+export function computeSeasonAwards(movies, allRatings, users, season, months, seasonIsWinter2026) {
+  // Get all months in this season
+  const seasonMonthIds = new Set(
+    months.filter(m => m.season_id === season.id).map(m => m.id)
+  )
+  // Month year lookup by month_id (needed for Zack eligibility in per-user monthly checks)
+  const monthYearById = {}
+  months.forEach(m => { monthYearById[m.id] = m.month_year })
+
+  // Filter season movies that have scores_revealed
+  const seasonMovies = movies.filter(m => seasonMonthIds.has(m.month_id) && m.scores_revealed)
+  if (!seasonMovies.length) return null
+
+  const movieIds = new Set(seasonMovies.map(m => m.id))
+  const seasonRatings = allRatings.filter(r => movieIds.has(r.movie_id))
+
+  const userMap = {}
+  users.forEach(u => { userMap[u.id] = u })
+
+  // Per-movie scores
+  const scoresByMovie = {}
+  const excitementByMovie = {}
+  seasonMovies.forEach(m => {
+    scoresByMovie[m.id] = []
+    excitementByMovie[m.id] = []
+  })
+  seasonRatings.forEach(r => {
+    if (r.score != null) scoresByMovie[r.movie_id]?.push(Number(r.score))
+    if (r.pre_watch_excitement != null) excitementByMovie[r.movie_id]?.push(Number(r.pre_watch_excitement))
+  })
+
+  // Per-movie averages (fallback to historical)
+  const movieAvgScore = {}
+  seasonMovies.forEach(m => {
+    const scores = scoresByMovie[m.id]
+    movieAvgScore[m.id] = scores.length
+      ? avg(scores)
+      : (m.historical_avg_score ? Number(m.historical_avg_score) : null)
+  })
+
+  // 1. Film of the Season — highest avg (min 2 scores)
+  const twoPlus = seasonMovies.filter(m => scoresByMovie[m.id].length >= 2)
+  const filmOfSeason = twoPlus.length
+    ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 0) >= (movieAvgScore[b.id] ?? 0) ? a : b)
+    : null
+
+  // 2. Flop of the Season — lowest avg (min 2 scores)
+  const flopOfSeason = twoPlus.length
+    ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 10) <= (movieAvgScore[b.id] ?? 10) ? a : b)
+    : null
+
+  // 3–10: Per-user/per-picker computations
+  // Build per-picker data (picker_revealed=true)
+  const pickerMovies = {}
+  seasonMovies.forEach(m => {
+    if (!m.picked_by_user_id || !m.picker_revealed) return
+    if (!pickerMovies[m.picked_by_user_id]) pickerMovies[m.picked_by_user_id] = []
+    pickerMovies[m.picked_by_user_id].push(m)
+  })
+
+  // 3. Picker of the Season — avg of their picks' avg scores (min 1 pick with score)
+  let pickerOfSeason = null
+  let pickerOfSeasonAvg = -Infinity
+  let pickerOfSeasonCount = 0
+  Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
+    const user = userMap[uid]
+    if (!user) return
+    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
+    const avgs = pickedFilms
+      .map(m => movieAvgScore[m.id])
+      .filter(v => v != null)
+    if (!avgs.length) return
+    const pickerAvg = avg(avgs)
+    if (pickerAvg > pickerOfSeasonAvg) {
+      pickerOfSeasonAvg = pickerAvg
+      pickerOfSeason = user
+      pickerOfSeasonCount = avgs.length
+    }
+  })
+
+  // 4. Ice Cold — picker whose picks averaged lowest
+  let iceCold = null
+  let iceColdAvg = Infinity
+  let iceColdCount = 0
+  Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
+    const user = userMap[uid]
+    if (!user) return
+    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
+    const avgs = pickedFilms
+      .map(m => movieAvgScore[m.id])
+      .filter(v => v != null)
+    if (!avgs.length) return
+    const pickerAvg = avg(avgs)
+    if (pickerAvg < iceColdAvg) {
+      iceColdAvg = pickerAvg
+      iceCold = user
+      iceColdCount = avgs.length
+    }
+  })
+
+  // 5. Most Divisive Film — highest stddev (min 3 scores)
+  const threePlus = seasonMovies.filter(m => scoresByMovie[m.id].length >= 3)
+  const mostDivisiveFilm = threePlus.length
+    ? threePlus.reduce((a, b) => {
+        const sdA = stddev(scoresByMovie[a.id]) ?? 0
+        const sdB = stddev(scoresByMovie[b.id]) ?? 0
+        return sdA >= sdB ? a : b
+      })
+    : null
+
+  // 6. Most Unanimous Film — lowest stddev (min 3 scores)
+  const mostUnanimousFilm = threePlus.length
+    ? threePlus.reduce((a, b) => {
+        const sdA = stddev(scoresByMovie[a.id]) ?? Infinity
+        const sdB = stddev(scoresByMovie[b.id]) ?? Infinity
+        return sdA <= sdB ? a : b
+      })
+    : null
+
+  // Per-user ratings this season — filtered by Zack eligibility
+  const userRatingsThisSeason = {}
+  seasonRatings.forEach(r => {
+    const user = userMap[r.user_id]
+    if (!user) return
+    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
+    if (!userRatingsThisSeason[r.user_id]) userRatingsThisSeason[r.user_id] = []
+    userRatingsThisSeason[r.user_id].push(r)
+  })
+
+  const eligibleUserIds = Object.keys(userRatingsThisSeason)
+
+  // 7. Harshest Critic — lowest avg score given
+  let harshestCritic = null
+  let harshestCriticAvg = Infinity
+  eligibleUserIds.forEach(uid => {
+    const scores = userRatingsThisSeason[uid]
+      .filter(r => r.score != null)
+      .map(r => Number(r.score))
+    if (!scores.length) return
+    const a = avg(scores)
+    if (a < harshestCriticAvg) {
+      harshestCriticAvg = a
+      harshestCritic = userMap[uid]
+    }
+  })
+
+  // 8. Most Generous — highest avg score given
+  let mostGenerous = null
+  let mostGenerousAvg = -Infinity
+  eligibleUserIds.forEach(uid => {
+    const scores = userRatingsThisSeason[uid]
+      .filter(r => r.score != null)
+      .map(r => Number(r.score))
+    if (!scores.length) return
+    const a = avg(scores)
+    if (a > mostGenerousAvg) {
+      mostGenerousAvg = a
+      mostGenerous = userMap[uid]
+    }
+  })
+
+  // 9. The Contrarian — highest avg |personal_score - film_avg|
+  let contrarianWinner = null
+  let contrarianHighest = -Infinity
+  eligibleUserIds.forEach(uid => {
+    const devs = []
+    userRatingsThisSeason[uid].forEach(r => {
+      if (r.score == null) return
+      const filmAvg = movieAvgScore[r.movie_id]
+      if (filmAvg == null) return
+      devs.push(Math.abs(Number(r.score) - filmAvg))
+    })
+    if (!devs.length) return
+    const a = avg(devs)
+    if (a > contrarianHighest) {
+      contrarianHighest = a
+      contrarianWinner = userMap[uid]
+    }
+  })
+
+  // 10. The Oracle — lowest avg |excitement - film_avg|
+  let oracleWinner = null
+  let oracleBestDelta = Infinity
+  eligibleUserIds.forEach(uid => {
+    const deltas = []
+    userRatingsThisSeason[uid].forEach(r => {
+      if (r.pre_watch_excitement == null) return
+      const filmAvgVal = movieAvgScore[r.movie_id]
+      if (filmAvgVal == null) return
+      deltas.push(Math.abs(Number(r.pre_watch_excitement) - filmAvgVal))
+    })
+    if (!deltas.length) return
+    const a = avg(deltas)
+    if (a < oracleBestDelta) {
+      oracleBestDelta = a
+      oracleWinner = userMap[uid]
+    }
+  })
+
+  return {
+    filmOfSeason, flopOfSeason,
+    pickerOfSeason, pickerOfSeasonAvg, pickerOfSeasonCount,
+    iceCold, iceColdAvg, iceColdCount,
+    mostDivisiveFilm, mostUnanimousFilm,
+    harshestCritic, harshestCriticAvg,
+    mostGenerous, mostGenerousAvg,
+    contrarianWinner, contrarianHighest,
+    oracleWinner, oracleBestDelta,
+    movieAvgScore,
+    scoresByMovie,
+  }
+}
+
+// ─── Annual Awards computation ────────────────────────────────────────────────
+
+export function computeAnnualAwards(movies, allRatings, users, year) {
+  // All revealed movies from this calendar year
+  // We need months to know which movies belong to which year — instead we use the
+  // month_year embedded context. Since movies don't directly carry year, we filter
+  // via the months map that callers pass separately. But to keep this function
+  // self-contained for testing, we accept pre-filtered movies.
+  // Caller must pass movies already filtered to the relevant year.
+  const revealedMovies = movies.filter(m => m.scores_revealed)
+  if (!revealedMovies.length) return null
+
+  const movieIds = new Set(revealedMovies.map(m => m.id))
+  const relevantRatings = allRatings.filter(r => movieIds.has(r.movie_id))
+
+  const userMap = {}
+  users.forEach(u => { userMap[u.id] = u })
+
+  // Per-movie scores
+  const scoresByMovie = {}
+  revealedMovies.forEach(m => { scoresByMovie[m.id] = [] })
+  relevantRatings.forEach(r => {
+    if (r.score != null) scoresByMovie[r.movie_id]?.push(Number(r.score))
+  })
+
+  const movieAvgScore = {}
+  revealedMovies.forEach(m => {
+    const scores = scoresByMovie[m.id]
+    movieAvgScore[m.id] = scores.length
+      ? avg(scores)
+      : (m.historical_avg_score ? Number(m.historical_avg_score) : null)
+  })
+
+  // 1. Glance stats
+  const VAULT_THRESHOLD = 8.5
+  const vaultFilms = revealedMovies.filter(m => (movieAvgScore[m.id] ?? 0) >= VAULT_THRESHOLD)
+  const totalScoresCast = relevantRatings.filter(r => r.score != null).length
+  const allScores = relevantRatings.filter(r => r.score != null).map(r => Number(r.score))
+  const clubAvg = allScores.length ? avg(allScores) : null
+
+  // 2. Film of Year — highest avg (min 2 scores)
+  const twoPlus = revealedMovies.filter(m => scoresByMovie[m.id].length >= 2)
+  const filmOfYear = twoPlus.length
+    ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 0) >= (movieAvgScore[b.id] ?? 0) ? a : b)
+    : null
+
+  // 3. Worst Film of Year — lowest avg (min 2 scores)
+  const worstFilmOfYear = twoPlus.length
+    ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 10) <= (movieAvgScore[b.id] ?? 10) ? a : b)
+    : null
+
+  // 4. Picker of the Year — from picker_revealed movies
+  const pickerMovies = {}
+  revealedMovies.forEach(m => {
+    if (!m.picked_by_user_id || !m.picker_revealed) return
+    if (!pickerMovies[m.picked_by_user_id]) pickerMovies[m.picked_by_user_id] = []
+    pickerMovies[m.picked_by_user_id].push(m)
+  })
+
+  let pickerOfYear = null
+  let pickerOfYearAvg = -Infinity
+  let pickerOfYearCount = 0
+  Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
+    const avgs = pickedFilms.map(m => movieAvgScore[m.id]).filter(v => v != null)
+    if (!avgs.length) return
+    const pickerAvg = avg(avgs)
+    if (pickerAvg > pickerOfYearAvg) {
+      pickerOfYearAvg = pickerAvg
+      pickerOfYear = userMap[uid] ?? null
+      pickerOfYearCount = avgs.length
+    }
+  })
+
+  // 5–6. Per-user critic stats
+  const userScoresGiven = {}
+  relevantRatings.forEach(r => {
+    if (r.score == null) return
+    if (!userScoresGiven[r.user_id]) userScoresGiven[r.user_id] = []
+    userScoresGiven[r.user_id].push(Number(r.score))
+  })
+
+  const usersWithScores = users.filter(u => userScoresGiven[u.id]?.length > 0)
+
+  let harshestCritic = null
+  let harshestCriticAvg = Infinity
+  let mostGenerous = null
+  let mostGenerousAvg = -Infinity
+  usersWithScores.forEach(u => {
+    const a = avg(userScoresGiven[u.id])
+    if (a == null) return
+    if (a < harshestCriticAvg) { harshestCriticAvg = a; harshestCritic = u }
+    if (a > mostGenerousAvg) { mostGenerousAvg = a; mostGenerous = u }
+  })
+
+  // 7. Most Divisive Film — highest stddev (min 3 scores)
+  const threePlus = revealedMovies.filter(m => scoresByMovie[m.id].length >= 3)
+  const mostDivisiveFilm = threePlus.length
+    ? threePlus.reduce((a, b) => {
+        const sdA = stddev(scoresByMovie[a.id]) ?? 0
+        const sdB = stddev(scoresByMovie[b.id]) ?? 0
+        return sdA >= sdB ? a : b
+      })
+    : null
+
+  // 8. The Oracle — lowest avg |excitement - film_avg|
+  const userExcitementDeltas = {}
+  relevantRatings.forEach(r => {
+    if (r.pre_watch_excitement == null) return
+    const filmAvgVal = movieAvgScore[r.movie_id]
+    if (filmAvgVal == null) return
+    if (!userExcitementDeltas[r.user_id]) userExcitementDeltas[r.user_id] = []
+    userExcitementDeltas[r.user_id].push(Math.abs(Number(r.pre_watch_excitement) - filmAvgVal))
+  })
+
+  let oracleOfYear = null
+  let oracleBestDelta = Infinity
+  users.forEach(u => {
+    const deltas = userExcitementDeltas[u.id]
+    if (!deltas?.length) return
+    const a = avg(deltas)
+    if (a < oracleBestDelta) {
+      oracleBestDelta = a
+      oracleOfYear = u
+    }
+  })
+
+  return {
+    totalFilms: revealedMovies.length,
+    totalScoresCast,
+    clubAvg,
+    vaultCount: vaultFilms.length,
+    filmOfYear, worstFilmOfYear,
+    pickerOfYear, pickerOfYearAvg, pickerOfYearCount,
+    harshestCritic, harshestCriticAvg,
+    mostGenerous, mostGenerousAvg,
+    mostDivisiveFilm,
+    oracleOfYear, oracleBestDelta,
+    movieAvgScore,
+    scoresByMovie,
+  }
+}
 
 function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
   // Filter movies for the selected month with scores revealed
@@ -862,15 +1390,502 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
   )
 }
 
+// ─── Member Initials Avatar ──────────────────────────────────────────────────
+
+function MemberAvatar({ name }) {
+  const initials = (name ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('')
+    .toUpperCase()
+
+  return (
+    <div style={{
+      flexShrink: 0,
+      width: '40px',
+      height: '40px',
+      borderRadius: '50%',
+      background: 'rgba(255,255,255,0.07)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <span style={{
+        fontFamily: "'Bebas Neue',sans-serif",
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: '13px',
+        letterSpacing: '0.05em',
+      }}>
+        {initials}
+      </span>
+    </div>
+  )
+}
+
+// ─── Season Tab ───────────────────────────────────────────────────────────────
+
+function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
+  // Only seasons that have at least one movie with scores_revealed
+  const revealedSeasons = useMemo(() => {
+    const seasonIds = new Set(months.map(m => m.season_id))
+    return seasons
+      .filter(s => {
+        const seasonMonthIds = new Set(months.filter(m => m.season_id === s.id).map(m => m.id))
+        return movies.some(mv => seasonMonthIds.has(mv.month_id) && mv.scores_revealed)
+      })
+      .sort((a, b) => b.start_date.localeCompare(a.start_date))
+  }, [seasons, months, movies])
+
+  const [selectedSeason, setSelectedSeason] = useState(null)
+
+  useEffect(() => {
+    if (revealedSeasons.length && !selectedSeason) {
+      setSelectedSeason(revealedSeasons[0])
+    }
+  }, [revealedSeasons])
+
+  const seasonIsWinter2026 = useMemo(
+    () => isWinter2026(selectedSeason, months),
+    [selectedSeason, months]
+  )
+
+  const awards = useMemo(() => {
+    if (!selectedSeason) return null
+    return computeSeasonAwards(movies, allRatings, users, selectedSeason, months, seasonIsWinter2026)
+  }, [selectedSeason, movies, allRatings, users, months, seasonIsWinter2026])
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {[...Array(8)].map((_, i) => <Skeleton key={i} height={100} />)}
+      </div>
+    )
+  }
+
+  if (!revealedSeasons.length) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <p style={{
+          fontFamily: "'Bebas Neue',sans-serif",
+          fontSize: '1.4rem',
+          color: 'rgba(255,255,255,0.12)',
+          letterSpacing: '0.05em',
+          margin: '0 0 8px',
+        }}>
+          No season data yet
+        </p>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+          Awards appear once film scores are revealed.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Season selector pills */}
+      <div style={{
+        display: 'flex',
+        gap: '6px',
+        overflowX: 'auto',
+        paddingBottom: '4px',
+        marginBottom: '20px',
+        scrollbarWidth: 'none',
+      }}>
+        {revealedSeasons.map(s => {
+          const active = selectedSeason?.id === s.id
+          return (
+            <button
+              key={s.id}
+              onClick={() => setSelectedSeason(s)}
+              style={{
+                flexShrink: 0,
+                padding: '7px 14px',
+                borderRadius: '20px',
+                border: active ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.07)',
+                background: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
+                color: active ? 'white' : '#4b5563',
+                fontFamily: "'DM Mono',monospace",
+                fontSize: '11px',
+                letterSpacing: '0.08em',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {s.name}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Zack Winter note */}
+      {seasonIsWinter2026 && (
+        <p style={{
+          fontFamily: "'DM Mono',monospace",
+          fontSize: '10px',
+          color: '#374151',
+          letterSpacing: '0.1em',
+          margin: '0 0 16px',
+        }}>
+          * Zack joined April 2026 — excluded from per-person awards this season
+        </p>
+      )}
+
+      {/* Award cards */}
+      {awards && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+          {/* 1. Film of the Season */}
+          <AwardCard
+            emoji="🏆"
+            label="Film of the Season"
+            winner={awards.filmOfSeason?.title}
+            metric={awards.filmOfSeason ? `avg score: ${fmt(awards.movieAvgScore[awards.filmOfSeason.id])}` : null}
+            posterUrl={awards.filmOfSeason?.poster_url}
+            posterTitle={awards.filmOfSeason?.title}
+            noData={!awards.filmOfSeason}
+          />
+
+          {/* 2. Flop of the Season */}
+          <AwardCard
+            emoji="💀"
+            label="Flop of the Season"
+            winner={awards.flopOfSeason?.title}
+            metric={awards.flopOfSeason ? `avg score: ${fmt(awards.movieAvgScore[awards.flopOfSeason.id])}` : null}
+            posterUrl={awards.flopOfSeason?.poster_url}
+            posterTitle={awards.flopOfSeason?.title}
+            noData={!awards.flopOfSeason || awards.flopOfSeason.id === awards.filmOfSeason?.id}
+          />
+
+          {/* 3. Picker of the Season */}
+          <AwardCard
+            emoji="🎬"
+            label="Picker of the Season"
+            winner={awards.pickerOfSeason?.name}
+            metric={
+              awards.pickerOfSeason
+                ? `avg ${fmt(awards.pickerOfSeasonAvg)} across ${awards.pickerOfSeasonCount} pick${awards.pickerOfSeasonCount !== 1 ? 's' : ''}`
+                : null
+            }
+            noData={!awards.pickerOfSeason}
+          />
+
+          {/* 4. Ice Cold */}
+          <AwardCard
+            emoji="🧊"
+            label="Ice Cold"
+            winner={awards.iceCold?.name}
+            metric={
+              awards.iceCold
+                ? `avg ${fmt(awards.iceColdAvg)} across ${awards.iceColdCount} pick${awards.iceColdCount !== 1 ? 's' : ''}`
+                : null
+            }
+            noData={!awards.iceCold || awards.iceCold?.id === awards.pickerOfSeason?.id}
+          />
+
+          {/* 5. Most Divisive Film */}
+          <AwardCard
+            emoji="🔥"
+            label="Most Divisive Film"
+            winner={awards.mostDivisiveFilm?.title}
+            metric={awards.mostDivisiveFilm
+              ? `Std dev: ${fmt(stddev(awards.scoresByMovie[awards.mostDivisiveFilm.id]))}`
+              : null}
+            posterUrl={awards.mostDivisiveFilm?.poster_url}
+            posterTitle={awards.mostDivisiveFilm?.title}
+            noData={!awards.mostDivisiveFilm}
+          />
+
+          {/* 6. Most Unanimous Film */}
+          <AwardCard
+            emoji="🤝"
+            label="Most Unanimous Film"
+            winner={awards.mostUnanimousFilm?.title}
+            metric={awards.mostUnanimousFilm
+              ? `Std dev: ${fmt(stddev(awards.scoresByMovie[awards.mostUnanimousFilm.id]))}`
+              : null}
+            posterUrl={awards.mostUnanimousFilm?.poster_url}
+            posterTitle={awards.mostUnanimousFilm?.title}
+            noData={!awards.mostUnanimousFilm}
+          />
+
+          {/* 7. Harshest Critic */}
+          <AwardCard
+            emoji="😤"
+            label="Harshest Critic"
+            winner={awards.harshestCritic?.name}
+            metric={awards.harshestCritic ? `avg score given: ${fmt(awards.harshestCriticAvg)}` : null}
+            noData={!awards.harshestCritic}
+          />
+
+          {/* 8. Most Generous */}
+          <AwardCard
+            emoji="😊"
+            label="Most Generous"
+            winner={awards.mostGenerous?.name}
+            metric={awards.mostGenerous ? `avg score given: ${fmt(awards.mostGenerousAvg)}` : null}
+            noData={!awards.mostGenerous}
+          />
+
+          {/* 9. The Contrarian */}
+          <AwardCard
+            emoji="🦅"
+            label="The Contrarian"
+            winner={awards.contrarianWinner?.name}
+            metric={awards.contrarianWinner ? `avg deviation: ±${fmt(awards.contrarianHighest)}` : null}
+            noData={!awards.contrarianWinner}
+          />
+
+          {/* 10. The Oracle */}
+          <AwardCard
+            emoji="🎯"
+            label="The Oracle"
+            winner={awards.oracleWinner?.name}
+            metric={awards.oracleWinner ? `avg delta: ±${fmt(awards.oracleBestDelta)}` : null}
+            noData={!awards.oracleWinner}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Annual Tab ────────────────────────────────────────────────────────────────
+
+function AnnualTab({ movies, allRatings, users, months, loading }) {
+  // Group movies by year via their month's month_year
+  const monthYearById = useMemo(() => {
+    const map = {}
+    months.forEach(m => { map[m.id] = m.month_year })
+    return map
+  }, [months])
+
+  const availableYears = useMemo(() => {
+    const years = new Set()
+    movies.forEach(m => {
+      const my = monthYearById[m.month_id]
+      if (my) years.add(my.split('-')[0])
+    })
+    return [...years].sort((a, b) => b.localeCompare(a))
+  }, [movies, monthYearById])
+
+  // We only show 2026 for now — if more years arrive later this auto-expands
+  const [selectedYear, setSelectedYear] = useState(null)
+
+  useEffect(() => {
+    if (availableYears.length && !selectedYear) {
+      setSelectedYear(availableYears[0])
+    }
+  }, [availableYears])
+
+  const yearMovies = useMemo(() => {
+    if (!selectedYear) return []
+    return movies.filter(m => {
+      const my = monthYearById[m.month_id]
+      return my && my.startsWith(selectedYear)
+    })
+  }, [movies, monthYearById, selectedYear])
+
+  const awards = useMemo(() => {
+    if (loading || !yearMovies.length) return null
+    return computeAnnualAwards(yearMovies, allRatings, users, selectedYear)
+  }, [yearMovies, allRatings, users, selectedYear, loading])
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {[...Array(8)].map((_, i) => <Skeleton key={i} height={100} />)}
+      </div>
+    )
+  }
+
+  if (!awards) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <p style={{
+          fontFamily: "'Bebas Neue',sans-serif",
+          fontSize: '1.4rem',
+          color: 'rgba(255,255,255,0.12)',
+          letterSpacing: '0.05em',
+          margin: '0 0 8px',
+        }}>
+          No annual data yet
+        </p>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+          Awards appear once film scores are revealed.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Year selector pills — future-proofed */}
+      {availableYears.length > 1 && (
+        <div style={{
+          display: 'flex',
+          gap: '6px',
+          overflowX: 'auto',
+          paddingBottom: '4px',
+          marginBottom: '20px',
+          scrollbarWidth: 'none',
+        }}>
+          {availableYears.map(y => {
+            const active = selectedYear === y
+            return (
+              <button
+                key={y}
+                onClick={() => setSelectedYear(y)}
+                style={{
+                  flexShrink: 0,
+                  padding: '7px 14px',
+                  borderRadius: '20px',
+                  border: active ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.07)',
+                  background: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
+                  color: active ? 'white' : '#4b5563',
+                  fontFamily: "'DM Mono',monospace",
+                  fontSize: '11px',
+                  letterSpacing: '0.08em',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {y}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Section heading */}
+      <p style={{
+        fontFamily: "'Bebas Neue',sans-serif",
+        fontSize: '1.15rem',
+        letterSpacing: '0.08em',
+        color: 'rgba(255,255,255,0.35)',
+        margin: '0 0 14px',
+      }}>
+        {selectedYear} Season in Review
+      </p>
+
+      {/* 1. Year at a glance */}
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '10px',
+        marginBottom: '10px',
+      }}>
+        <StatMiniCard label="Films Watched" value={awards.totalFilms} />
+        <StatMiniCard label="Scores Cast" value={awards.totalScoresCast} />
+        <StatMiniCard label="Club Avg" value={fmt(awards.clubAvg)} />
+        <StatMiniCard label="In the Vault" value={awards.vaultCount} />
+      </div>
+
+      {/* Note if partial year */}
+      {awards.totalFilms < 20 && (
+        <p style={{
+          fontFamily: "'DM Mono',monospace",
+          fontSize: '10px',
+          color: '#374151',
+          letterSpacing: '0.1em',
+          margin: '0 0 14px',
+        }}>
+          * Partial year data — results will update as more films are scored
+        </p>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+        {/* 2. Film of the Year — hero card */}
+        <BigPosterCard
+          emoji="🏆"
+          label="Film of the Year"
+          movie={awards.filmOfYear}
+          avgScore={awards.filmOfYear ? awards.movieAvgScore[awards.filmOfYear.id] : null}
+          noData={!awards.filmOfYear}
+        />
+
+        {/* 3. Worst Film of the Year — hero card */}
+        <BigPosterCard
+          emoji="💀"
+          label="Worst Film of the Year"
+          movie={awards.worstFilmOfYear}
+          avgScore={awards.worstFilmOfYear ? awards.movieAvgScore[awards.worstFilmOfYear.id] : null}
+          noData={!awards.worstFilmOfYear || awards.worstFilmOfYear?.id === awards.filmOfYear?.id}
+        />
+
+        {/* 4. Picker of the Year */}
+        <AwardCard
+          emoji="🎬"
+          label="Picker of the Year"
+          winner={awards.pickerOfYear?.name}
+          metric={
+            awards.pickerOfYear
+              ? `avg ${fmt(awards.pickerOfYearAvg)} across ${awards.pickerOfYearCount} pick${awards.pickerOfYearCount !== 1 ? 's' : ''}`
+              : null
+          }
+          noData={!awards.pickerOfYear}
+        />
+
+        {/* 5. Harshest Critic */}
+        <AwardCard
+          emoji="😤"
+          label="Harshest Critic of the Year"
+          winner={awards.harshestCritic?.name}
+          metric={awards.harshestCritic ? `avg score given: ${fmt(awards.harshestCriticAvg)}` : null}
+          noData={!awards.harshestCritic}
+        />
+
+        {/* 6. Most Generous */}
+        <AwardCard
+          emoji="😊"
+          label="Most Generous of the Year"
+          winner={awards.mostGenerous?.name}
+          metric={awards.mostGenerous ? `avg score given: ${fmt(awards.mostGenerousAvg)}` : null}
+          noData={!awards.mostGenerous}
+        />
+
+        {/* 7. Most Divisive Film */}
+        <AwardCard
+          emoji="🔥"
+          label="Most Divisive Film of the Year"
+          winner={awards.mostDivisiveFilm?.title}
+          metric={awards.mostDivisiveFilm
+            ? `Std dev: ${fmt(stddev(awards.scoresByMovie[awards.mostDivisiveFilm.id]))}`
+            : null}
+          posterUrl={awards.mostDivisiveFilm?.poster_url}
+          posterTitle={awards.mostDivisiveFilm?.title}
+          noData={!awards.mostDivisiveFilm}
+        />
+
+        {/* 8. The Oracle */}
+        <AwardCard
+          emoji="🎯"
+          label="The Oracle 2026"
+          winner={awards.oracleOfYear?.name}
+          metric={awards.oracleOfYear ? `avg delta: ±${fmt(awards.oracleBestDelta)}` : null}
+          noData={!awards.oracleOfYear}
+        />
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const TABS = ['Monthly', 'All-Time']
+const TABS = ['Monthly', 'Season', 'Annual', 'All-Time']
 
 export default function Awards() {
   const { profile } = useAuth()
   const [activeTab, setActiveTab] = useState('Monthly')
 
   const [loading, setLoading] = useState(true)
+  const [seasons, setSeasons] = useState([])
   const [months, setMonths] = useState([])
   const [movies, setMovies] = useState([])
   const [allRatings, setAllRatings] = useState([])
@@ -880,17 +1895,20 @@ export default function Awards() {
     async function fetchAll() {
       setLoading(true)
       const [
+        { data: seasonsData },
         { data: monthsData },
         { data: moviesData },
         { data: ratingsData },
         { data: usersData },
       ] = await Promise.all([
+        supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: false }),
         supabase.from('months').select('id, season_id, month_year, status').order('month_year', { ascending: true }),
         supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, director, genre, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id').eq('scores_revealed', true),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
         supabase.from('users').select('id, name, email, role, joined_at, is_active').eq('is_active', true),
       ])
 
+      setSeasons(seasonsData ?? [])
       setMonths(monthsData ?? [])
       setMovies(moviesData ?? [])
       setAllRatings(ratingsData ?? [])
@@ -946,14 +1964,16 @@ export default function Awards() {
           borderRadius: '12px',
           padding: '4px',
           marginBottom: '24px',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
         }}>
           {TABS.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
-                flex: 1,
-                padding: '8px 0',
+                flex: '1 0 auto',
+                padding: '8px 12px',
                 borderRadius: '9px',
                 border: 'none',
                 background: activeTab === tab ? 'rgba(255,255,255,0.09)' : 'transparent',
@@ -963,6 +1983,7 @@ export default function Awards() {
                 fontSize: '13px',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
               }}
             >
               {tab}
@@ -978,6 +1999,25 @@ export default function Awards() {
               movies={movies}
               allRatings={allRatings}
               users={users}
+              loading={loading}
+            />
+          )}
+          {activeTab === 'Season' && (
+            <SeasonTab
+              seasons={seasons}
+              months={months}
+              movies={movies}
+              allRatings={allRatings}
+              users={users}
+              loading={loading}
+            />
+          )}
+          {activeTab === 'Annual' && (
+            <AnnualTab
+              movies={movies}
+              allRatings={allRatings}
+              users={users}
+              months={months}
               loading={loading}
             />
           )}

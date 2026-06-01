@@ -998,6 +998,24 @@ export default function ThisMonth() {
     loadData()
   }, [loadData])
 
+  // Realtime subscription: re-fetch all data whenever any rating is inserted or
+  // updated for movies in the active month. This keeps scores and CTA states
+  // in sync across devices without requiring a manual refresh.
+  useEffect(() => {
+    if (!activeMonth) return
+
+    const channel = supabase
+      .channel('ratings-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ratings' },
+        () => loadData()
+      )
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [activeMonth, loadData])
+
   function openModal(movie, rating) {
     setModalMovie(movie)
     setModalRating(rating)

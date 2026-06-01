@@ -208,7 +208,7 @@ function formatMemberSince(dateStr) {
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
 export default function Profile() {
-  const { profile } = useAuth()
+  const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent } = useTheme()
 
   const [statsLoading, setStatsLoading] = useState(true)
@@ -216,6 +216,7 @@ export default function Profile() {
   const [recentLoading, setRecentLoading] = useState(true)
   const [recentRatings, setRecentRatings] = useState([]) // [{movie, score, submitted_at}]
   const [signingOut, setSigningOut] = useState(false)
+  const [adminToggling, setAdminToggling] = useState(false)
 
   // ── Fetch stats + recent scores ──────────────────────────────────────────────
   useEffect(() => {
@@ -285,10 +286,21 @@ export default function Profile() {
     await supabase.auth.signOut()
   }
 
+  // ── Admin mode toggle ────────────────────────────────────────────────────────
+  async function handleAdminModeToggle() {
+    if (!profile || adminToggling) return
+    setAdminToggling(true)
+    await supabase
+      .from('users')
+      .update({ admin_mode_enabled: !profile.admin_mode_enabled })
+      .eq('id', profile.id)
+    await fetchProfile(profile.id)
+    setAdminToggling(false)
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────────
   const initials = getInitials(profile?.name)
   const memberSince = formatMemberSince(profile?.joined_at)
-  const isAdmin = profile?.role === 'admin'
 
   return (
     <div
@@ -494,7 +506,79 @@ export default function Profile() {
           </div>
         </section>
 
-        {/* ── Section 5: Sign Out ── */}
+        {/* ── Section 5: Admin ── */}
+        {isAdmin && (
+          <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.30s ease both' }}>
+            <span style={SECTION_LABEL}>Admin</span>
+
+            <div style={{ ...CARD, padding: '16px' }}>
+              {/* Admin Mode row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <span
+                  style={{
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: '14px',
+                    color: 'rgba(255,255,255,0.8)',
+                  }}
+                >
+                  Admin Mode
+                </span>
+
+                {/* Toggle switch */}
+                <button
+                  onClick={handleAdminModeToggle}
+                  disabled={adminToggling}
+                  aria-pressed={!!profile?.admin_mode_enabled}
+                  aria-label="Toggle admin mode"
+                  style={{
+                    position: 'relative',
+                    width: '44px',
+                    height: '24px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    padding: 0,
+                    cursor: adminToggling ? 'not-allowed' : 'pointer',
+                    background: profile?.admin_mode_enabled
+                      ? 'var(--accent)'
+                      : 'rgba(255,255,255,0.12)',
+                    transition: 'background 0.2s ease',
+                    flexShrink: 0,
+                    outline: 'none',
+                  }}
+                >
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '3px',
+                      left: profile?.admin_mode_enabled ? '22px' : '3px',
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '50%',
+                      background: '#fff',
+                      transition: 'left 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                    }}
+                  />
+                </button>
+              </div>
+
+              {/* Note */}
+              <p
+                style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: '10px',
+                  color: '#4b5563',
+                  margin: '10px 0 0',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Shows the Admin tab in navigation
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* ── Section 6: Sign Out ── */}
         <section style={{ animation: 'fadeUp 0.45s 0.32s ease both', paddingBottom: '1rem' }}>
           <button
             onClick={handleSignOut}

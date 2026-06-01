@@ -804,9 +804,959 @@ function MiniFilmCard({ movie, score }) {
   )
 }
 
+// ─── Pure calculation helpers (also used by tests) ──────────────────────────
+
+// agreementScore: avg absolute difference between two score arrays aligned by film
+// ratingsA and ratingsB are arrays of { movie_id, score }
+export function calcAgreementScore(ratingsA, ratingsB) {
+  const mapB = {}
+  for (const r of ratingsB) {
+    if (r.score != null) mapB[r.movie_id] = Number(r.score)
+  }
+  const diffs = []
+  for (const r of ratingsA) {
+    if (r.score == null) continue
+    if (mapB[r.movie_id] == null) continue
+    diffs.push(Math.abs(Number(r.score) - mapB[r.movie_id]))
+  }
+  return { avg: avg(diffs), count: diffs.length }
+}
+
+// genreBreakdown: count films per genre from an array of genre strings
+// each entry may be a comma-separated list like "Drama, Thriller"
+export function calcGenreBreakdown(genres) {
+  const counts = {}
+  for (const g of genres) {
+    if (!g) continue
+    const parts = String(g).split(',').map(s => s.trim()).filter(Boolean)
+    for (const p of parts) {
+      counts[p] = (counts[p] || 0) + 1
+    }
+  }
+  return counts
+}
+
+// scoringStreaks: for each member, count consecutive months (most recent first)
+// in which they scored at least one film.
+// monthOrder: sorted array of month_ids oldest→newest
+// ratingsByUser: { userId: Set<month_id> }  (months in which they have a score)
+export function calcScoringStreaks(userIds, monthOrder, ratingsByUser) {
+  const result = {}
+  for (const uid of userIds) {
+    const scoredMonths = ratingsByUser[uid] || new Set()
+    let streak = 0
+    // Walk backwards through months (newest first)
+    for (let i = monthOrder.length - 1; i >= 0; i--) {
+      if (scoredMonths.has(monthOrder[i])) {
+        streak++
+      } else {
+        break
+      }
+    }
+    result[uid] = streak
+  }
+  return result
+}
+
+// headToHeadRecord: for each film both users scored, determine who won
+// ratingsA and ratingsB are arrays of { movie_id, score }
+export function calcHeadToHeadRecord(ratingsA, ratingsB) {
+  const mapB = {}
+  for (const r of ratingsB) {
+    if (r.score != null) mapB[r.movie_id] = Number(r.score)
+  }
+  let winsA = 0, winsB = 0, ties = 0
+  const films = []
+  for (const r of ratingsA) {
+    if (r.score == null) continue
+    if (mapB[r.movie_id] == null) continue
+    const sA = Number(r.score)
+    const sB = mapB[r.movie_id]
+    const diff = Math.abs(sA - sB)
+    films.push({ movie_id: r.movie_id, scoreA: sA, scoreB: sB, diff })
+    if (Math.abs(sA - sB) < 0.005) ties++
+    else if (sA > sB) winsA++
+    else winsB++
+  }
+  films.sort((a, b) => a.diff - b.diff)
+  return { winsA, winsB, ties, films }
+}
+
+// ─── Members Tab ─────────────────────────────────────────────────────────────
+
+function MembersTab({ movies, ratings, users, loading }) {
+  const stats = useMemo(() => {
+    if (!users.length) return null
+
+    // Build movie lookup
+    const movieMap = {}
+    for (const m of movies) movieMap[m.id] = m
+
+    // Group ratings by user
+    const byUser = {}
+    for (const r of ratings) {
+      if (!byUser[r.user_id]) byUser[r.user_id] = []
+      byUser[r.user_id].push(r)
+    }
+
+    return users
+      .filter(u => u.is_active !== false)
+      .map(u => {
+        const userRatings = byUser[u.id] || []
+        const scored = userRatings.filter(r => r.score != null)
+        const scores = scored.map(r => Number(r.score))
+        const avgScore = avg(scores)
+
+        // Sort by score desc for highest/lowest
+        const scoredWithMovies = scored
+          .map(r => ({ ...r, movie: movieMap[r.movie_id] }))
+          .filter(r => r.movie)
+          .sort((a, b) => Number(b.score) - Number(a.score))
+
+        const highest = scoredWithMovies[0] || null
+        const lowest = scoredWithMovies[scoredWithMovies.length - 1] || null
+
+        // Recommend %
+        const recAnswered = userRatings.filter(r => r.recommend_outside_club != null)
+        const recYes = recAnswered.filter(r => r.recommend_outside_club === true)
+        const recommendPct = recAnswered.length > 0
+          ? (recYes.length / recAnswered.length) * 100
+          : null
+
+        // Avg excitement
+        const excitements = userRatings
+          .filter(r => r.pre_watch_excitement != null)
+          .map(r => Number(r.pre_watch_excitement))
+        const avgExcitement = avg(excitements)
+
+        return {
+          ...u,
+          filmCount: scored.length,
+          avgScore,
+          highest,
+          lowest,
+          recommendPct,
+          avgExcitement,
+        }
+      })
+      .filter(u => u.avgScore != null)
+      .sort((a, b) => b.avgScore - a.avgScore)
+  }, [movies, ratings, users])
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {[...Array(5)].map((_, i) => <Skeleton key={i} style={{ height: '160px' }} />)}
+      </div>
+    )
+  }
+
+  if (!stats || stats.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0', fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px' }}>
+        No member data yet.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {stats.map(u => (
+        <GlassCard key={u.id} style={{ padding: '18px' }}>
+          {/* Header row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+            {/* Initials avatar */}
+            <div style={{
+              flexShrink: 0,
+              width: '44px', height: '44px',
+              borderRadius: '50%',
+              border: '2px solid var(--accent)',
+              background: 'rgba(255,255,255,0.04)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                color: 'var(--accent)',
+                fontSize: '15px',
+                letterSpacing: '0.04em',
+              }}>
+                {initials(u.name)}
+              </span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{
+                fontFamily: "'DM Sans',sans-serif",
+                fontWeight: 700,
+                color: 'white',
+                fontSize: '15px',
+                margin: '0 0 2px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {u.name}
+              </p>
+              <p style={{
+                fontFamily: "'DM Mono',monospace",
+                color: '#4b5563',
+                fontSize: '11px',
+                margin: 0,
+              }}>
+                {u.filmCount} film{u.filmCount !== 1 ? 's' : ''} scored
+              </p>
+            </div>
+            {/* Big avg score */}
+            <div style={{ flexShrink: 0, textAlign: 'right' }}>
+              <p style={{
+                fontFamily: "'DM Mono',monospace",
+                color: '#4b5563',
+                fontSize: '9px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                margin: '0 0 2px',
+              }}>
+                Avg
+              </p>
+              <p style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                color: 'var(--accent)',
+                fontSize: '2rem',
+                letterSpacing: '0.04em',
+                lineHeight: 1,
+                margin: 0,
+              }}>
+                {fmt(u.avgScore)}
+              </p>
+            </div>
+          </div>
+
+          {/* Stats grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '9px',
+              padding: '10px 12px',
+            }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#374151', margin: '0 0 4px' }}>
+                Excitement Avg
+              </p>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'white', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                {u.avgExcitement != null ? fmt(u.avgExcitement) : '—'}
+              </p>
+            </div>
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '9px',
+              padding: '10px 12px',
+            }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#374151', margin: '0 0 4px' }}>
+                Would Recommend
+              </p>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'white', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                {u.recommendPct != null ? `${Math.round(u.recommendPct)}%` : '—'}
+              </p>
+            </div>
+          </div>
+
+          {/* Highest / Lowest */}
+          {u.highest && (
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {u.highest && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#374151', flexShrink: 0, width: '52px' }}>
+                    Highest
+                  </span>
+                  <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: '#d1d5db', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {u.highest.movie.title}
+                  </p>
+                  <span style={{ flexShrink: 0, fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '1.1rem', letterSpacing: '0.04em' }}>
+                    {fmt(u.highest.score)}
+                  </span>
+                </div>
+              )}
+              {u.lowest && u.lowest.id !== u.highest?.id && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#374151', flexShrink: 0, width: '52px' }}>
+                    Lowest
+                  </span>
+                  <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: '#d1d5db', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {u.lowest.movie.title}
+                  </p>
+                  <span style={{ flexShrink: 0, fontFamily: "'Bebas Neue',sans-serif", color: '#6b7280', fontSize: '1.1rem', letterSpacing: '0.04em' }}>
+                    {fmt(u.lowest.score)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </GlassCard>
+      ))}
+    </div>
+  )
+}
+
+// ─── Club Tab ─────────────────────────────────────────────────────────────────
+
+function ClubTab({ movies, ratings, users, loading }) {
+  const stats = useMemo(() => {
+    if (!movies.length) return null
+
+    const movieMap = {}
+    for (const m of movies) movieMap[m.id] = m
+
+    // Build month lookup from movies (month_id)
+    const monthSet = []
+    const monthMovies = {}
+    for (const m of movies) {
+      if (!m.month_id) continue
+      if (!monthMovies[m.month_id]) {
+        monthMovies[m.month_id] = []
+        monthSet.push(m.month_id)
+      }
+      monthMovies[m.month_id].push(m)
+    }
+    // Sort months by id (they're likely sequential UUIDs or ints; use string sort as fallback)
+    const sortedMonths = [...new Set(monthSet)].sort()
+
+    // Score over time: avg score per month
+    const ratingsByMovie = {}
+    for (const r of ratings) {
+      if (r.score == null) continue
+      if (!ratingsByMovie[r.movie_id]) ratingsByMovie[r.movie_id] = []
+      ratingsByMovie[r.movie_id].push(Number(r.score))
+    }
+
+    const monthAvgs = sortedMonths.map(mid => {
+      const films = monthMovies[mid] || []
+      const allScores = []
+      for (const m of films) {
+        const sc = ratingsByMovie[m.id] || []
+        allScores.push(...sc)
+        if (!sc.length && m.historical_avg_score) allScores.push(Number(m.historical_avg_score))
+      }
+      return { month_id: mid, avgScore: avg(allScores), films }
+    }).filter(x => x.avgScore != null)
+
+    // Most active scorer
+    const scoreCounts = {}
+    for (const r of ratings) {
+      if (r.score == null) continue
+      scoreCounts[r.user_id] = (scoreCounts[r.user_id] || 0) + 1
+    }
+    let mostActiveUser = null
+    let mostActiveCount = 0
+    for (const u of users) {
+      const c = scoreCounts[u.id] || 0
+      if (c > mostActiveCount) { mostActiveCount = c; mostActiveUser = u }
+    }
+
+    // Scoring streaks — months a user scored at least one film
+    const ratingsByUser = {}
+    for (const r of ratings) {
+      if (r.score == null) continue
+      const movie = movieMap[r.movie_id]
+      if (!movie || !movie.month_id) continue
+      if (!ratingsByUser[r.user_id]) ratingsByUser[r.user_id] = new Set()
+      ratingsByUser[r.user_id].add(movie.month_id)
+    }
+    const activeUsers = users.filter(u => u.is_active !== false)
+    const streaks = calcScoringStreaks(
+      activeUsers.map(u => u.id),
+      sortedMonths,
+      ratingsByUser,
+    )
+
+    // Genre breakdown
+    const genres = movies.filter(m => m.genre).map(m => m.genre)
+    const genreCounts = calcGenreBreakdown(genres)
+    const topGenres = Object.entries(genreCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+    const totalFilmsForGenre = movies.length
+
+    // Excitement vs Reality
+    const excitements = ratings
+      .filter(r => r.pre_watch_excitement != null)
+      .map(r => Number(r.pre_watch_excitement))
+    const finalScores = ratings
+      .filter(r => r.score != null)
+      .map(r => Number(r.score))
+    const avgExcitement = avg(excitements)
+    const avgFinal = avg(finalScores)
+
+    return {
+      monthAvgs,
+      mostActiveUser,
+      mostActiveCount,
+      streaks,
+      activeUsers,
+      topGenres,
+      totalFilmsForGenre,
+      avgExcitement,
+      avgFinal,
+    }
+  }, [movies, ratings, users])
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <Skeleton style={{ height: '220px' }} />
+        <Skeleton style={{ height: '80px' }} />
+        <Skeleton style={{ height: '160px' }} />
+        <Skeleton style={{ height: '160px' }} />
+        <Skeleton style={{ height: '120px' }} />
+      </div>
+    )
+  }
+
+  if (!stats) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0', fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px' }}>
+        No club data yet.
+      </div>
+    )
+  }
+
+  const maxMonthAvg = Math.max(...stats.monthAvgs.map(m => m.avgScore), 10)
+  const maxGenreCount = stats.topGenres.length > 0 ? stats.topGenres[0][1] : 1
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+
+      {/* Score Over Time */}
+      <div>
+        <SectionLabel>Score Over Time</SectionLabel>
+        <GlassCard style={{ padding: '16px' }}>
+          {stats.monthAvgs.length === 0 ? (
+            <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>No monthly data yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {stats.monthAvgs.map(m => {
+                const pct = (m.avgScore / maxMonthAvg) * 100
+                return (
+                  <div key={m.month_id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{
+                      fontFamily: "'DM Mono',monospace",
+                      fontSize: '10px',
+                      color: '#6b7280',
+                      flexShrink: 0,
+                      width: '72px',
+                      textAlign: 'right',
+                    }}>
+                      {m.month_id}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0, height: '18px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${pct}%`,
+                        height: '100%',
+                        background: 'var(--accent)',
+                        borderRadius: '4px',
+                        transition: 'width 0.4s ease',
+                      }} />
+                    </div>
+                    <span style={{
+                      fontFamily: "'Bebas Neue',sans-serif",
+                      fontSize: '1rem',
+                      color: 'white',
+                      letterSpacing: '0.04em',
+                      flexShrink: 0,
+                      width: '36px',
+                      textAlign: 'right',
+                    }}>
+                      {fmt(m.avgScore)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Most Active Scorer */}
+      <div>
+        <SectionLabel>Most Active Scorer</SectionLabel>
+        {stats.mostActiveUser ? (
+          <GlassCard style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px' }}>
+            <div style={{
+              flexShrink: 0,
+              width: '44px', height: '44px',
+              borderRadius: '50%',
+              border: '2px solid var(--accent)',
+              background: 'rgba(255,255,255,0.04)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '15px', letterSpacing: '0.04em' }}>
+                {initials(stats.mostActiveUser.name)}
+              </span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, color: 'white', fontSize: '15px', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {stats.mostActiveUser.name}
+              </p>
+              <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '11px', margin: 0 }}>
+                most scores submitted
+              </p>
+            </div>
+            <div style={{ flexShrink: 0, textAlign: 'right' }}>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                {stats.mostActiveCount}
+              </p>
+              <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '2px 0 0' }}>
+                scores
+              </p>
+            </div>
+          </GlassCard>
+        ) : (
+          <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>No scores yet.</p>
+        )}
+      </div>
+
+      {/* Scoring Streaks */}
+      <div>
+        <SectionLabel>Scoring Streaks</SectionLabel>
+        <GlassCard style={{ padding: '4px 0' }}>
+          {stats.activeUsers.map((u, i) => {
+            const streak = stats.streaks[u.id] || 0
+            return (
+              <div key={u.id} style={{
+                display: 'flex', alignItems: 'center', gap: '12px',
+                padding: '11px 16px',
+                borderBottom: i < stats.activeUsers.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+              }}>
+                <div style={{
+                  flexShrink: 0,
+                  width: '32px', height: '32px',
+                  borderRadius: '50%',
+                  border: '1.5px solid var(--accent)',
+                  background: 'rgba(255,255,255,0.04)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '12px', letterSpacing: '0.04em' }}>
+                    {initials(u.name)}
+                  </span>
+                </div>
+                <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: '#d1d5db', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {u.name}
+                </p>
+                <div style={{
+                  flexShrink: 0,
+                  background: streak > 0 ? 'rgba(var(--accent-rgb,220,38,38),0.15)' : 'rgba(255,255,255,0.04)',
+                  border: streak > 0 ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                  borderRadius: '999px',
+                  padding: '3px 10px',
+                }}>
+                  <span style={{
+                    fontFamily: "'DM Mono',monospace",
+                    fontSize: '11px',
+                    color: streak > 0 ? 'var(--accent)' : '#374151',
+                    fontWeight: 500,
+                  }}>
+                    {streak} mo
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </GlassCard>
+      </div>
+
+      {/* Genre Breakdown */}
+      <div>
+        <SectionLabel>Top Genres</SectionLabel>
+        <GlassCard style={{ padding: '16px' }}>
+          {stats.topGenres.length === 0 ? (
+            <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>No genre data yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {stats.topGenres.map(([genre, count]) => {
+                const pct = (count / maxGenreCount) * 100
+                return (
+                  <div key={genre} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{
+                      fontFamily: "'DM Sans',sans-serif",
+                      fontSize: '12px',
+                      color: '#9ca3af',
+                      flexShrink: 0,
+                      width: '90px',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {genre}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0, height: '14px', background: 'rgba(255,255,255,0.04)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${pct}%`,
+                        height: '100%',
+                        background: 'var(--accent)',
+                        borderRadius: '3px',
+                        transition: 'width 0.4s ease',
+                        opacity: 0.75,
+                      }} />
+                    </div>
+                    <span style={{
+                      fontFamily: "'DM Mono',monospace",
+                      fontSize: '10px',
+                      color: '#6b7280',
+                      flexShrink: 0,
+                      width: '24px',
+                      textAlign: 'right',
+                    }}>
+                      {count}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Excitement vs Reality */}
+      <div>
+        <SectionLabel>Excitement vs. Reality</SectionLabel>
+        <GlassCard style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+            <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#fbbf24', margin: '0 0 6px' }}>
+                Avg Excitement
+              </p>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: '#fbbf24', fontSize: '2.8rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                {stats.avgExcitement != null ? fmt(stats.avgExcitement) : '—'}
+              </p>
+            </div>
+            <div style={{ width: '1px', background: 'rgba(255,255,255,0.07)', flexShrink: 0 }} />
+            <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--accent)', margin: '0 0 6px' }}>
+                Avg Final Score
+              </p>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.8rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                {stats.avgFinal != null ? fmt(stats.avgFinal) : '—'}
+              </p>
+            </div>
+          </div>
+          {stats.avgExcitement != null && stats.avgFinal != null && (
+            <p style={{
+              fontFamily: "'DM Sans',sans-serif",
+              fontSize: '12px',
+              color: '#6b7280',
+              textAlign: 'center',
+              margin: '14px 0 0',
+            }}>
+              {stats.avgExcitement > stats.avgFinal
+                ? 'We tend to over-hype films before watching.'
+                : stats.avgExcitement < stats.avgFinal
+                  ? 'Films tend to exceed expectations.'
+                  : 'Excitement and scores are perfectly aligned.'}
+            </p>
+          )}
+        </GlassCard>
+      </div>
+
+    </div>
+  )
+}
+
+// ─── Head to Head Tab ────────────────────────────────────────────────────────
+
+function HeadToHeadTab({ movies, ratings, users, loading }) {
+  const activeUsers = useMemo(
+    () => users.filter(u => u.is_active !== false),
+    [users],
+  )
+
+  // Default to first two admins (Ryan Miller + Ryan Bey)
+  const defaultA = useMemo(() => {
+    const admins = activeUsers.filter(u => u.role === 'admin')
+    return admins[0] ?? activeUsers[0] ?? null
+  }, [activeUsers])
+
+  const defaultB = useMemo(() => {
+    const admins = activeUsers.filter(u => u.role === 'admin')
+    return admins[1] ?? activeUsers[1] ?? null
+  }, [activeUsers])
+
+  const [userA, setUserA] = useState(null)
+  const [userB, setUserB] = useState(null)
+
+  // Set defaults once users load
+  useEffect(() => {
+    if (defaultA && !userA) setUserA(defaultA)
+  }, [defaultA])
+  useEffect(() => {
+    if (defaultB && !userB) setUserB(defaultB)
+  }, [defaultB])
+
+  const movieMap = useMemo(() => {
+    const map = {}
+    for (const m of movies) map[m.id] = m
+    return map
+  }, [movies])
+
+  const h2h = useMemo(() => {
+    if (!userA || !userB) return null
+    const ratingsA = ratings.filter(r => r.user_id === userA.id && r.score != null)
+    const ratingsB = ratings.filter(r => r.user_id === userB.id && r.score != null)
+    const { avg: agreementAvg, count } = calcAgreementScore(ratingsA, ratingsB)
+    const record = calcHeadToHeadRecord(ratingsA, ratingsB)
+
+    const avgA = avg(ratingsA.map(r => Number(r.score)))
+    const avgB = avg(ratingsB.map(r => Number(r.score)))
+
+    // Films sorted by diff
+    const filmsWithMovies = record.films
+      .map(f => ({ ...f, movie: movieMap[f.movie_id] }))
+      .filter(f => f.movie)
+
+    const mostAgreed = filmsWithMovies.slice(0, 3)
+    const mostDisagreed = [...filmsWithMovies].sort((a, b) => b.diff - a.diff).slice(0, 3)
+
+    return {
+      agreementAvg,
+      sharedCount: count,
+      record,
+      avgA,
+      avgB,
+      mostAgreed,
+      mostDisagreed,
+    }
+  }, [userA, userB, ratings, movieMap])
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <Skeleton style={{ height: '56px' }} />
+        <Skeleton style={{ height: '100px' }} />
+        <Skeleton style={{ height: '160px' }} />
+        <Skeleton style={{ height: '160px' }} />
+        <Skeleton style={{ height: '80px' }} />
+      </div>
+    )
+  }
+
+  if (activeUsers.length < 2) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0', fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px' }}>
+        Need at least 2 members.
+      </div>
+    )
+  }
+
+  const MemberPill = ({ selected, onSelect, exclude }) => (
+    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+      <select
+        value={selected?.id ?? ''}
+        onChange={e => {
+          const u = activeUsers.find(u => u.id === e.target.value)
+          if (u) onSelect(u)
+        }}
+        style={{
+          width: '100%',
+          appearance: 'none',
+          background: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '10px',
+          padding: '10px 36px 10px 14px',
+          fontFamily: "'DM Sans',sans-serif",
+          fontWeight: 600,
+          fontSize: '14px',
+          color: 'white',
+          cursor: 'pointer',
+          outline: 'none',
+        }}
+      >
+        {activeUsers
+          .filter(u => u.id !== exclude?.id)
+          .map(u => (
+            <option key={u.id} value={u.id} style={{ background: '#0a0b10', color: 'white' }}>
+              {u.name}
+            </option>
+          ))}
+      </select>
+      <span style={{
+        position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+        color: '#6b7280', pointerEvents: 'none', fontSize: '11px',
+      }}>
+        ▾
+      </span>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+      {/* Member selectors */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <MemberPill selected={userA} onSelect={setUserA} exclude={userB} />
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '11px', color: '#374151', flexShrink: 0 }}>
+          vs
+        </span>
+        <MemberPill selected={userB} onSelect={setUserB} exclude={userA} />
+      </div>
+
+      {(!h2h || h2h.sharedCount < 3) ? (
+        <GlassCard style={{ padding: '28px', textAlign: 'center' }}>
+          <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px', margin: 0 }}>
+            {h2h && h2h.sharedCount > 0
+              ? `Only ${h2h.sharedCount} shared score${h2h.sharedCount !== 1 ? 's' : ''} — not enough yet.`
+              : 'Not enough shared scores yet.'}
+          </p>
+        </GlassCard>
+      ) : (
+        <>
+          {/* Agreement score */}
+          <div>
+            <SectionLabel>Avg Disagreement</SectionLabel>
+            <GlassCard style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: '13px', margin: '0 0 2px' }}>
+                  Avg |score A − score B| across {h2h.sharedCount} shared films
+                </p>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: '#374151', margin: 0 }}>
+                  Lower = more aligned
+                </p>
+              </div>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0, flexShrink: 0 }}>
+                {fmt(h2h.agreementAvg)}
+              </p>
+            </GlassCard>
+          </div>
+
+          {/* Who scores higher */}
+          <div>
+            <SectionLabel>Scoring Comparison</SectionLabel>
+            <GlassCard style={{ padding: '16px 20px' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', marginBottom: '10px' }}>
+                <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#374151', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {userA?.name.split(' ')[0]}
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                    {fmt(h2h.avgA)}
+                  </p>
+                </div>
+                <div style={{ flexShrink: 0, textAlign: 'center', paddingBottom: '4px' }}>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: '#374151' }}>avg</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#374151', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {userB?.name.split(' ')[0]}
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'white', fontSize: '2.2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                    {fmt(h2h.avgB)}
+                  </p>
+                </div>
+              </div>
+              {h2h.avgA != null && h2h.avgB != null && (
+                <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '12px', color: '#6b7280', margin: 0, textAlign: 'center' }}>
+                  {Math.abs(h2h.avgA - h2h.avgB) < 0.005
+                    ? 'Identical average scores.'
+                    : h2h.avgA > h2h.avgB
+                      ? `${userA?.name} scores higher on average.`
+                      : `${userB?.name} scores higher on average.`}
+                </p>
+              )}
+            </GlassCard>
+          </div>
+
+          {/* Head to head record */}
+          <div>
+            <SectionLabel>Head to Head Record</SectionLabel>
+            <GlassCard style={{ padding: '16px 20px' }}>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#374151', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {userA?.name.split(' ')[0]}
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                    {h2h.record.winsA}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#374151', margin: '0 0 4px' }}>
+                    Ties
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: '#6b7280', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                    {h2h.record.ties}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#374151', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {userB?.name.split(' ')[0]}
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'white', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                    {h2h.record.winsB}
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+          </div>
+
+          {/* Most agreed on */}
+          <div>
+            <SectionLabel>Most Agreed On</SectionLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {h2h.mostAgreed.map(f => (
+                <GlassCard key={f.movie_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'white', fontWeight: 500, fontSize: '13px', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.movie.title}
+                    </p>
+                    <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '10px', margin: 0 }}>
+                      {fmt(f.scoreA)} vs {fmt(f.scoreB)}
+                    </p>
+                  </div>
+                  <span style={{
+                    flexShrink: 0,
+                    fontFamily: "'DM Mono',monospace",
+                    fontSize: '11px',
+                    color: '#22c55e',
+                    background: 'rgba(34,197,94,0.1)',
+                    padding: '3px 8px',
+                    borderRadius: '999px',
+                  }}>
+                    Δ {fmt(f.diff)}
+                  </span>
+                </GlassCard>
+              ))}
+            </div>
+          </div>
+
+          {/* Most disagreed on */}
+          <div>
+            <SectionLabel>Most Disagreed On</SectionLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {h2h.mostDisagreed.map(f => (
+                <GlassCard key={f.movie_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'white', fontWeight: 500, fontSize: '13px', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.movie.title}
+                    </p>
+                    <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '10px', margin: 0 }}>
+                      {fmt(f.scoreA)} vs {fmt(f.scoreB)}
+                    </p>
+                  </div>
+                  <span style={{
+                    flexShrink: 0,
+                    fontFamily: "'DM Mono',monospace",
+                    fontSize: '11px',
+                    color: '#f87171',
+                    background: 'rgba(248,113,113,0.1)',
+                    padding: '3px 8px',
+                    borderRadius: '999px',
+                  }}>
+                    Δ {fmt(f.diff)}
+                  </span>
+                </GlassCard>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const TABS = ['Overview', 'Me']
+const TABS = ['Overview', 'Me', 'Members', 'Club', 'Head to Head']
 
 export default function Stats() {
   const { profile } = useAuth()
@@ -897,13 +1847,17 @@ export default function Stats() {
           border: '1px solid rgba(255,255,255,0.07)',
           borderRadius: '12px', padding: '4px',
           marginBottom: '24px',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
         }}>
           {TABS.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
-                flex: 1, padding: '8px 0',
+                flexShrink: 0,
+                padding: '8px 12px',
                 borderRadius: '9px', border: 'none',
                 background: activeTab === tab ? 'rgba(255,255,255,0.09)' : 'transparent',
                 color: activeTab === tab ? 'white' : '#4b5563',
@@ -911,6 +1865,7 @@ export default function Stats() {
                 fontWeight: activeTab === tab ? 600 : 400,
                 fontSize: '13px', cursor: 'pointer',
                 transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
               }}
             >
               {tab}
@@ -932,6 +1887,30 @@ export default function Stats() {
             <MeTab
               movies={movies}
               ratings={myRatings}
+              loading={loading}
+            />
+          )}
+          {activeTab === 'Members' && (
+            <MembersTab
+              movies={movies}
+              ratings={allRatings}
+              users={users}
+              loading={loading}
+            />
+          )}
+          {activeTab === 'Club' && (
+            <ClubTab
+              movies={movies}
+              ratings={allRatings}
+              users={users}
+              loading={loading}
+            />
+          )}
+          {activeTab === 'Head to Head' && (
+            <HeadToHeadTab
+              movies={movies}
+              ratings={allRatings}
+              users={users}
               loading={loading}
             />
           )}

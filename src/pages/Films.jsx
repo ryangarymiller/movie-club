@@ -456,8 +456,14 @@ function FilmDetailOverlay({ movie, onClose }) {
   const [detailLoading, setDetailLoading] = useState(true)
   const [ratings, setRatings] = useState([])
   const [users, setUsers] = useState([])
+  const [reviews, setReviews] = useState([])
   const [fullMovie, setFullMovie] = useState(null)
   const [showScoreModal, setShowScoreModal] = useState(false)
+  const [reviewText, setReviewText] = useState('')
+  const [editingReview, setEditingReview] = useState(false)
+  const [editText, setEditText] = useState('')
+  const [reviewError, setReviewError] = useState('')
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const scrollRef = useRef(null)
 
   // Trigger animation
@@ -477,6 +483,7 @@ function FilmDetailOverlay({ movie, onClose }) {
       { data: movieData },
       { data: ratingsData },
       { data: usersData },
+      { data: reviewsData },
     ] = await Promise.all([
       supabase
         .from('movies_safe')
@@ -490,11 +497,16 @@ function FilmDetailOverlay({ movie, onClose }) {
       supabase
         .from('users')
         .select('id, name, role, joined_at'),
+      supabase
+        .from('reviews')
+        .select('id, movie_id, user_id, body, created_at')
+        .eq('movie_id', movieId),
     ])
 
     setFullMovie(movieData ?? movieFallback)
     setRatings(ratingsData ?? [])
     setUsers(usersData ?? [])
+    setReviews(reviewsData ?? [])
     setDetailLoading(false)
   }, [])
 
@@ -504,8 +516,13 @@ function FilmDetailOverlay({ movie, onClose }) {
     setDetailLoading(true)
     setRatings([])
     setUsers([])
+    setReviews([])
     setFullMovie(null)
     setShowScoreModal(false)
+    setReviewText('')
+    setEditingReview(false)
+    setEditText('')
+    setReviewError('')
 
     fetchDetails(movie.id, movie)
   }, [movie, fetchDetails])
@@ -513,6 +530,47 @@ function FilmDetailOverlay({ movie, onClose }) {
   function handleClose() {
     setVisible(false)
     setTimeout(onClose, 300)
+  }
+
+  async function handleSubmitReview() {
+    if (!profile || !movie) return
+    const text = reviewText.trim()
+    if (text.length < 10) {
+      setReviewError('Review must be at least 10 characters.')
+      return
+    }
+    setReviewError('')
+    setReviewSubmitting(true)
+    await supabase
+      .from('reviews')
+      .upsert(
+        { movie_id: movie.id, user_id: profile.id, body: text },
+        { onConflict: 'movie_id,user_id' }
+      )
+    setReviewText('')
+    await fetchDetails(movie.id, movie)
+    setReviewSubmitting(false)
+  }
+
+  async function handleEditReview() {
+    if (!profile || !movie) return
+    const text = editText.trim()
+    if (text.length < 10) {
+      setReviewError('Review must be at least 10 characters.')
+      return
+    }
+    setReviewError('')
+    setReviewSubmitting(true)
+    await supabase
+      .from('reviews')
+      .upsert(
+        { movie_id: movie.id, user_id: profile.id, body: text },
+        { onConflict: 'movie_id,user_id' }
+      )
+    setEditingReview(false)
+    setEditText('')
+    await fetchDetails(movie.id, movie)
+    setReviewSubmitting(false)
   }
 
   // Close on Escape key
@@ -577,6 +635,10 @@ function FilmDetailOverlay({ movie, onClose }) {
     const pickerUser = users.find(u => u.id === m.picked_by_user_id)
     pickerName = pickerUser?.name ?? null
   }
+
+  // Reviews
+  const sortedReviews = [...reviews].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  const myReview = reviews.find(r => r.user_id === myUserId) ?? null
 
   return (
     <>
@@ -944,6 +1006,214 @@ function FilmDetailOverlay({ movie, onClose }) {
                     {recommendYes}/{recommendTotal} would recommend
                   </span>
                 </div>
+              </div>
+            </>
+          )}
+
+          {/* ── REVIEWS ── */}
+          {m.scores_revealed && (
+            <>
+              <Divider />
+              <div>
+                <SectionLabel>Reviews</SectionLabel>
+
+                {/* Existing reviews list */}
+                {sortedReviews.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                    {sortedReviews.map(review => {
+                      const reviewer = userById[review.user_id]
+                      const reviewerName = reviewer?.name ?? 'Unknown'
+                      const isMyReview = review.user_id === myUserId
+                      const dateStr = review.created_at
+                        ? new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : ''
+                      return (
+                        <div
+                          key={review.id}
+                          style={{
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.07)',
+                            borderRadius: '12px',
+                            padding: '14px',
+                          }}
+                        >
+                          {/* Header row */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                            <div style={{
+                              flexShrink: 0,
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '50%',
+                              background: avatarColor(reviewerName),
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}>
+                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: '#fff' }}>
+                                {initials(reviewerName)}
+                              </span>
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.85)', margin: 0 }}>
+                                {reviewerName}
+                              </p>
+                              {dateStr && (
+                                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.25)', margin: '2px 0 0', letterSpacing: '0.04em' }}>
+                                  {dateStr}
+                                </p>
+                              )}
+                            </div>
+                            {isMyReview && !editingReview && (
+                              <button
+                                onClick={() => { setEditingReview(true); setEditText(review.body); setReviewError('') }}
+                                style={{
+                                  background: 'rgba(255,255,255,0.06)',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: '6px',
+                                  padding: '4px 10px',
+                                  fontFamily: "'DM Mono', monospace",
+                                  fontSize: '10px',
+                                  letterSpacing: '0.08em',
+                                  color: 'rgba(255,255,255,0.5)',
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                Edit
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Body or edit textarea */}
+                          {isMyReview && editingReview ? (
+                            <div>
+                              <textarea
+                                value={editText}
+                                onChange={e => setEditText(e.target.value)}
+                                placeholder="What did you think?"
+                                style={{
+                                  width: '100%',
+                                  background: 'rgba(255,255,255,0.04)',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: '8px',
+                                  padding: '10px',
+                                  color: 'white',
+                                  fontFamily: "'DM Sans', sans-serif",
+                                  fontSize: '14px',
+                                  minHeight: '80px',
+                                  resize: 'vertical',
+                                  boxSizing: 'border-box',
+                                  outline: 'none',
+                                }}
+                              />
+                              {reviewError && (
+                                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '12px', color: '#f87171', margin: '6px 0 0' }}>
+                                  {reviewError}
+                                </p>
+                              )}
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                                <button
+                                  onClick={handleEditReview}
+                                  disabled={reviewSubmitting}
+                                  style={{
+                                    background: 'var(--accent)',
+                                    color: '#fff',
+                                    fontFamily: "'DM Sans', sans-serif",
+                                    fontWeight: 600,
+                                    fontSize: '14px',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '8px 16px',
+                                    cursor: reviewSubmitting ? 'not-allowed' : 'pointer',
+                                    opacity: reviewSubmitting ? 0.6 : 1,
+                                  }}
+                                >
+                                  {reviewSubmitting ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => { setEditingReview(false); setEditText(''); setReviewError('') }}
+                                  disabled={reviewSubmitting}
+                                  style={{
+                                    background: 'rgba(255,255,255,0.06)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '8px',
+                                    padding: '8px 16px',
+                                    fontFamily: "'DM Sans', sans-serif",
+                                    fontSize: '14px',
+                                    color: 'rgba(255,255,255,0.5)',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p style={{
+                              fontFamily: "'DM Sans', sans-serif",
+                              fontSize: '14px',
+                              lineHeight: 1.7,
+                              color: 'rgba(255,255,255,0.65)',
+                              margin: 0,
+                              whiteSpace: 'pre-wrap',
+                            }}>
+                              {review.body}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* New review form — only if current user hasn't written one */}
+                {!myReview && (
+                  <div>
+                    <textarea
+                      value={reviewText}
+                      onChange={e => setReviewText(e.target.value)}
+                      placeholder="What did you think?"
+                      style={{
+                        width: '100%',
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '8px',
+                        padding: '10px',
+                        color: 'white',
+                        fontFamily: "'DM Sans', sans-serif",
+                        fontSize: '14px',
+                        minHeight: '80px',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
+                    />
+                    {reviewError && (
+                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '12px', color: '#f87171', margin: '6px 0 0' }}>
+                        {reviewError}
+                      </p>
+                    )}
+                    <button
+                      onClick={handleSubmitReview}
+                      disabled={reviewSubmitting}
+                      style={{
+                        marginTop: '10px',
+                        background: 'var(--accent)',
+                        color: '#fff',
+                        fontFamily: "'DM Sans', sans-serif",
+                        fontWeight: 600,
+                        fontSize: '14px',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 16px',
+                        cursor: reviewSubmitting ? 'not-allowed' : 'pointer',
+                        opacity: reviewSubmitting ? 0.6 : 1,
+                      }}
+                    >
+                      {reviewSubmitting ? 'Submitting…' : 'Submit Review'}
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}
