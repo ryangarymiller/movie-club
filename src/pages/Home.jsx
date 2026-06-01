@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import ScoreModal from '../components/ScoreModal'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -69,7 +70,7 @@ function PosterCard({ movie, pending }) {
   )
 }
 
-function ActionCard({ movie }) {
+function ActionCard({ movie, existingRating, onScorePress }) {
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.03]">
       <div className="shrink-0 w-10 h-14 rounded-md overflow-hidden bg-gray-900">
@@ -86,6 +87,7 @@ function ActionCard({ movie }) {
         <p className="text-white font-medium text-sm leading-tight truncate">{movie.title}</p>
       </div>
       <button
+        onClick={() => onScorePress(movie, existingRating ?? null)}
         className="shrink-0 font-semibold px-3 py-1.5 rounded-lg text-white whitespace-nowrap"
         style={{ background: 'var(--accent)', fontSize: '12px', fontFamily: "'DM Mono', monospace" }}
       >
@@ -112,24 +114,40 @@ export default function Home() {
   const [allMovies, setAllMovies] = useState([])
   const [myRatings, setMyRatings] = useState([])
 
-  useEffect(() => {
+  // Score modal state
+  const [modalMovie, setModalMovie] = useState(null)
+  const [modalRating, setModalRating] = useState(null)
+
+  const load = useCallback(async () => {
     if (!profile) return
-    async function load() {
-      const [{ data: activeMonth }, { data: movies }, { data: ratings }] = await Promise.all([
-        supabase.from('months').select('id').eq('status', 'active').maybeSingle(),
-        supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score'),
-        supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
-      ])
-      const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
-      setActiveMovies(active)
-      setAllMovies(movies ?? [])
-      setMyRatings(ratings ?? [])
-      setLoading(false)
-    }
-    load()
+    const [{ data: activeMonth }, { data: movies }, { data: ratings }] = await Promise.all([
+      supabase.from('months').select('id').eq('status', 'active').maybeSingle(),
+      supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score'),
+      supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
+    ])
+    const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
+    setActiveMovies(active)
+    setAllMovies(movies ?? [])
+    setMyRatings(ratings ?? [])
+    setLoading(false)
   }, [profile])
 
+  useEffect(() => {
+    load()
+  }, [load])
+
+  function openModal(movie, rating) {
+    setModalMovie(movie)
+    setModalRating(rating ?? null)
+  }
+
+  function closeModal() {
+    setModalMovie(null)
+    setModalRating(null)
+  }
+
   const firstName = profile?.name?.split(' ')[0] ?? 'there'
+  const ratingsMap = Object.fromEntries(myRatings.map(r => [r.movie_id, r]))
   const scoredIds = new Set(myRatings.filter(r => r.score).map(r => r.movie_id))
   const pendingFilms = activeMovies.filter(m => !scoredIds.has(m.id))
   const topFilm = [...allMovies].filter(m => m.historical_avg_score).sort((a, b) => b.historical_avg_score - a.historical_avg_score)[0]
@@ -170,7 +188,14 @@ export default function Home() {
             </div>
           ) : (
             <div className="space-y-2">
-              {pendingFilms.map(m => <ActionCard key={m.id} movie={m} />)}
+              {pendingFilms.map(m => (
+                <ActionCard
+                  key={m.id}
+                  movie={m}
+                  existingRating={ratingsMap[m.id] ?? null}
+                  onScorePress={openModal}
+                />
+              ))}
             </div>
           )}
         </section>
@@ -208,6 +233,19 @@ export default function Home() {
         </section>
 
       </div>
+
+      {/* Score Modal */}
+      {modalMovie && (
+        <ScoreModal
+          movie={modalMovie}
+          existingRating={modalRating}
+          onClose={closeModal}
+          onSaved={() => {
+            closeModal()
+            load()
+          }}
+        />
+      )}
 
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }

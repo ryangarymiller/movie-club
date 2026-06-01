@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function initials(title = '') {
-  return title.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+function initials(name = '') {
+  return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
 function fmtScore(s) {
@@ -14,6 +14,34 @@ function fmtScore(s) {
 
 function isVault(movie) {
   return movie.historical_avg_score != null && movie.historical_avg_score >= 8.5
+}
+
+function formatRuntime(mins) {
+  if (!mins) return null
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  if (h === 0) return `${m}m`
+  return m === 0 ? `${h}h` : `${h}h ${m}m`
+}
+
+// Score colour: green if high, red if low, accent otherwise
+function scoreColor(score) {
+  if (score == null) return 'var(--accent-light, #fca5a5)'
+  if (score >= 8.5) return '#fbbf24'
+  if (score >= 7) return '#86efac'
+  if (score <= 4) return '#f87171'
+  return 'var(--accent-light, #fca5a5)'
+}
+
+// Deterministic colour for member avatars from initials
+const AVATAR_COLORS = [
+  '#e11d48','#db2777','#9333ea','#7c3aed','#4f46e5',
+  '#2563eb','#0891b2','#0d9488','#16a34a','#ca8a04',
+]
+function avatarColor(name = '') {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
 // ─── tiny components ──────────────────────────────────────────────────────────
@@ -217,29 +245,335 @@ function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSele
   )
 }
 
-// ─── FilmSheet (bottom sheet detail) ─────────────────────────────────────────
+// ─── FilmDetailOverlay ────────────────────────────────────────────────────────
 
-function FilmSheet({ movie, onClose }) {
+function MemberScoreRow({ rating, user }) {
+  const name = user?.name ?? 'Unknown'
+  const score = rating?.score
+  const excitement = rating?.pre_watch_excitement
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '10px 0',
+      borderBottom: '1px solid rgba(255,255,255,0.04)',
+    }}>
+      {/* Avatar */}
+      <div style={{
+        flexShrink: 0,
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        background: avatarColor(name),
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: '#fff' }}>
+          {initials(name)}
+        </span>
+      </div>
+
+      {/* Name */}
+      <span style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans', sans-serif", fontSize: '14px', color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {name}
+      </span>
+
+      {/* Pre-watch excitement */}
+      {excitement != null && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px', marginRight: '4px' }}>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.06em' }}>
+            HYPED
+          </span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>
+            {Number(excitement).toFixed(1)}
+          </span>
+        </div>
+      )}
+
+      {/* Final score */}
+      <div style={{
+        flexShrink: 0,
+        padding: '4px 10px',
+        borderRadius: '8px',
+        background: score != null ? 'rgba(255,255,255,0.06)' : 'transparent',
+        border: score != null ? '1px solid rgba(255,255,255,0.08)' : 'none',
+        minWidth: '48px',
+        textAlign: 'center',
+      }}>
+        {score != null ? (
+          <span style={{
+            fontFamily: "'DM Mono', monospace",
+            fontSize: '15px',
+            fontWeight: 600,
+            color: scoreColor(Number(score)),
+          }}>
+            {Number(score).toFixed(2)}
+          </span>
+        ) : (
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: 'rgba(255,255,255,0.2)' }}>—</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SectionLabel({ children }) {
+  return (
+    <p style={{
+      fontFamily: "'DM Mono', monospace",
+      fontSize: '9px',
+      letterSpacing: '0.18em',
+      textTransform: 'uppercase',
+      color: 'rgba(255,255,255,0.25)',
+      margin: '0 0 10px',
+    }}>
+      {children}
+    </p>
+  )
+}
+
+function Divider() {
+  return <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '24px 0' }} />
+}
+
+function PlotSummary({ text }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!text) return null
+
+  return (
+    <div>
+      <SectionLabel>Plot</SectionLabel>
+      <p
+        style={{
+          fontFamily: "'DM Sans', sans-serif",
+          fontSize: '14px',
+          lineHeight: 1.7,
+          color: 'rgba(255,255,255,0.6)',
+          margin: '0 0 6px',
+          display: '-webkit-box',
+          WebkitLineClamp: expanded ? 'unset' : 3,
+          WebkitBoxOrient: 'vertical',
+          overflow: expanded ? 'visible' : 'hidden',
+        }}
+      >
+        {text}
+      </p>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          fontFamily: "'DM Mono', monospace",
+          fontSize: '10px',
+          letterSpacing: '0.1em',
+          color: 'var(--accent-light, #fca5a5)',
+        }}
+      >
+        {expanded ? 'SHOW LESS' : 'READ MORE'}
+      </button>
+    </div>
+  )
+}
+
+function StreamingSection({ providers }) {
+  // providers is the full TMDB watch_providers response JSON stored in the DB
+  const us = providers?.results?.US ?? providers?.US ?? null
+
+  const flatrate = us?.flatrate ?? []
+  const rent = us?.rent ?? []
+  const buy = us?.buy ?? []
+
+  const hasAny = flatrate.length > 0 || rent.length > 0 || buy.length > 0
+
+  if (!providers || !hasAny) {
+    return (
+      <div>
+        <SectionLabel>Where to Watch</SectionLabel>
+        <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+          No streaming info available
+        </p>
+      </div>
+    )
+  }
+
+  function ProviderRow({ label, items }) {
+    if (!items || items.length === 0) return null
+    return (
+      <div style={{ marginBottom: '12px' }}>
+        <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.2)', margin: '0 0 8px', textTransform: 'uppercase' }}>
+          {label}
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {items.map(p => (
+            <div key={p.provider_id ?? p.provider_name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {p.logo_path ? (
+                <img
+                  src={`https://image.tmdb.org/t/p/w45${p.logo_path}`}
+                  alt={p.provider_name}
+                  title={p.provider_name}
+                  style={{ width: '28px', height: '28px', borderRadius: '6px', display: 'block' }}
+                  onError={e => { e.target.style.display = 'none' }}
+                />
+              ) : (
+                <span style={{
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: '11px',
+                  color: 'rgba(255,255,255,0.55)',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}>
+                  {p.provider_name}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <SectionLabel>Where to Watch</SectionLabel>
+      <ProviderRow label="Stream" items={flatrate} />
+      <ProviderRow label="Rent" items={rent} />
+      <ProviderRow label="Buy" items={buy} />
+    </div>
+  )
+}
+
+function FilmDetailOverlay({ movie, onClose }) {
+  const { profile, isAdmin } = useAuth()
   const [visible, setVisible] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(true)
+  const [ratings, setRatings] = useState([])
+  const [users, setUsers] = useState([])
+  const [fullMovie, setFullMovie] = useState(null)
+  const scrollRef = useRef(null)
 
+  // Trigger animation
   useEffect(() => {
     if (movie) {
-      // slight delay so CSS transition fires
       requestAnimationFrame(() => setVisible(true))
+      // Reset scroll
+      if (scrollRef.current) scrollRef.current.scrollTop = 0
     } else {
       setVisible(false)
     }
   }, [movie])
 
+  // Fetch full details whenever a movie is selected
+  useEffect(() => {
+    if (!movie) return
+
+    setDetailLoading(true)
+    setRatings([])
+    setUsers([])
+    setFullMovie(null)
+
+    async function fetchDetails() {
+      const [
+        { data: movieData },
+        { data: ratingsData },
+        { data: usersData },
+      ] = await Promise.all([
+        supabase
+          .from('movies_safe')
+          .select('*')
+          .eq('id', movie.id)
+          .single(),
+        supabase
+          .from('ratings')
+          .select('user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
+          .eq('movie_id', movie.id),
+        supabase
+          .from('users')
+          .select('id, name, role, joined_at'),
+      ])
+
+      setFullMovie(movieData ?? movie)
+      setRatings(ratingsData ?? [])
+      setUsers(usersData ?? [])
+      setDetailLoading(false)
+    }
+
+    fetchDetails()
+  }, [movie])
+
   function handleClose() {
     setVisible(false)
-    setTimeout(onClose, 280)
+    setTimeout(onClose, 300)
   }
+
+  // Close on Escape key
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') handleClose()
+    }
+    if (movie) window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [movie])
 
   if (!movie) return null
 
-  const score = movie.historical_avg_score
-  const genres = Array.isArray(movie.genre) ? movie.genre : []
+  const m = fullMovie ?? movie
+  const genres = Array.isArray(m.genre) ? m.genre : []
+  const runtime = formatRuntime(m.runtime_minutes)
+  const vault = isVault(m)
+
+  // ── Scores section logic ──
+  const myUserId = profile?.id
+  const myRating = ratings.find(r => r.user_id === myUserId)
+  const myHasSubmitted = myRating != null
+
+  // Build user lookup
+  const userById = {}
+  users.forEach(u => { userById[u.id] = u })
+
+  // Which ratings to display
+  let visibleRatings = []
+  let scoresMessage = null
+
+  if (m.scores_revealed) {
+    // All scores visible
+    visibleRatings = ratings
+  } else if (myHasSubmitted) {
+    // Rolling: only show scores of members who have also submitted
+    visibleRatings = ratings // all submitted ratings (only submitters have rows)
+  } else {
+    scoresMessage = 'Scores revealed after the scoring deadline'
+  }
+
+  // Compute group average from visibleRatings that have a score
+  const scoredRatings = visibleRatings.filter(r => r.score != null)
+  const groupAvg = scoredRatings.length
+    ? scoredRatings.reduce((s, r) => s + Number(r.score), 0) / scoredRatings.length
+    : null
+
+  // Recommend count
+  const ratedWithRecommend = ratings.filter(r => r.recommend_outside_club != null)
+  const recommendYes = ratedWithRecommend.filter(r => r.recommend_outside_club).length
+  const recommendTotal = ratedWithRecommend.length
+
+  // Month label
+  const monthLabel = m._monthLabel ?? null
+
+  // Streaming providers
+  const streamingProviders = m.streaming_providers ?? null
+
+  // Picker name
+  let pickerName = null
+  if (m.picker_revealed && m.picked_by_user_id) {
+    const pickerUser = users.find(u => u.id === m.picked_by_user_id)
+    pickerName = pickerUser?.name ?? null
+  }
 
   return (
     <>
@@ -249,169 +583,320 @@ function FilmSheet({ movie, onClose }) {
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0,0,0,0.7)',
-          zIndex: 50,
+          background: 'rgba(0,0,0,0.85)',
+          zIndex: 99,
           opacity: visible ? 1 : 0,
-          transition: 'opacity 0.28s ease',
+          transition: 'opacity 0.3s ease',
         }}
       />
 
-      {/* Sheet */}
+      {/* Overlay panel */}
       <div
+        ref={scrollRef}
         style={{
           position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 51,
-          background: '#0e0f16',
-          borderRadius: '20px 20px 0 0',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-          padding: '0 0 env(safe-area-inset-bottom, 24px)',
-          transform: visible ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
-          maxHeight: '85vh',
+          inset: 0,
+          zIndex: 100,
           overflowY: 'auto',
+          overflowX: 'hidden',
+          background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)',
+          transform: visible ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
-        {/* drag handle */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 8px' }}>
-          <div style={{ width: '36px', height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.15)' }} />
-        </div>
+        {/* Close button */}
+        <button
+          onClick={handleClose}
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            float: 'right',
+            margin: '16px 16px 0 0',
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: '20px',
+            lineHeight: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+          aria-label="Close"
+        >
+          ×
+        </button>
 
-        <div style={{ padding: '0 1.25rem 2rem' }}>
-          {/* Poster + core info */}
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', alignItems: 'flex-start' }}>
+        {/* Content */}
+        <div style={{ padding: '0 1rem 4rem', boxSizing: 'border-box', width: '100%', maxWidth: '680px', margin: '0 auto' }}>
+
+          {/* ── HERO ── */}
+          <div style={{
+            display: 'flex',
+            gap: '20px',
+            alignItems: 'flex-start',
+            paddingTop: '20px',
+            marginBottom: '28px',
+          }}>
+            {/* Poster */}
             <div style={{
               flexShrink: 0,
-              width: '90px',
+              width: '110px',
               aspectRatio: '2/3',
-              borderRadius: '8px',
+              borderRadius: '10px',
               overflow: 'hidden',
               background: '#1a1b24',
-              boxShadow: isVault(movie)
-                ? '0 0 0 1.5px #d97706, 0 0 12px rgba(217,119,6,0.3)'
-                : '0 4px 16px rgba(0,0,0,0.5)',
+              boxShadow: vault
+                ? '0 0 0 2px #d97706, 0 0 20px rgba(217,119,6,0.4), 0 8px 32px rgba(0,0,0,0.7)'
+                : '0 8px 32px rgba(0,0,0,0.65)',
             }}>
-              {movie.poster_url ? (
+              {m.poster_url ? (
                 <img
-                  src={`https://image.tmdb.org/t/p/w185${movie.poster_url}`}
-                  alt={movie.title}
+                  src={`https://image.tmdb.org/t/p/w500${m.poster_url}`}
+                  alt={m.title}
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  onError={e => { e.target.style.display = 'none' }}
                 />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '1.4rem', color: 'rgba(255,255,255,0.15)' }}>
-                    {initials(movie.title)}
+                  <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '1.6rem', color: 'rgba(255,255,255,0.15)' }}>
+                    {initials(m.title)}
                   </span>
                 </div>
               )}
             </div>
 
-            <div style={{ flex: 1, minWidth: 0, paddingTop: '4px' }}>
-              <h2 style={{
+            {/* Metadata */}
+            <div style={{ flex: 1, minWidth: 0, paddingTop: '2px' }}>
+              <h1 style={{
                 fontFamily: "'Bebas Neue', sans-serif",
-                fontSize: '1.75rem',
+                fontSize: 'clamp(1.8rem, 7vw, 2.6rem)',
                 color: '#fff',
-                lineHeight: 1.05,
+                lineHeight: 1.0,
                 letterSpacing: '0.03em',
-                margin: '0 0 4px',
+                margin: '0 0 8px',
+                wordBreak: 'break-word',
               }}>
-                {movie.title}
-              </h2>
+                {m.title}
+              </h1>
 
-              {movie.year_released && (
-                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', margin: '0 0 10px', fontFamily: "'DM Mono', monospace" }}>
-                  {movie.year_released}
-                  {movie.runtime_minutes ? ` · ${movie.runtime_minutes} min` : ''}
+              {/* Meta line: year · runtime */}
+              <p style={{
+                fontFamily: "'DM Mono', monospace",
+                fontSize: '12px',
+                color: 'rgba(255,255,255,0.35)',
+                margin: '0 0 10px',
+                lineHeight: 1.4,
+              }}>
+                {[m.year_released, runtime].filter(Boolean).join(' · ')}
+                {monthLabel ? <><br /><span style={{ color: 'rgba(255,255,255,0.2)' }}>{monthLabel}</span></> : null}
+              </p>
+
+              {/* Director */}
+              {m.director && (
+                <p style={{
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: '13px',
+                  color: 'rgba(255,255,255,0.55)',
+                  margin: '0 0 10px',
+                }}>
+                  dir. <span style={{ color: 'rgba(255,255,255,0.8)' }}>{m.director}</span>
                 </p>
               )}
 
-              {score != null && (
-                <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: '4px', marginBottom: '8px' }}>
-                  <span style={{
-                    fontFamily: "'Bebas Neue', sans-serif",
-                    fontSize: '2rem',
-                    color: isVault(movie) ? '#fbbf24' : 'var(--accent-light, #fca5a5)',
-                    lineHeight: 1,
-                  }}>
-                    {Number(score).toFixed(2)}
-                  </span>
-                  <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', fontFamily: "'DM Mono', monospace" }}>/10</span>
-                  {isVault(movie) && (
-                    <span style={{
-                      marginLeft: '6px',
-                      fontSize: '10px',
-                      fontFamily: "'DM Mono', monospace",
-                      letterSpacing: '0.1em',
-                      color: '#fbbf24',
-                      background: 'rgba(251,191,36,0.12)',
-                      border: '1px solid rgba(251,191,36,0.3)',
-                      padding: '1px 7px',
+              {/* Genre tags */}
+              {genres.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                  {genres.map(g => (
+                    <span key={g} style={{
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: '11px',
+                      padding: '3px 10px',
                       borderRadius: '999px',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'rgba(255,255,255,0.5)',
+                      border: '1px solid rgba(255,255,255,0.08)',
                     }}>
-                      THE VAULT
+                      {g}
                     </span>
-                  )}
+                  ))}
+                </div>
+              )}
+
+              {/* Vault badge */}
+              {vault && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 10px', borderRadius: '999px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)' }}>
+                  <span style={{ fontSize: '11px' }}>★</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.15em', color: '#fbbf24' }}>THE VAULT</span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Details rows */}
-          {movie.director && (
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'flex-start' }}>
-              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase', width: '64px', flexShrink: 0, paddingTop: '1px' }}>
-                Director
-              </span>
-              <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
-                {movie.director}
-              </span>
-            </div>
-          )}
-
-          {genres.length > 0 && (
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'flex-start' }}>
-              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase', width: '64px', flexShrink: 0, paddingTop: '1px' }}>
-                Genre
-              </span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {genres.map(g => (
-                  <span key={g} style={{
-                    fontSize: '11px',
-                    fontFamily: "'DM Sans', sans-serif",
-                    padding: '3px 10px',
-                    borderRadius: '999px',
-                    background: 'rgba(255,255,255,0.06)',
-                    color: 'rgba(255,255,255,0.55)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+          {/* ── SCORES ── */}
+          <Divider />
+          <div style={{ marginBottom: '0' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <SectionLabel>Scores</SectionLabel>
+              {groupAvg != null && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px' }}>
+                  <span style={{
+                    fontFamily: "'Bebas Neue', sans-serif",
+                    fontSize: '2rem',
+                    lineHeight: 1,
+                    color: scoreColor(groupAvg),
                   }}>
-                    {g}
+                    {groupAvg.toFixed(2)}
                   </span>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.2)' }}>/10</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.2)', marginLeft: '4px' }}>
+                    avg ({scoredRatings.length})
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {detailLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} style={{ height: '44px', borderRadius: '8px' }} />
                 ))}
               </div>
-            </div>
+            ) : scoresMessage ? (
+              <div style={{
+                padding: '18px',
+                borderRadius: '12px',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                textAlign: 'center',
+              }}>
+                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
+                  {scoresMessage}
+                </p>
+              </div>
+            ) : (
+              <div>
+                {visibleRatings.length === 0 ? (
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+                    No scores submitted yet.
+                  </p>
+                ) : (
+                  visibleRatings
+                    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+                    .map(r => (
+                      <MemberScoreRow
+                        key={r.user_id}
+                        rating={r}
+                        user={userById[r.user_id]}
+                      />
+                    ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── PICKER ── */}
+          <Divider />
+          <div>
+            <SectionLabel>Picked By</SectionLabel>
+            {m.picker_revealed ? (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                {pickerName && (
+                  <div style={{
+                    flexShrink: 0,
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    background: avatarColor(pickerName),
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: '#fff' }}>
+                      {initials(pickerName)}
+                    </span>
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '15px', fontWeight: 600, color: '#fff', margin: '0 0 6px' }}>
+                    {pickerName ?? 'Unknown'}
+                  </p>
+                  {m.pick_justification && (
+                    <p style={{
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: '13px',
+                      lineHeight: 1.65,
+                      color: 'rgba(255,255,255,0.5)',
+                      margin: 0,
+                      fontStyle: 'italic',
+                    }}>
+                      "{m.pick_justification}"
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
+                Picker revealed at end of month
+              </p>
+            )}
+          </div>
+
+          {/* ── STREAMING ── */}
+          <Divider />
+          <StreamingSection providers={streamingProviders} />
+
+          {/* ── PLOT ── */}
+          {m.plot_summary && (
+            <>
+              <Divider />
+              <PlotSummary text={m.plot_summary} />
+            </>
           )}
 
-          {/* Close */}
-          <button
-            onClick={handleClose}
-            style={{
-              width: '100%',
-              padding: '13px',
-              borderRadius: '12px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'rgba(255,255,255,0.5)',
-              fontFamily: "'DM Mono', monospace",
-              fontSize: '12px',
-              letterSpacing: '0.08em',
-              cursor: 'pointer',
-              marginTop: '8px',
-            }}
-          >
-            CLOSE
-          </button>
+          {/* ── RECOMMEND ── */}
+          {recommendTotal > 0 && (
+            <>
+              <Divider />
+              <div>
+                <SectionLabel>Outside Recommendation</SectionLabel>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {/* Pill bar */}
+                  <div style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '6px',
+                    borderRadius: '999px',
+                    background: 'rgba(255,255,255,0.08)',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${(recommendYes / recommendTotal) * 100}%`,
+                      background: recommendYes / recommendTotal >= 0.6 ? '#86efac' : 'var(--accent)',
+                      borderRadius: '999px',
+                      transition: 'width 0.4s ease',
+                    }} />
+                  </div>
+                  <span style={{
+                    fontFamily: "'DM Mono', monospace",
+                    fontSize: '12px',
+                    color: 'rgba(255,255,255,0.55)',
+                    flexShrink: 0,
+                  }}>
+                    {recommendYes}/{recommendTotal} would recommend
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
         </div>
       </div>
     </>
@@ -622,17 +1107,33 @@ export default function Films() {
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: true }),
       ])
 
-      // Build a lookup: month_id → { order, season_id }
+      // Build a lookup: month_id → { order, season_id, month_year }
       const monthLookup = {}
       ;(monthsData ?? []).forEach((m, idx) => {
-        monthLookup[m.id] = { order: idx, seasonId: m.season_id }
+        monthLookup[m.id] = { order: idx, seasonId: m.season_id, monthYear: m.month_year }
       })
 
-      const enriched = (moviesData ?? []).map(m => ({
-        ...m,
-        _monthOrder: monthLookup[m.month_id]?.order ?? 0,
-        _seasonId: monthLookup[m.month_id]?.seasonId ?? null,
-      }))
+      // Season lookup by id
+      const seasonById = {}
+      ;(seasonsData ?? []).forEach(s => { seasonById[s.id] = s })
+
+      const enriched = (moviesData ?? []).map(m => {
+        const monthInfo = monthLookup[m.month_id] ?? {}
+        const season = seasonById[monthInfo.seasonId] ?? null
+        // Format a human-readable month label e.g. "Feb 2026 · Season 1"
+        let monthLabel = null
+        if (monthInfo.monthYear) {
+          const d = new Date(monthInfo.monthYear + '-01')
+          monthLabel = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+          if (season) monthLabel += ` · ${season.name}`
+        }
+        return {
+          ...m,
+          _monthOrder: monthInfo.order ?? 0,
+          _seasonId: monthInfo.seasonId ?? null,
+          _monthLabel: monthLabel,
+        }
+      })
 
       setMovies(enriched)
       setSeasons(seasonsData ?? [])
@@ -722,8 +1223,8 @@ export default function Films() {
 
       </div>
 
-      {/* Film detail sheet */}
-      <FilmSheet movie={selectedMovie} onClose={handleClose} />
+      {/* Film detail overlay */}
+      <FilmDetailOverlay movie={selectedMovie} onClose={handleClose} />
 
       <style>{`
         @media (min-width: 480px) { .films-grid { grid-template-columns: repeat(4, 1fr) !important; } }
