@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A private web app for a 5-person movie club. Each month every member picks one film they haven't personally seen; all members watch all films, submit scores and reviews. The app handles picks, anonymity, scoring, reviews, stats, visualizations, and awards.
+A private web app for a 5-person movie club. Each month every member picks one film they haven't personally seen; all members watch all films, submit scores and reviews. The app handles picks, anonymity before reveal, scoring, discussion, awards, and stats.
 
-**Club members:** Ryan Miller (owner/admin), Ryan Bey (admin), Andrew Bond, Zack Anjoorian, Chris Deschenes  
 **Club founding date:** January 5, 2026  
+**Member details:** See `PRIVATE.md` (not public)  
 **Zack joined:** April 2026 — exclude him from Jan–Mar stats entirely
 
 ---
@@ -32,11 +32,12 @@ A private web app for a 5-person movie club. Each month every member picks one f
 ## Setup
 
 Before any code, ensure these exist:
-1. `.gitignore` — must include `.env` and `MOVIE_CLUB_SPEC.md`
+1. `.gitignore` — must include `.env`, `PRIVATE.md`, and `MOVIE_CLUB_SPEC.md`
 2. `.env` — populated with all keys from the spec's Pre-Launch Setup Checklist (never commit)
-3. Run: `npx skills add supabase/agent-skills`
+3. `PRIVATE.md` — member info and infrastructure URLs (never commit)
+4. Run: `npx skills add supabase/agent-skills`
 
-**Supabase project:** `https://pjwttvazgabwcybrwpmx.supabase.co`  
+**Infrastructure details:** See `PRIVATE.md` (not public)  
 **GitHub repo:** `https://github.com/ryangarymiller/movie-club` (public — never push credentials)
 
 ---
@@ -82,6 +83,7 @@ Do not attempt to build everything at once. Phases in order:
 - These must only be used server-side in Supabase Edge Functions
 - `SUPABASE_ANON_KEY` and `TMDB_READ_ACCESS_TOKEN` are safe for client use
 - The GitHub repo is **public** — treat it accordingly
+- Keep `PRIVATE.md` in `.gitignore` — never commit member info
 
 ---
 
@@ -93,7 +95,7 @@ This is the most architecturally significant system — it affects RLS policies,
 
 **Per-film reveal (weekly):** Each film has a `scoring_deadline`. When it passes, `movies.scores_revealed` flips to `true` — individual member scores become visible to everyone.
 
-**End-of-month reveal:** After all film deadlines pass, a separate event flips `movies.picker_revealed = true` on all films simultaneously — this reveals picker identity, pick justifications, guess-the-picker results, and score predictions.
+**End-of-month reveal:** After all film deadlines pass, a separate event flips `movies.picker_revealed = true` on all films simultaneously — this reveals picker identity, pick justifications, guesses, and predictions.
 
 ### Rolling score visibility (before deadline)
 Before a film's scoring deadline: you can only see scores and discussions for members who have both watched AND submitted — and only if you've also watched and submitted. RLS enforces this.
@@ -204,13 +206,13 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
 
 ## Guest Mode
 
-Public read-only, no login required. Shows post-reveal data only (poster wall, film pages, scores, reviews). Member names shown as "First L." only. Hides: individual profiles, watchlists, draft queues, upcoming picks, pre-reveal data.
+Public read-only, no login required. Shows post-reveal data only (poster wall, film pages, scores, reviews). Member names shown as "First L." only. Hides: individual profiles, watchlists, draft queues, predictions, guesses.
 
 ---
 
 ## Seasonal Readjustment
 
-Opens automatically at the start of each new season for the previous season (default 1 week). Members can update scores freely during this window; ranking is always score-derived (not drag-and-drop). After window closes, scores and rankings are locked in `season_rankings`. Completing readjustment unlocks the Auteur Award ballot for that season (ranked choice, instant runoff, can't vote for yourself).
+Opens automatically at the start of each new season for the previous season (default 1 week). Members can update scores freely during this window; ranking is always score-derived (not drag-and-drop). After window closes, scores lock and are fed into season awards calculation.
 
 ---
 
