@@ -12,6 +12,7 @@ import Stats from './pages/Stats'
 import Awards from './pages/Awards'
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
+import WelcomeDialog from './components/WelcomeDialog'
 
 function RequireAuth({ children }) {
   const { session, profile, loading } = useAuth()
@@ -37,7 +38,12 @@ function RequireAuth({ children }) {
     )
   }
 
-  return children
+  return (
+    <>
+      {!profile.has_completed_onboarding && <WelcomeDialog />}
+      {children}
+    </>
+  )
 }
 
 function AppRoutes() {

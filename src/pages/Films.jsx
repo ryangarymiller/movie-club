@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import ScoreModal from '../components/ScoreModal'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -456,6 +457,7 @@ function FilmDetailOverlay({ movie, onClose }) {
   const [ratings, setRatings] = useState([])
   const [users, setUsers] = useState([])
   const [fullMovie, setFullMovie] = useState(null)
+  const [showScoreModal, setShowScoreModal] = useState(false)
   const scrollRef = useRef(null)
 
   // Trigger animation
@@ -470,6 +472,32 @@ function FilmDetailOverlay({ movie, onClose }) {
   }, [movie])
 
   // Fetch full details whenever a movie is selected
+  const fetchDetails = useCallback(async (movieId, movieFallback) => {
+    const [
+      { data: movieData },
+      { data: ratingsData },
+      { data: usersData },
+    ] = await Promise.all([
+      supabase
+        .from('movies_safe')
+        .select('*')
+        .eq('id', movieId)
+        .single(),
+      supabase
+        .from('ratings')
+        .select('user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
+        .eq('movie_id', movieId),
+      supabase
+        .from('users')
+        .select('id, name, role, joined_at'),
+    ])
+
+    setFullMovie(movieData ?? movieFallback)
+    setRatings(ratingsData ?? [])
+    setUsers(usersData ?? [])
+    setDetailLoading(false)
+  }, [])
+
   useEffect(() => {
     if (!movie) return
 
@@ -477,35 +505,10 @@ function FilmDetailOverlay({ movie, onClose }) {
     setRatings([])
     setUsers([])
     setFullMovie(null)
+    setShowScoreModal(false)
 
-    async function fetchDetails() {
-      const [
-        { data: movieData },
-        { data: ratingsData },
-        { data: usersData },
-      ] = await Promise.all([
-        supabase
-          .from('movies_safe')
-          .select('*')
-          .eq('id', movie.id)
-          .single(),
-        supabase
-          .from('ratings')
-          .select('user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
-          .eq('movie_id', movie.id),
-        supabase
-          .from('users')
-          .select('id, name, role, joined_at'),
-      ])
-
-      setFullMovie(movieData ?? movie)
-      setRatings(ratingsData ?? [])
-      setUsers(usersData ?? [])
-      setDetailLoading(false)
-    }
-
-    fetchDetails()
-  }, [movie])
+    fetchDetails(movie.id, movie)
+  }, [movie, fetchDetails])
 
   function handleClose() {
     setVisible(false)
@@ -739,6 +742,54 @@ function FilmDetailOverlay({ movie, onClose }) {
             </div>
           </div>
 
+          {/* ── SUBMIT YOUR SCORE (backfill CTA) ── */}
+          {m.scores_revealed && !myHasSubmitted && (
+            <>
+              <Divider />
+              <div style={{
+                background: 'rgba(255,255,255,0.025)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: '14px',
+                padding: '16px',
+              }}>
+                <p style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: '10px',
+                  letterSpacing: '0.15em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,0.25)',
+                  margin: '0 0 8px',
+                }}>
+                  Your Score
+                </p>
+                <p style={{
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: '14px',
+                  color: '#6b7280',
+                  margin: '0 0 12px',
+                }}>
+                  You haven't scored this film yet.
+                </p>
+                <button
+                  onClick={() => setShowScoreModal(true)}
+                  style={{
+                    background: 'var(--accent)',
+                    color: '#fff',
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: '14px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Submit Score
+                </button>
+              </div>
+            </>
+          )}
+
           {/* ── SCORES ── */}
           <Divider />
           <div style={{ marginBottom: '0' }}>
@@ -899,6 +950,19 @@ function FilmDetailOverlay({ movie, onClose }) {
 
         </div>
       </div>
+
+      {/* Score submission modal for backfill */}
+      {showScoreModal && (
+        <ScoreModal
+          movie={m}
+          existingRating={myRating}
+          onClose={() => setShowScoreModal(false)}
+          onSaved={() => {
+            setShowScoreModal(false)
+            if (movie) fetchDetails(movie.id, movie)
+          }}
+        />
+      )}
     </>
   )
 }
