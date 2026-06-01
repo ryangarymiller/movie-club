@@ -19,7 +19,7 @@
 | Vite + React + Tailwind scaffold | ✅ |
 | GitHub repo | ✅ github.com/ryangarymiller/movie-club |
 | Vercel deployment | ✅ movie-club-blond.vercel.app (auto-deploys) |
-| Supabase project | ✅ pjwttvazgabwcybrwpmx.supabase.co |
+| Supabase project | ✅ See PRIVATE.md |
 | Vitest + React Testing Library | ✅ 124 tests passing |
 
 ---
@@ -28,8 +28,7 @@
 | Issue | Status |
 |-------|--------|
 | joined_at dates | ✅ Fixed |
-| Ryan Bey email | ✅ ryan.bey1234@gmail.com |
-| Andrew Bond email | ✅ andrewbond833@gmail.com |
+| Member emails | ✅ See PRIVATE.md |
 | Chris Deschenes email | ⚠️ Placeholder — need real email |
 | Zack Anjoorian email | ⚠️ Placeholder — need real email |
 | May 2026 scoring deadlines | ⚠️ Null — deferred |
@@ -78,9 +77,9 @@
 
 ## Phase 1 — Remaining After Current Agents
 
-- Real emails: Chris Deschenes + Zack Anjoorian
+- Real emails: Chris Deschenes + Zack Anjoorian (see PRIVATE.md)
 - May 2026 wrap-up (flip scores_revealed=true) — after backfill
-- Missing April/May scores — waiting on Ryan Bey's Google Form data
+- Missing April/May scores — waiting on data import
 - Invite flow (allowlist before first login)
 - Score change requests UI
 
