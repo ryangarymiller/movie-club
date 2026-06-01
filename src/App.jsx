@@ -15,7 +15,7 @@ import Admin from './pages/Admin'
 import WelcomeDialog from './components/WelcomeDialog'
 
 function RequireAuth({ children }) {
-  const { session, profile, loading } = useAuth()
+  const { session, profile, profileLoaded, loading } = useAuth()
 
   if (loading) {
     return (
@@ -27,16 +27,17 @@ function RequireAuth({ children }) {
 
   if (!session) return <Navigate to="/login" replace />
 
-  if (profile?.is_active === false) return <Navigate to="/not-approved" replace />
-
-  // Still fetching profile from DB
-  if (!profile) {
+  // Profile fetch in progress
+  if (!profileLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
         <div className="text-gray-600 text-sm">Loading…</div>
       </div>
     )
   }
+
+  // Profile loaded but no matching user row, or account deactivated
+  if (!profile || profile.is_active === false) return <Navigate to="/not-approved" replace />
 
   return (
     <>
