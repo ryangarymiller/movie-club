@@ -209,7 +209,9 @@ Films · Deadlines · Picks · Reveal *(active only after end-of-month reveal)*
 - **June 2026 exception:** Picks are being entered manually by the admin — the Picks tab may show an incomplete list until all picks are in.
 
 ### Films sub-tabs
-All Films · The Vault · By Season
+All Films · The Vault · By Season · History
+
+- **History tab:** Browse revealed months one at a time (month pills → 2-up film grid with picker labels). Complements All Films (flat wall) with a month-by-month view.
 
 **Film ordering within each month:** follows the watch-order established in the group chat (earliest deadline first). Films are ordered by their DB insertion order (id ASC within a month).
 
@@ -297,13 +299,17 @@ Opens automatically at the start of each new season for the previous season (def
 
 ## Awards Summary
 
-**Monthly:** Pick of Month, Flop of Month, The Contrarian, The Oracle, Hype Machine, The Letdown, Most Divisive, Most Unanimous, Best Review (AI-assisted)
+> Combined maximal catalog (union of spec + this doc + implemented). ✅ = computed today in
+> `src/lib/awards.js`; ⏳ = catalogued but not yet implemented (needs AI, the Auteur vote,
+> guess-the-picker data, or multi-period trends — Phase 6).
 
-**Season:** Picker of Season, Ice Cold, Easy Crowd, Auteur Award (member vote), Most Consistent Picker, Film of Season
+**Monthly:** Pick of the Month ✅, Flop of the Month ✅, The Contrarian ✅, The Oracle ✅, Hype Machine ✅, The Letdown ✅, The Surprise ✅, Most Divisive ✅, Most Unanimous ✅, Best Review (AI-assisted) ⏳
 
-**Annual:** Film of Year, Picker of Year, Harshest Critic, Most Generous, Master of Disguise, Most Consistent, Most Evolved, The Wildcard
+**Season:** Film of the Season ✅, Flop of the Season ✅, Picker of the Season ✅, Ice Cold ✅, Most Divisive Film ✅, Most Unanimous Film ✅, Harshest Critic ✅, Most Generous ✅, The Contrarian ✅, The Oracle ✅, Easy Crowd ⏳, Auteur Award (member vote) ⏳, Most Consistent Picker ⏳
 
-**All-Time:** Continuously updated — Picker GOAT, Master of Disguise, The Wildcard, Coldest Critic, Biggest Softie, Most Divisive Film Ever, Greatest Film Ever Shown
+**Annual:** Film of the Year ✅, Worst Film of the Year ✅, Picker of the Year ✅, Harshest Critic ✅, Most Generous ✅, Most Divisive Film of the Year ✅, The Oracle of the Year ✅, Master of Disguise ⏳, Most Consistent ⏳, Most Evolved ⏳, The Wildcard ⏳
+
+**All-Time:** Continuously updated — Greatest Film Ever Shown ✅, Worst Film Ever ✅, Most Divisive Film Ever ✅, Most Unanimous Film Ever ✅, Picker GOAT ✅, Coldest Critic Ever ✅, Biggest Softie Ever ✅, The Wildcard ✅, The Oracle (All-Time) ✅, Master of Disguise ⏳
 
 The Vault: films averaging ≥ 8.5 (configurable). Auto-removes if average drops below threshold after score updates.
 

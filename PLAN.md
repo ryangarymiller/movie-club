@@ -154,10 +154,12 @@
 - [~] Reveal system: per-film + per-month admin triggers already exist; auto-scheduling of reveals is Phase 4
 - [ ] **Verify in-browser** — components are agent-built + build/test-green but not yet click-tested live
 
-### Carried from audit
+### Carried from audit — resolved
 - [x] **Stats: film/member names clickable** — films open FilmDetailOverlay (Overview/Me/Members); member names → /profile/:id. (Recharts axis labels in Club/H2H still static — low value.)
-- [ ] Tech-debt: remove debug*.test.jsx; add vitest globals to eslint config
-- [ ] Decisions: Films "History" tab (keep+document?); CLAUDE.md-vs-spec award list drift
+- [x] Tech-debt: removed debug2/3/4.test.jsx (superseded by inviteFlow.test.jsx); eslint now knows vitest globals (620 false errors → 0). Remaining 76 lint advisories are pre-existing React-19 patterns (set-state-in-effect, static-components, only-export-components) — separate refactor, no runtime impact.
+- [x] Decision: **History tab kept** + documented in spec & CLAUDE.md
+- [x] Decision: **award list combined** into one maximal catalog (44 awards) in CLAUDE.md + spec; ✅ implemented vs ⏳ pending (Phase 6) marked
+- [x] **DB tracked in repo**: `supabase/migrations/` (session-7 data fixes, Phase 2 tables+RLS, predictions RLS) + README. Baseline of pre-session-7 schema still needs `supabase db pull` (CLI not installed here)
 
 ## Phase 3 — Themes & Personalisation
 - [ ] Full light mode

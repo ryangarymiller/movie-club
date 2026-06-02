@@ -18,4 +18,16 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Vitest test files run with globals: true (see vite.config.js), so teach
+    // ESLint about the injected test globals to avoid false no-undef errors.
+    files: ['**/*.test.{js,jsx}', 'src/test/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: {
+        describe: 'readonly', it: 'readonly', test: 'readonly', expect: 'readonly',
+        vi: 'readonly', beforeEach: 'readonly', afterEach: 'readonly',
+        beforeAll: 'readonly', afterAll: 'readonly',
+      },
+    },
+  },
 ])
