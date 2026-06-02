@@ -2,7 +2,7 @@
 
 > Living document. Update status as work completes.
 > Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
-> Last updated: 2026-06-02 (session 5 — recovery)
+> Last updated: 2026-06-02 (session 6)
 
 ---
 
@@ -68,7 +68,7 @@
 | Awards on profile pages | ✅ | Includes awards for films the user picked |
 | Profile | ✅ | Light/dark toggle added; user_color on avatar; awards section |
 | Profile — Admin mode toggle | ✅ | Was already built |
-| Members directory / clickable names | ⚠️ | Names clickable but route to /profile (own) — needs per-member route in App.jsx |
+| Members directory / clickable names | ✅ | Per-member route /profile/:userId live |
 | Admin — Dashboard | ✅ | Score count fix + N/A cells |
 | Admin — Films | ✅ | Full TMDB metadata editing + bulk month reveal |
 | Admin — Members | ✅ | |
@@ -76,7 +76,7 @@
 | Admin — Streaming refresh | ✅ | Per-film refresh button (TMDB) |
 | WelcomeDialog | ✅ | |
 | ScoreModal | ✅ | Excitement locked when final score exists |
-| Streaming providers fetch (TMDB → Claude fallback) | ⚠️ | Deployed; needs ANTHROPIC_API_KEY secret set in Supabase dashboard |
+| Streaming providers fetch (TMDB → Claude fallback) | ✅ | All 21 films cached; ANTHROPIC_API_KEY set in Supabase |
 
 ---
 
@@ -118,12 +118,15 @@
 - [x] Stats — Club tab (full)
 - [x] Stats — Head to Head tab (full)
 
-### Session 5 (recovery) — still open
-- [x] **Deploy** streaming-fallback Edge Function — deployed; **⚠️ set ANTHROPIC_API_KEY secret in Supabase dashboard to activate**
+### Session 5 (recovery) — completed
+- [x] **Deploy** streaming-fallback Edge Function — deployed; ANTHROPIC_API_KEY in Supabase dashboard
 - [x] PRIVATE.md: Chris Deschenes email updated to 54sirhc@gmail.com
-- [~] **Per-member profile route** (`/profile/:userId`) — agent in progress
-- [~] Fix 10 pre-existing test failures — agent in progress
-- [ ] Recharts stubs needing data: genre/cast (genre not stored on movies), guess-the-picker accuracy, director/actor connection web
+- [x] **Per-member profile route** (`/profile/:userId`) — done
+- [x] Fix 10 pre-existing test failures — 241/241 passing
+- [x] Genre data backfilled via TMDB for all 21 films; genre BarChart live in Stats › Club
+- [x] Streaming providers bulk-fetched for all 21 films (TMDB); data cached in DB
+- [x] Score format X.XX consistency — fixed toFixed(1)→toFixed(2) in Home.jsx
+- [~] Recharts stubs: genre chart ✅ done; guess-the-picker & director/actor web → Phase 5 (require Phase 2 data)
 
 ---
 

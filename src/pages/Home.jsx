@@ -65,7 +65,7 @@ function PosterCard({ movie, pending, pickerName }) {
           {score ? (
             <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
               style={{ background: 'var(--accent)', fontFamily: "'DM Mono', monospace", fontSize: '10px' }}>
-              {Number(score).toFixed(1)}
+              {Number(score).toFixed(2)}
             </span>
           ) : (
             <span className="px-1.5 py-0.5 rounded-full bg-black/60 text-white/40 border border-white/10"
@@ -253,7 +253,7 @@ export default function Home() {
             <div className="grid grid-cols-3 gap-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              <StatCard label="Top Film" value={topFilm ? Number(topFilm.historical_avg_score).toFixed(1) : '—'} sub={topFilm?.title} />
+              <StatCard label="Top Film" value={topFilm ? Number(topFilm.historical_avg_score).toFixed(2) : '—'} sub={topFilm?.title} />
               <StatCard label="Films" value={allMovies.length} sub="watched" />
               <StatCard label="Days" value={daysSince(FOUNDING)} sub="of club" />
             </div>
