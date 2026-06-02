@@ -366,7 +366,7 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
 
 // ─── Films Tab ───────────────────────────────────────────────────────────────
 
-function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile }) {
+function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile, activeMonth }) {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -376,12 +376,15 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile })
   }
 
   if (!movies.length) {
+    const monthLabel = activeMonth?.month_year
+      ? formatMonthLabel(activeMonth.month_year)
+      : 'this month'
     return (
       <div style={{
         textAlign: 'center', padding: '48px 0',
         fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px',
       }}>
-        No active films this month.
+        No picks yet for {monthLabel}.
       </div>
     )
   }
@@ -434,12 +437,21 @@ function DeadlinesTab({ movies, loading }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {movies.map(m => {
         const cd = countdownLabel(m.scoring_deadline)
+        // Determine past-deadline status label
+        let pastLabel = null
+        if (cd?.past) {
+          if (m.scores_revealed) {
+            pastLabel = { text: 'Scores revealed', color: '#4ade80', bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.2)' }
+          } else {
+            pastLabel = { text: 'Awaiting reveal', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.2)' }
+          }
+        }
         return (
           <div key={m.id} style={{
             padding: '14px',
             borderRadius: '14px',
             background: 'rgba(255,255,255,0.025)',
-            border: `1px solid ${cd?.past ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.07)'}`,
+            border: `1px solid ${cd?.past ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.07)'}`,
             width: '100%', boxSizing: 'border-box',
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
@@ -459,20 +471,38 @@ function DeadlinesTab({ movies, loading }) {
                 </p>
               </div>
               {cd && (
-                <span style={{
-                  flexShrink: 0,
-                  fontFamily: "'DM Mono',monospace",
-                  fontSize: '11px',
-                  letterSpacing: '0.05em',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  background: cd.past ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.05)',
-                  color: cd.past ? '#ef4444' : '#6b7280',
-                  whiteSpace: 'nowrap',
-                  marginTop: '2px',
-                }}>
-                  {cd.text}
-                </span>
+                pastLabel ? (
+                  <span style={{
+                    flexShrink: 0,
+                    fontFamily: "'DM Mono',monospace",
+                    fontSize: '11px',
+                    letterSpacing: '0.05em',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    background: pastLabel.bg,
+                    border: `1px solid ${pastLabel.border}`,
+                    color: pastLabel.color,
+                    whiteSpace: 'nowrap',
+                    marginTop: '2px',
+                  }}>
+                    {pastLabel.text}
+                  </span>
+                ) : (
+                  <span style={{
+                    flexShrink: 0,
+                    fontFamily: "'DM Mono',monospace",
+                    fontSize: '11px',
+                    letterSpacing: '0.05em',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: '#6b7280',
+                    whiteSpace: 'nowrap',
+                    marginTop: '2px',
+                  }}>
+                    {cd.text}
+                  </span>
+                )
               )}
             </div>
           </div>
@@ -482,7 +512,7 @@ function DeadlinesTab({ movies, loading }) {
   )
 }
 
-// ─── Upcoming Tab ─────────────────────────────────────────────────────────────
+// ─── Pick Submission Flow (used inside modal) ─────────────────────────────────
 
 const TMDB_TOKEN = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
 
@@ -494,12 +524,8 @@ async function tmdbFetch(path) {
   return res.json()
 }
 
-function UpcomingTab({ profile }) {
-  // next upcoming month
-  const [nextMonth, setNextMonth] = useState(null)
-  const [monthLoading, setMonthLoading] = useState(true)
-
-  // existing pick
+function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
+  // existing pick (may be pre-loaded by parent)
   const [existingPick, setExistingPick] = useState(null)
   const [pickLoading, setPickLoading] = useState(true)
 
@@ -509,7 +535,7 @@ function UpcomingTab({ profile }) {
   const [searching, setSearching] = useState(false)
 
   // selected film (before confirm)
-  const [selected, setSelected] = useState(null) // tmdb movie object enriched with detail
+  const [selected, setSelected] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [alreadyWatched, setAlreadyWatched] = useState(false)
 
@@ -525,34 +551,20 @@ function UpcomingTab({ profile }) {
 
   const debounceRef = useRef(null)
 
-  // load next upcoming month + existing pick
+  // load existing pick for next month
   useEffect(() => {
-    async function init() {
-      setMonthLoading(true)
-      setPickLoading(true)
-      const { data: month } = await supabase
-        .from('months')
-        .select('id, month_year')
-        .eq('status', 'upcoming')
-        .order('month_year', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      setNextMonth(month ?? null)
-      setMonthLoading(false)
-
-      if (month && profile) {
-        const { data: pick } = await supabase
-          .from('upcoming_picks')
-          .select('*')
-          .eq('user_id', profile.id)
-          .eq('month_target', month.month_year)
-          .maybeSingle()
-        setExistingPick(pick ?? null)
-      }
-      setPickLoading(false)
-    }
-    init()
-  }, [profile])
+    if (!nextMonth || !profile) { setPickLoading(false); return }
+    supabase
+      .from('upcoming_picks')
+      .select('*')
+      .eq('user_id', profile.id)
+      .eq('month_target', nextMonth.month_year)
+      .maybeSingle()
+      .then(({ data }) => {
+        setExistingPick(data ?? null)
+        setPickLoading(false)
+      })
+  }, [profile, nextMonth])
 
   // debounced search
   useEffect(() => {
@@ -610,7 +622,6 @@ function UpcomingTab({ profile }) {
 
       if (clubCheck.data) setAlreadyWatched(true)
     } catch {
-      // if detail fails, fall back to search result basics
       setSelected({
         tmdb_id: result.id,
         title: result.title,
@@ -653,7 +664,6 @@ function UpcomingTab({ profile }) {
 
       if (error) throw error
 
-      // reload pick
       const { data: pick } = await supabase
         .from('upcoming_picks')
         .select('*')
@@ -664,6 +674,7 @@ function UpcomingTab({ profile }) {
       setSelected(null)
       setJustification('')
       setConfirmChange(false)
+      if (onPickSaved) onPickSaved()
     } catch (err) {
       setSaveError(err.message ?? 'Failed to save pick.')
     } finally {
@@ -682,8 +693,7 @@ function UpcomingTab({ profile }) {
     }
   }
 
-  // ── Loading ──
-  if (monthLoading || pickLoading) {
+  if (pickLoading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <Skeleton style={{ height: '28px', width: '60%' }} />
@@ -692,21 +702,7 @@ function UpcomingTab({ profile }) {
     )
   }
 
-  // ── No upcoming month configured ──
-  if (!nextMonth) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', color: 'rgba(255,255,255,0.15)', letterSpacing: '0.05em', margin: '0 0 8px' }}>
-          No upcoming month
-        </p>
-        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px', margin: 0 }}>
-          No upcoming month has been set yet.
-        </p>
-      </div>
-    )
-  }
-
-  const nextMonthLabel = formatMonthLabel(nextMonth.month_year)
+  const nextMonthLabel = nextMonth ? formatMonthLabel(nextMonth.month_year) : ''
 
   // ── State A: pick already submitted ──
   if (existingPick && !confirmChange) {
@@ -721,7 +717,6 @@ function UpcomingTab({ profile }) {
           Your pick for {nextMonthLabel}
         </p>
 
-        {/* Pick card */}
         <div style={{
           display: 'flex', gap: '14px',
           padding: '14px',
@@ -864,7 +859,6 @@ function UpcomingTab({ profile }) {
 
   // ── State B: no pick yet (or after confirmed change) ──
 
-  // If a film is selected, show confirmation card
   if (selected) {
     return (
       <div>
@@ -876,7 +870,6 @@ function UpcomingTab({ profile }) {
           Pick for {nextMonthLabel}
         </p>
 
-        {/* Confirmation card */}
         <div style={{
           borderRadius: '14px',
           background: 'rgba(255,255,255,0.025)',
@@ -884,7 +877,6 @@ function UpcomingTab({ profile }) {
           overflow: 'hidden',
           marginBottom: '12px',
         }}>
-          {/* Poster + title row */}
           <div style={{ display: 'flex', gap: '14px', padding: '14px' }}>
             <div style={{
               flexShrink: 0, width: '64px', height: '92px',
@@ -932,7 +924,6 @@ function UpcomingTab({ profile }) {
             </div>
           </div>
 
-          {/* Plot */}
           {selected.plot_summary && (
             <div style={{
               padding: '0 14px 14px',
@@ -949,7 +940,6 @@ function UpcomingTab({ profile }) {
           )}
         </div>
 
-        {/* Already watched warning */}
         {alreadyWatched && (
           <div style={{
             padding: '10px 14px',
@@ -967,7 +957,6 @@ function UpcomingTab({ profile }) {
           </div>
         )}
 
-        {/* Justification textarea */}
         <textarea
           value={justification}
           onChange={e => setJustification(e.target.value)}
@@ -1046,7 +1035,6 @@ function UpcomingTab({ profile }) {
         Pick for {nextMonthLabel}
       </p>
 
-      {/* Search input */}
       <div style={{ position: 'relative', marginBottom: '12px' }}>
         <input
           type="text"
@@ -1077,14 +1065,12 @@ function UpcomingTab({ profile }) {
         )}
       </div>
 
-      {/* Loading detail */}
       {detailLoading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <Skeleton style={{ height: '80px' }} />
         </div>
       )}
 
-      {/* Search results */}
       {!detailLoading && searchResults.length > 0 && (
         <div style={{
           borderRadius: '12px',
@@ -1147,7 +1133,6 @@ function UpcomingTab({ profile }) {
         </div>
       )}
 
-      {/* No results */}
       {!detailLoading && !searching && query.trim().length > 1 && searchResults.length === 0 && (
         <p style={{
           fontFamily: "'DM Sans',sans-serif", color: '#374151',
@@ -1162,9 +1147,265 @@ function UpcomingTab({ profile }) {
   )
 }
 
+// ─── Pick Submission Modal ────────────────────────────────────────────────────
+
+function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 999,
+        background: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: '#0e0f16',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '20px 20px 0 0',
+        width: '100%',
+        maxWidth: '600px',
+        maxHeight: '88vh',
+        overflowY: 'auto',
+        padding: '20px 16px 40px',
+        boxSizing: 'border-box',
+      }}>
+        {/* Drag handle */}
+        <div style={{
+          width: '36px', height: '4px', borderRadius: '2px',
+          background: 'rgba(255,255,255,0.15)',
+          margin: '0 auto 20px',
+        }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <h2 style={{
+            fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.8rem',
+            color: 'white', margin: 0, letterSpacing: '0.03em',
+          }}>
+            Pick Your Film
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.07)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '30px', height: '30px',
+              color: '#9ca3af',
+              fontSize: '16px',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {nextMonth ? (
+          <PickSubmissionFlow
+            profile={profile}
+            nextMonth={nextMonth}
+            onPickSaved={onPickSaved}
+            onCancel={onClose}
+          />
+        ) : (
+          <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px' }}>
+            No upcoming month has been configured yet.
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Picks Tab ────────────────────────────────────────────────────────────────
+
+function PicksTab({ profile }) {
+  const [nextMonth, setNextMonth] = useState(null)
+  const [monthLoading, setMonthLoading] = useState(true)
+  const [picks, setPicks] = useState([])
+  const [picksLoading, setPicksLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+
+  async function loadNextMonthAndPicks() {
+    setMonthLoading(true)
+    setPicksLoading(true)
+
+    const { data: month } = await supabase
+      .from('months')
+      .select('id, month_year')
+      .eq('status', 'upcoming')
+      .order('month_year', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    setNextMonth(month ?? null)
+    setMonthLoading(false)
+
+    if (month) {
+      // Load all picks for next month joined with user info
+      const { data: picksData } = await supabase
+        .from('upcoming_picks')
+        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, users(name)')
+        .eq('month_target', month.month_year)
+        .order('created_at', { ascending: true })
+      setPicks(picksData ?? [])
+    } else {
+      setPicks([])
+    }
+    setPicksLoading(false)
+  }
+
+  useEffect(() => {
+    loadNextMonthAndPicks()
+  }, [])
+
+  const nextMonthLabel = nextMonth ? formatMonthLabel(nextMonth.month_year) : ''
+  const loading = monthLoading || picksLoading
+
+  return (
+    <div>
+      {/* CTA button */}
+      <button
+        onClick={() => setShowModal(true)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          width: '100%',
+          padding: '13px 16px',
+          borderRadius: '12px',
+          border: '1px solid rgba(var(--accent-rgb, 99,102,241),0.4)',
+          background: 'rgba(var(--accent-rgb, 99,102,241),0.08)',
+          color: 'white',
+          fontFamily: "'DM Sans',sans-serif",
+          fontWeight: 600,
+          fontSize: '14px',
+          cursor: 'pointer',
+          marginBottom: '20px',
+          textAlign: 'left',
+          transition: 'background 0.15s ease',
+        }}
+      >
+        <span style={{ flex: 1 }}>Pick your next movie</span>
+        <span style={{ color: '#6b7280', fontSize: '16px' }}>→</span>
+      </button>
+
+      {/* Picks list */}
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {[...Array(5)].map((_, i) => <Skeleton key={i} style={{ height: '72px' }} />)}
+        </div>
+      ) : !nextMonth ? (
+        <div style={{
+          textAlign: 'center', padding: '32px 0',
+          fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px',
+        }}>
+          No upcoming month configured yet.
+        </div>
+      ) : picks.length === 0 ? (
+        <div style={{
+          textAlign: 'center', padding: '32px 0',
+          fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px',
+        }}>
+          No picks submitted yet for {nextMonthLabel}.
+        </div>
+      ) : (
+        <>
+          <p style={{
+            fontFamily: "'DM Mono',monospace", color: '#374151',
+            fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
+            margin: '0 0 12px',
+          }}>
+            {nextMonthLabel} — {picks.length} of 5 picks submitted
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {picks.map(pick => {
+              const meta = pick.metadata ?? {}
+              const pickerName = pick.users?.name ?? 'Unknown'
+              const pickerColor = MEMBER_COLORS[pickerName]
+              return (
+                <div key={pick.id} style={{
+                  display: 'flex', gap: '12px',
+                  padding: '12px',
+                  borderRadius: '14px',
+                  background: 'rgba(255,255,255,0.025)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(255,255,255,0.07)',
+                  boxSizing: 'border-box',
+                }}>
+                  {/* Poster */}
+                  <div style={{
+                    flexShrink: 0, width: '44px', height: '62px',
+                    borderRadius: '6px', overflow: 'hidden', background: '#1a1b25',
+                  }}>
+                    {pick.poster_url ? (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w185${pick.poster_url}`}
+                        alt={pick.title}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={e => { e.target.style.display = 'none' }}
+                      />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '11px' }}>
+                          {initials(pick.title)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontFamily: "'DM Sans',sans-serif", color: 'white',
+                      fontWeight: 500, fontSize: '14px',
+                      margin: '0 0 2px', lineHeight: 1.3,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {pick.title}
+                    </p>
+                    <p style={{
+                      fontFamily: "'DM Mono',monospace", color: '#4b5563',
+                      fontSize: '11px', margin: '0 0 4px',
+                    }}>
+                      {[meta.year, meta.director].filter(Boolean).join(' · ')}
+                    </p>
+                    <p style={{
+                      fontFamily: "'DM Mono',monospace",
+                      fontSize: '10px',
+                      margin: 0,
+                      color: pickerColor ?? '#6b7280',
+                    }}>
+                      {pickerName}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Pick modal */}
+      {showModal && (
+        <PickModal
+          profile={profile}
+          nextMonth={nextMonth}
+          onClose={() => setShowModal(false)}
+          onPickSaved={() => {
+            loadNextMonthAndPicks()
+            setShowModal(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const TABS = ['Films', 'Deadlines', 'Upcoming']
+const TABS = ['Films', 'Deadlines', 'Picks']
 
 export default function ThisMonth() {
   const { profile } = useAuth()
@@ -1317,13 +1558,14 @@ export default function ThisMonth() {
               onScorePress={openModal}
               users={users}
               profile={profile}
+              activeMonth={activeMonth}
             />
           )}
           {activeTab === 'Deadlines' && (
             <DeadlinesTab movies={movies} loading={loading} />
           )}
-          {activeTab === 'Upcoming' && (
-            <UpcomingTab profile={profile} />
+          {activeTab === 'Picks' && (
+            <PicksTab profile={profile} />
           )}
         </div>
       </div>

@@ -11,17 +11,29 @@ if (!document.getElementById('mc-fonts')) {
 }
 
 const PROTECTED_EMAIL = 'ryan.gary.miller@gmail.com'
+const TEST_USER_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+
+// Zack joined April 2026 — exclude him from pre-April films
+const ZACK_NAME = 'Zack Anjoorian'
+const ZACK_JOIN_MONTH = '2026-04' // first month Zack is included
 
 // Members joined_at cutoffs for expected-score calculations
-// Zack joined April 2026, so exclude him from Jan–Mar films
+// Always excludes the test user. Uses joined_at logic to handle Zack's April join.
 function expectedMemberCount(monthYear, allUsers) {
   return allUsers.filter(u => {
     if (!u.is_active) return false
+    if (u.email === TEST_USER_EMAIL) return false
     const joined = new Date(u.joined_at)
     const [y, m] = monthYear.split('-').map(Number)
     const filmMonth = new Date(y, m - 1, 1)
     return joined <= filmMonth
   }).length
+}
+
+// Whether a given user is Zack and the film is pre-April 2026
+function isZackPreApril(user, monthYear) {
+  if (user.name !== ZACK_NAME) return false
+  return monthYear < ZACK_JOIN_MONTH
 }
 
 function Skeleton({ className = '' }) {
@@ -105,17 +117,34 @@ function DashboardTab({ movies, ratings, users, months }) {
   const monthMap = {}
   months.forEach(mo => { monthMap[mo.id] = mo })
 
+  // Non-test users only
+  const activeUsers = users.filter(u => u.email !== TEST_USER_EMAIL)
+
   // Films with missing scores
   const missingScoreFilms = movies.filter(m => {
     const mo = monthMap[m.month_id]
     if (!mo) return false
-    const expected = expectedMemberCount(mo.month_year, users)
-    const actual = ratings.filter(r => r.movie_id === m.id && r.score != null).length
+    const expected = expectedMemberCount(mo.month_year, activeUsers)
+    const actual = ratings.filter(r => {
+      if (r.movie_id !== m.id || r.score == null) return false
+      // Exclude test user
+      const ratingUser = activeUsers.find(u => u.id === r.user_id)
+      if (!ratingUser) return false
+      // Exclude Zack on pre-April films
+      if (isZackPreApril(ratingUser, mo.month_year)) return false
+      return true
+    }).length
     return actual < expected
   }).map(m => {
     const mo = monthMap[m.month_id]
-    const expected = mo ? expectedMemberCount(mo.month_year, users) : 0
-    const actual = ratings.filter(r => r.movie_id === m.id && r.score != null).length
+    const expected = mo ? expectedMemberCount(mo.month_year, activeUsers) : 0
+    const actual = ratings.filter(r => {
+      if (r.movie_id !== m.id || r.score == null) return false
+      const ratingUser = activeUsers.find(u => u.id === r.user_id)
+      if (!ratingUser) return false
+      if (isZackPreApril(ratingUser, mo?.month_year ?? '')) return false
+      return true
+    }).length
     return { ...m, expected, actual, month_year: mo?.month_year }
   })
 
@@ -130,7 +159,7 @@ function DashboardTab({ movies, ratings, users, months }) {
         {[
           { label: 'Total Films', value: totalFilms },
           { label: 'Total Ratings', value: totalRatings },
-          { label: 'Members', value: users.length },
+          { label: 'Members', value: activeUsers.length },
           { label: 'The Vault', value: vaultFilms.length, sub: 'avg ≥ 8.5' },
         ].map(s => (
           <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px' }}>
@@ -192,6 +221,10 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
 
+  // Bulk reveal state
+  const [selectedBulkMonth, setSelectedBulkMonth] = useState('')
+  const [bulkRevealing, setBulkRevealing] = useState(null) // 'scores' | 'pickers' | null
+
   const monthMap = {}
   months.forEach(mo => { monthMap[mo.id] = mo })
 
@@ -206,11 +239,9 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
 
   function startEdit(movie) {
     setEditingId(movie.id)
-    // Convert scoring_deadline from UTC ISO to local datetime-local format (PT display)
     let deadlineLocal = ''
     if (movie.scoring_deadline) {
       const d = new Date(movie.scoring_deadline)
-      // Format as YYYY-MM-DDTHH:MM for datetime-local input (browser local time)
       const pad = n => String(n).padStart(2, '0')
       deadlineLocal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
     }
@@ -235,7 +266,6 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
       updates.historical_avg_score = null
     }
     if (editForm.scoring_deadline) {
-      // datetime-local gives local time; store as ISO (UTC)
       updates.scoring_deadline = new Date(editForm.scoring_deadline).toISOString()
     } else {
       updates.scoring_deadline = null
@@ -248,6 +278,35 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
     } else {
       setSuccess('Film updated')
       setEditingId(null)
+      onRefresh()
+    }
+  }
+
+  async function bulkReveal(type) {
+    if (!selectedBulkMonth) return
+    const monthRow = months.find(m => m.month_year === selectedBulkMonth)
+    if (!monthRow) return
+
+    const moviesInMonth = movies.filter(m => m.month_id === monthRow.id)
+    if (moviesInMonth.length === 0) {
+      setError('No films found for that month.')
+      return
+    }
+
+    setBulkRevealing(type)
+    const field = type === 'scores' ? 'scores_revealed' : 'picker_revealed'
+    const label = type === 'scores' ? 'scores' : 'pickers'
+
+    const { error } = await supabase
+      .from('movies')
+      .update({ [field]: true })
+      .in('id', moviesInMonth.map(m => m.id))
+
+    setBulkRevealing(null)
+    if (error) {
+      setError(`Failed to reveal ${label}: ` + error.message)
+    } else {
+      setSuccess(`All ${label} revealed for ${selectedBulkMonth}`)
       onRefresh()
     }
   }
@@ -271,6 +330,65 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
 
   return (
     <div>
+      {/* Bulk reveal section */}
+      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+        <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Bulk Month Reveal</p>
+        <div style={{ marginBottom: '12px' }}>
+          <Label>Month</Label>
+          <select
+            value={selectedBulkMonth}
+            onChange={e => setSelectedBulkMonth(e.target.value)}
+            style={{
+              display: 'block', width: '100%', marginTop: '6px', padding: '9px 10px', borderRadius: '8px',
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+              color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none', boxSizing: 'border-box',
+            }}
+          >
+            <option value="">Select month…</option>
+            {months.slice().sort((a, b) => b.month_year.localeCompare(a.month_year)).map(mo => (
+              <option key={mo.id} value={mo.month_year}>{mo.month_year}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => bulkReveal('scores')}
+            disabled={!selectedBulkMonth || bulkRevealing != null}
+            style={{
+              flex: 1, minWidth: '140px', padding: '9px 12px', borderRadius: '8px',
+              border: '1px solid rgba(74,222,128,0.25)',
+              background: 'rgba(74,222,128,0.07)',
+              color: (!selectedBulkMonth || bulkRevealing != null) ? '#374151' : '#4ade80',
+              fontSize: '12px', fontFamily: "'DM Sans',sans-serif",
+              cursor: (!selectedBulkMonth || bulkRevealing != null) ? 'not-allowed' : 'pointer',
+              opacity: (!selectedBulkMonth || bulkRevealing != null) ? 0.5 : 1,
+              transition: 'opacity 0.15s',
+            }}
+          >
+            {bulkRevealing === 'scores' ? 'Revealing…' : `Reveal all scores${selectedBulkMonth ? ` for ${selectedBulkMonth}` : ''}`}
+          </button>
+          <button
+            onClick={() => bulkReveal('pickers')}
+            disabled={!selectedBulkMonth || bulkRevealing != null}
+            style={{
+              flex: 1, minWidth: '140px', padding: '9px 12px', borderRadius: '8px',
+              border: '1px solid rgba(251,191,36,0.25)',
+              background: 'rgba(251,191,36,0.07)',
+              color: (!selectedBulkMonth || bulkRevealing != null) ? '#374151' : '#fbbf24',
+              fontSize: '12px', fontFamily: "'DM Sans',sans-serif",
+              cursor: (!selectedBulkMonth || bulkRevealing != null) ? 'not-allowed' : 'pointer',
+              opacity: (!selectedBulkMonth || bulkRevealing != null) ? 0.5 : 1,
+              transition: 'opacity 0.15s',
+            }}
+          >
+            {bulkRevealing === 'pickers' ? 'Revealing…' : `Reveal all pickers${selectedBulkMonth ? ` for ${selectedBulkMonth}` : ''}`}
+          </button>
+        </div>
+        <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
+          Sets scores_revealed / picker_revealed = true for all films in the selected month.
+        </p>
+      </div>
+
       {sortedMonths.map(monthYear => (
         <div key={monthYear} style={{ marginBottom: '28px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
@@ -633,6 +751,9 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
   const monthMap = {}
   months.forEach(mo => { monthMap[mo.id] = mo })
 
+  // Non-test users only
+  const activeUsers = users.filter(u => u.email !== TEST_USER_EMAIL)
+
   // Build set of existing ratings: "movieId:userId"
   const ratingSet = new Set(ratings.map(r => `${r.movie_id}:${r.user_id}`))
 
@@ -643,22 +764,29 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
     return mb.localeCompare(ma)
   })
 
-  // For matrix: only show films with at least one missing score, unless showAllFilms
+  // For matrix: only show films with at least one missing score (from expected users), unless showAllFilms
   const matrixMovies = showAllFilms ? sortedMovies : sortedMovies.filter(m => {
     const mo = monthMap[m.month_id]
     if (!mo) return false
-    const expected = expectedMemberCount(mo.month_year, users)
-    const actual = ratings.filter(r => r.movie_id === m.id && r.score != null).length
-    return actual < expected
+    const expUsers = activeUsers.filter(u => {
+      if (isZackPreApril(u, mo.month_year)) return false
+      const joined = new Date(u.joined_at)
+      const [y, month] = mo.month_year.split('-').map(Number)
+      const filmMonth = new Date(y, month - 1, 1)
+      return joined <= filmMonth
+    })
+    const missing = expUsers.some(u => !ratingSet.has(`${m.id}:${u.id}`))
+    return missing
   })
 
   // For each movie in matrix, which users are expected?
   function expectedUsers(movieId) {
     const m = movies.find(mv => mv.id === movieId)
-    if (!m) return users
+    if (!m) return activeUsers
     const mo = monthMap[m.month_id]
-    if (!mo) return users
-    return users.filter(u => {
+    if (!mo) return activeUsers
+    return activeUsers.filter(u => {
+      if (isZackPreApril(u, mo.month_year)) return false
       const joined = new Date(u.joined_at)
       const [y, month] = mo.month_year.split('-').map(Number)
       const filmMonth = new Date(y, month - 1, 1)
@@ -729,7 +857,7 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
             <Label>Member</Label>
             <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} style={{ ...selectStyle, marginTop: '6px' }}>
               <option value="">Select member…</option>
-              {users.map(u => (
+              {activeUsers.map(u => (
                 <option key={u.id} value={u.id}>{u.name}</option>
               ))}
             </select>
@@ -788,7 +916,7 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left', padding: '6px 10px', color: '#4b5563', fontSize: '10px', fontFamily: "'DM Mono',monospace", fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>Film</th>
-                  {users.map(u => (
+                  {activeUsers.map(u => (
                     <th key={u.id} style={{ padding: '6px 8px', color: '#4b5563', fontSize: '10px', fontFamily: "'DM Mono',monospace", fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}>
                       {u.name.split(' ')[0]}
                     </th>
@@ -797,17 +925,36 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
               </thead>
               <tbody>
                 {matrixMovies.map((m, i) => {
-                  const expUsers = expectedUsers(m.id)
-                  const expUserIds = new Set(expUsers.map(u => u.id))
+                  const mo = monthMap[m.month_id]
+                  const monthYear = mo?.month_year ?? ''
                   return (
                     <tr key={m.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
                       <td style={{ padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                         <p style={{ color: 'white', fontSize: '12px', margin: 0, maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
-                        <p style={{ color: '#4b5563', fontSize: '10px', margin: '1px 0 0', fontFamily: "'DM Mono',monospace" }}>{monthMap[m.month_id]?.month_year}</p>
+                        <p style={{ color: '#4b5563', fontSize: '10px', margin: '1px 0 0', fontFamily: "'DM Mono',monospace" }}>{monthYear}</p>
                       </td>
-                      {users.map(u => {
+                      {activeUsers.map(u => {
                         const hasScore = ratingSet.has(`${m.id}:${u.id}`)
-                        const isExpected = expUserIds.has(u.id)
+                        // Zack on pre-April 2026 films → N/A
+                        if (isZackPreApril(u, monthYear)) {
+                          return (
+                            <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <span style={{
+                                color: '#374151',
+                                fontSize: '11px',
+                                fontFamily: "'DM Mono',monospace",
+                                textDecoration: 'line-through',
+                              }}>
+                                N/A
+                              </span>
+                            </td>
+                          )
+                        }
+                        // Check if user was a member at this film's month
+                        const joined = new Date(u.joined_at)
+                        const [y, month] = monthYear.split('-').map(Number)
+                        const filmMonth = new Date(y, month - 1, 1)
+                        const isExpected = monthYear ? joined <= filmMonth : false
                         return (
                           <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             {!isExpected ? (
