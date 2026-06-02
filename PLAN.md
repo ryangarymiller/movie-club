@@ -154,6 +154,17 @@
 - [~] Reveal system: per-film + per-month admin triggers already exist; auto-scheduling of reveals is Phase 4
 - [ ] **Verify in-browser** — components are agent-built + build/test-green but not yet click-tested live
 
+### Phase 2 polish (session 7 cont.)
+- [x] New awards implemented: Most Consistent Picker (Season), Most Consistent + The Wildcard (Annual)
+- [x] Home "Recent Activity" feed (scores/reviews/comments)
+- [x] Stats static-components bug fixed (Whisker/MemberPill hoisted)
+- [x] Comment/review posting gated server-side on having scored (RLS) — `20260602130000_comments_reviews_require_scored.sql`
+- [x] Test suite fully clean (234 pass, 0 unhandled errors)
+- [ ] Master of Disguise award — needs picker_guesses threaded through the award pipeline (compute fns + lib + Admin write). Bounded; deferred as a focused change.
+- [ ] Easy Crowd award — definition ambiguous; needs owner's definition
+- [ ] Most Evolved award — needs multi-period trend (first vs second half); data still sparse
+- [ ] Guess/predictions in Picks tab — **blocked by data model**: picker_guesses & score_predictions FK to `movies.id`, but the Picks tab shows next-month `upcoming_picks` (no movie row yet). Functional placement is the film overlay (works). Needs a schema change (key to upcoming_picks) to do literally.
+
 ### Carried from audit — resolved
 - [x] **Stats: film/member names clickable** — films open FilmDetailOverlay (Overview/Me/Members); member names → /profile/:id. (Recharts axis labels in Club/H2H still static — low value.)
 - [x] Tech-debt: removed debug2/3/4.test.jsx (superseded by inviteFlow.test.jsx); eslint now knows vitest globals (620 false errors → 0). Remaining 76 lint advisories are pre-existing React-19 patterns (set-state-in-effect, static-components, only-export-components) — separate refactor, no runtime impact.
