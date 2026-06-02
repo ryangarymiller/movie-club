@@ -4,6 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Source of Truth
+
+`MOVIE_CLUB_SPEC.md` (gitignored, the "spec .MD") is the authoritative source of truth for the
+project. Any product decision is reflected there **first**, then mirrored into `CLAUDE.md`, then
+into `PLAN.md`. All three must stay congruent — no contradictions. If `CLAUDE.md` and the spec ever
+disagree, the spec wins.
+
+---
+
 ## Project Overview
 
 A private web app for a 5-person movie club. Each month every member picks one film they haven't personally seen; all members watch all films, submit scores and reviews. The app handles picks, anonymity before reveal, scoring, discussion, awards, and stats.
@@ -141,7 +150,8 @@ users          — id, name, email, avatar_id, user_color, role, timezone, joine
                  is_active, has_completed_onboarding, admin_mode_enabled,
                  last_online_at, show_last_online, created_at
 seasons        — id, name, start_date, end_date
-                 (Season 1 = Jan 2026 – Dec 2026, Season 2 = Jan 2027 – Dec 2027, etc.)
+                 (Quarterly: Winter Dec–Feb · Spring Mar–May · Summer Jun–Aug · Autumn Sep–Nov.
+                  First season = Winter 2026, partial from the club founding date Jan 5 2026.)
 months         — id, season_id, month_year, reveal_date, end_of_month_reveal_date, status
 movies         — id, month_id, title, tmdb_id, picked_by_user_id, pick_justification,
                  scores_revealed (bool), picker_revealed (bool), scoring_deadline,
@@ -151,14 +161,16 @@ ratings        — id, movie_id, user_id, score, pre_watch_excitement, recommend
                  submitted_at
 reviews        — id, movie_id, user_id, body (one primary review per user per film)
 comments       — id, movie_id, user_id, parent_comment_id (nullable), body, reaction_counts
+reactions      — id, comment_id, user_id, emoji (aggregated into comments.reaction_counts at query time)
 picker_guesses — id, movie_id, guessing_user_id, guessed_user_id
 score_predictions — id, movie_id, predicting_user_id, target_user_id, predicted_score
+                 (picker-only: only the film's picker predicts the other members' scores for their own pick)
 upcoming_picks — id, user_id, month_id, tmdb_id, justification (hidden from all others until reveal)
 veto_votes     — id, movie_id, voting_user_id (3+/5 triggers picker resubmission)
 watchlist      — private per user
 draft_queue    — private per user, drag-and-drop ranked
 film_tags      — id, movie_id, user_id, tag (aggregated at query time with counts)
-auteur_votes   — id, season_id, voter_id, rankings (json array, ranked choice)
+auteur_votes   — id, season_id, voter_user_id, rankings (json array, ranked choice)
 season_rankings — id, season_id, user_id, movie_id, rank, locked_score (locked at end of window)
 score_change_requests — id, rating_id, user_id, requested_score, status (pending|approved|denied)
 month_absences — id, month_id, user_id (excludes member from picker stats that month)

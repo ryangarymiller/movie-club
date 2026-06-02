@@ -1,7 +1,8 @@
 # Movie Club — Implementation Plan
 
 > Living document. Update status as work completes.
-> Last updated: 2026-06-02 (session 4)
+> Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
+> Last updated: 2026-06-02 (session 5 — recovery)
 
 ---
 
