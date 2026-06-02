@@ -48,35 +48,35 @@
 | AppLayout | ✅ | |
 | Home | ✅ | Film click opens FilmDetailOverlay |
 | ThisMonth — Films tab | ✅ | |
-| ThisMonth — Deadlines tab | ⚠️ | Past deadlines handle in progress (agent) |
-| ThisMonth — Picks tab (renamed from Upcoming) | 🔄 | Agent in progress |
-| ThisMonth — No picks yet state | 🔄 | Agent in progress |
+| ThisMonth — Deadlines tab | ✅ | Past-deadline shows "Scores revealed"/"Awaiting reveal" |
+| ThisMonth — Picks tab (renamed from Upcoming) | ✅ | "Pick your next movie" CTA, no search bar |
+| ThisMonth — No picks yet state | ✅ | "No picks yet for [Month]" |
 | Films — Poster wall | ✅ | Sorted by id ASC; vault = gold star only |
-| Films — FilmDetailOverlay | ✅ | Streaming fetch, review gate, own score, prediction lock |
+| Films — FilmDetailOverlay | ✅ | Streaming (TMDB→Edge fallback), review gate, own score, prediction lock, awards section |
 | Films — Score predictions locked after score submitted | ✅ | |
 | Films — Show own score before reveal | ✅ | |
-| Stats — Overview | ⚠️ | Clicking film/user to navigate — still needed |
-| Stats — Me | ✅ | Month names on x-axis; test user excluded |
-| Stats — Members | ❌ | |
-| Stats — Club | ❌ | |
-| Stats — Head to Head | ❌ | |
-| Awards — Monthly | ✅ | |
-| Awards — All-Time | ✅ | |
-| Awards — Season | ❌ | |
-| Awards — Annual | ❌ | |
-| Awards on film pages | ❌ | |
-| Awards on profile pages | ❌ | |
-| Profile | ✅ | Light/dark toggle added; user_color on avatar |
-| Profile — Admin mode toggle | ❌ | |
-| Members directory / clickable names | ❌ | |
-| Admin — Dashboard | ⚠️ | Score count fix + N/A cells in progress (agent) |
-| Admin — Films | ⚠️ | Full TMDB editing + month trigger in progress (agent) |
+| Stats — Overview | ✅ | Recharts mini-charts; film/member navigation |
+| Stats — Me | ✅ | Full Recharts suite; month names on x-axis; test user excluded |
+| Stats — Members | ✅ | Browse + navigate to profiles |
+| Stats — Club | ✅ | Full Recharts suite (box plots, heatmap, leaderboards) |
+| Stats — Head to Head | ✅ | Pearson correlation + signed score-delta chart |
+| Awards — Monthly | ✅ | Clickable winners/films |
+| Awards — All-Time | ✅ | Clickable winners/films |
+| Awards — Season | ✅ | Quarterly seasons |
+| Awards — Annual | ✅ | |
+| Awards on film pages | ✅ | FilmDetailOverlay awards section (computed via src/lib/awards.js) |
+| Awards on profile pages | ✅ | Includes awards for films the user picked |
+| Profile | ✅ | Light/dark toggle added; user_color on avatar; awards section |
+| Profile — Admin mode toggle | ✅ | Was already built |
+| Members directory / clickable names | ⚠️ | Names clickable but route to /profile (own) — needs per-member route in App.jsx |
+| Admin — Dashboard | ✅ | Score count fix + N/A cells |
+| Admin — Films | ✅ | Full TMDB metadata editing + bulk month reveal |
 | Admin — Members | ✅ | |
-| Admin — Scores | 🔄 | N/A cells agent in progress |
-| Admin — Streaming refresh | ❌ | |
+| Admin — Scores | ✅ | N/A cells crossed out for ineligible months |
+| Admin — Streaming refresh | ✅ | Per-film refresh button (TMDB) |
 | WelcomeDialog | ✅ | |
 | ScoreModal | ✅ | Excitement locked when final score exists |
-| Streaming providers fetch (TMDB → Claude fallback) | ⚠️ | TMDB fetch done; Claude fallback needs Edge Function |
+| Streaming providers fetch (TMDB → Claude fallback) | ⚠️ | Code done; Edge Function needs deploy (keys on device) |
 
 ---
 
@@ -96,27 +96,33 @@
 
 ### Medium
 - [x] Streaming providers: fetch from TMDB on film load; cache in DB
-- [ ] Streaming providers: Claude API fallback via Edge Function (ANTHROPIC_API_KEY server-side only)
-- [ ] This Month — Deadlines: handle past-deadline state gracefully (show result, not blank)
-- [ ] This Month — Picks tab: rename, add "Pick your next movie" button, remove display search bar
-- [ ] This Month — current month with no films: show "No picks yet for [Month]" state
-- [ ] Admin: expected score count uses member count at film's month (pre/post Zack), excludes test user
-- [ ] Admin: N/A cells crossed out in scores matrix for ineligible months
-- [ ] Admin: bulk month-level reveal triggers (scores_revealed + picker_revealed for whole month)
-- [ ] Admin: full TMDB metadata editing on film edit form (title, poster, plot, year, director, runtime)
+- [x] Streaming providers: Claude API fallback via Edge Function (code done — **deploy pending**, keys on device)
+- [x] This Month — Deadlines: handle past-deadline state gracefully (show result, not blank)
+- [x] This Month — Picks tab: rename, add "Pick your next movie" button, remove display search bar
+- [x] This Month — current month with no films: show "No picks yet for [Month]" state
+- [x] Admin: expected score count uses member count at film's month (pre/post Zack), excludes test user
+- [x] Admin: N/A cells crossed out in scores matrix for ineligible months
+- [x] Admin: bulk month-level reveal triggers (scores_revealed + picker_revealed for whole month)
+- [x] Admin: full TMDB metadata editing on film edit form (title, poster, plot, year, director, runtime)
 - [x] Light/dark mode toggle on Profile page
-- [ ] Clickable member names throughout app → their profile page
-- [ ] Members directory (Stats > Members tab acts as directory; names clickable throughout)
-- [ ] Stats — Overview: clicking film/member name navigates to their page
+- [~] Clickable member names → profile: clickable, but route to /profile (own) — **needs per-member route in App.jsx**
+- [x] Members directory (Stats > Members tab)
+- [x] Stats — Overview: clicking film/member name navigates to their page
 
 ### Larger
-- [ ] Charts: Recharts — score distribution histogram, score over time line, member comparison bar, excitement vs final, head-to-head matrix
-- [ ] Awards shown on film pages (awards that film won)
-- [ ] Awards shown on profile pages (all awards user won, including for films they picked)
+- [x] Charts: Recharts — full spec suite across Overview/Me/Club/Head-to-Head (histograms, lines, scatter, box plots, heatmap, deltas). Stubbed where data missing: genre/cast charts, guess-the-picker accuracy, director/actor web
+- [x] Awards shown on film pages (awards that film won)
+- [x] Awards shown on profile pages (all awards user won, including for films they picked)
 - [x] Back-calculate missing score: Smashing Machine (Andrew=7.00), Spirited Away (Ryan Bey=8.50)
-- [ ] Stats — Members tab (full)
-- [ ] Stats — Club tab (full)
-- [ ] Stats — Head to Head tab (full)
+- [x] Stats — Members tab (full)
+- [x] Stats — Club tab (full)
+- [x] Stats — Head to Head tab (full)
+
+### Session 5 (recovery) — still open
+- [ ] **Deploy** the streaming-fallback Edge Function (`supabase functions deploy streaming-fallback` + set `ANTHROPIC_API_KEY` secret)
+- [ ] **Per-member profile route** in App.jsx (`/profile/:userId`) so clickable member names open the right profile
+- [ ] Fix 10 pre-existing test failures ("Maximum update depth" loop in Admin InviteCard + stale supabase mocks) — predates recovery
+- [ ] Recharts stubs needing data: genre/cast (genre not stored on movies), guess-the-picker accuracy, director/actor connection web
 
 ---
 
