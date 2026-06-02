@@ -220,6 +220,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
+  const [refreshingId, setRefreshingId] = useState(null)
 
   // Bulk reveal state
   const [selectedBulkMonth, setSelectedBulkMonth] = useState('')
@@ -250,6 +251,14 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
       scores_revealed: movie.scores_revealed ?? false,
       picker_revealed: movie.picker_revealed ?? false,
       historical_avg_score: movie.historical_avg_score ?? '',
+      // Film metadata (TMDB-sourced fields)
+      title: movie.title ?? '',
+      poster_url: movie.poster_url ?? '',
+      overview: movie.overview ?? '',
+      year_released: movie.year_released ?? '',
+      director: movie.director ?? '',
+      runtime: movie.runtime ?? '',
+      tmdb_id: movie.tmdb_id ?? '',
     })
   }
 
@@ -271,6 +280,37 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
       updates.scoring_deadline = null
     }
 
+    // Film metadata (TMDB-sourced fields)
+    updates.title = editForm.title?.trim() || null
+    updates.poster_url = editForm.poster_url?.trim() || null
+    updates.overview = editForm.overview?.trim() || null
+    updates.director = editForm.director?.trim() || null
+
+    if (editForm.year_released !== '' && editForm.year_released != null) {
+      const y = parseInt(editForm.year_released, 10)
+      updates.year_released = isNaN(y) ? null : y
+    } else {
+      updates.year_released = null
+    }
+    if (editForm.runtime !== '' && editForm.runtime != null) {
+      const r = parseInt(editForm.runtime, 10)
+      updates.runtime = isNaN(r) ? null : r
+    } else {
+      updates.runtime = null
+    }
+    if (editForm.tmdb_id !== '' && editForm.tmdb_id != null) {
+      const t = parseInt(editForm.tmdb_id, 10)
+      updates.tmdb_id = isNaN(t) ? null : t
+    } else {
+      updates.tmdb_id = null
+    }
+
+    if (!updates.title) {
+      setSaving(false)
+      setError('Title is required')
+      return
+    }
+
     const { error } = await supabase.from('movies').update(updates).eq('id', movieId)
     setSaving(false)
     if (error) {
@@ -279,6 +319,49 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
       setSuccess('Film updated')
       setEditingId(null)
       onRefresh()
+    }
+  }
+
+  // Re-fetch streaming providers from TMDB (US) and cache on the film.
+  // Mirrors the auth/token approach used in Films.jsx (Bearer read-access token).
+  async function refreshProviders(movie) {
+    if (!movie.tmdb_id) {
+      setError('No TMDB ID set for this film — add one and save before refreshing providers.')
+      return
+    }
+    setRefreshingId(movie.id)
+    try {
+      const tmdbToken = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
+      const resp = await fetch(
+        `https://api.themoviedb.org/3/movie/${movie.tmdb_id}/watch/providers`,
+        { headers: { Authorization: `Bearer ${tmdbToken}` } }
+      )
+      if (!resp.ok) {
+        throw new Error(`TMDB returned ${resp.status}`)
+      }
+      const tmdbData = await resp.json()
+      const us = tmdbData?.results?.US ?? null
+      const providersData = {
+        flatrate: (us?.flatrate ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
+        rent:     (us?.rent     ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
+        buy:      (us?.buy      ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
+      }
+      const hasAny = providersData.flatrate.length > 0 || providersData.rent.length > 0 || providersData.buy.length > 0
+
+      const { error } = await supabase
+        .from('movies')
+        .update({ streaming_providers: providersData })
+        .eq('id', movie.id)
+      if (error) throw error
+
+      setSuccess(hasAny
+        ? 'Streaming providers refreshed'
+        : 'No US providers found on TMDB — saved empty result')
+      onRefresh()
+    } catch (e) {
+      setError('Failed to refresh providers: ' + (e.message ?? 'unknown error'))
+    } finally {
+      setRefreshingId(null)
     }
   }
 
@@ -445,6 +528,119 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                 {editingId === movie.id && (
                   <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {/* ── Film metadata (TMDB-sourced) ── */}
+                      <div>
+                        <Label>Title</Label>
+                        <input
+                          type="text"
+                          value={editForm.title}
+                          onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                          placeholder="Film title"
+                          style={{
+                            display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Label>Year Released</Label>
+                          <input
+                            type="number"
+                            value={editForm.year_released}
+                            onChange={e => setEditForm(f => ({ ...f, year_released: e.target.value }))}
+                            placeholder="e.g. 2012"
+                            style={{
+                              display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                              color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Label>Runtime (min)</Label>
+                          <input
+                            type="number"
+                            value={editForm.runtime}
+                            onChange={e => setEditForm(f => ({ ...f, runtime: e.target.value }))}
+                            placeholder="e.g. 137"
+                            style={{
+                              display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                              color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>Director</Label>
+                        <input
+                          type="text"
+                          value={editForm.director}
+                          onChange={e => setEditForm(f => ({ ...f, director: e.target.value }))}
+                          placeholder="Director name"
+                          style={{
+                            display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Overview (plot)</Label>
+                        <textarea
+                          value={editForm.overview}
+                          onChange={e => setEditForm(f => ({ ...f, overview: e.target.value }))}
+                          placeholder="Plot summary"
+                          rows={4}
+                          style={{
+                            display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box',
+                            resize: 'vertical', lineHeight: 1.5
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Poster URL (TMDB path)</Label>
+                        <input
+                          type="text"
+                          value={editForm.poster_url}
+                          onChange={e => setEditForm(f => ({ ...f, poster_url: e.target.value }))}
+                          placeholder="/abc123.jpg"
+                          style={{
+                            display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                          }}
+                        />
+                        <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
+                          TMDB path only (e.g. /abc123.jpg). Displayed via image.tmdb.org.
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>TMDB ID</Label>
+                        <input
+                          type="number"
+                          value={editForm.tmdb_id}
+                          onChange={e => setEditForm(f => ({ ...f, tmdb_id: e.target.value }))}
+                          placeholder="e.g. 1124"
+                          style={{
+                            display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+
+                      <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '2px 0' }} />
+
                       {/* Scoring deadline */}
                       <div>
                         <Label>Scoring Deadline</Label>
@@ -492,17 +688,37 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => saveEdit(movie.id)}
-                        disabled={saving}
-                        style={{
-                          padding: '9px 20px', borderRadius: '8px', border: 'none', background: 'var(--accent)',
-                          color: 'white', fontSize: '13px', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
-                          opacity: saving ? 0.7 : 1, alignSelf: 'flex-start', fontFamily: "'DM Sans',sans-serif"
-                        }}
-                      >
-                        {saving ? 'Saving…' : 'Save'}
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button
+                          onClick={() => saveEdit(movie.id)}
+                          disabled={saving}
+                          style={{
+                            padding: '9px 20px', borderRadius: '8px', border: 'none', background: 'var(--accent)',
+                            color: 'white', fontSize: '13px', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
+                            opacity: saving ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif"
+                          }}
+                        >
+                          {saving ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => refreshProviders(movie)}
+                          disabled={refreshingId === movie.id || !editForm.tmdb_id}
+                          title={!editForm.tmdb_id ? 'Set a TMDB ID first' : 'Re-fetch US streaming providers from TMDB'}
+                          style={{
+                            padding: '9px 16px', borderRadius: '8px',
+                            border: '1px solid rgba(255,255,255,0.12)', background: 'transparent',
+                            color: (refreshingId === movie.id || !editForm.tmdb_id) ? '#4b5563' : '#9ca3af',
+                            fontSize: '12px', fontFamily: "'DM Mono',monospace",
+                            cursor: (refreshingId === movie.id || !editForm.tmdb_id) ? 'not-allowed' : 'pointer',
+                            opacity: (refreshingId === movie.id || !editForm.tmdb_id) ? 0.6 : 1,
+                          }}
+                        >
+                          {refreshingId === movie.id ? 'Refreshing…' : 'Refresh streaming providers'}
+                        </button>
+                      </div>
+                      <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '-4px', fontFamily: "'DM Mono',monospace" }}>
+                        Refresh fetches current US providers from TMDB and caches them on the film. Uses the saved TMDB ID.
+                      </p>
                     </div>
                   </div>
                 )}
