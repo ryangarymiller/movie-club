@@ -64,6 +64,7 @@ const SEASON_DEFS = [
   { key: 'season_generous',    label: 'Most Generous',          emoji: '😊', target: 'user', field: 'mostGenerous' },
   { key: 'season_contrarian',  label: 'The Contrarian',         emoji: '🦅', target: 'user', field: 'contrarianWinner' },
   { key: 'season_oracle',      label: 'The Oracle',             emoji: '🎯', target: 'user', field: 'oracleWinner' },
+  { key: 'season_consistent_picker', label: 'Most Consistent Picker', emoji: '🎚️', target: 'user', field: 'mostConsistentPicker' },
 ]
 
 // Annual: from computeAnnualAwards()
@@ -75,6 +76,8 @@ const ANNUAL_DEFS = [
   { key: 'annual_generous',    label: 'Most Generous of the Year', emoji: '😊', target: 'user', field: 'mostGenerous' },
   { key: 'annual_divisive',    label: 'Most Divisive Film of the Year', emoji: '🔥', target: 'film', field: 'mostDivisiveFilm' },
   { key: 'annual_oracle',      label: 'The Oracle of the Year',    emoji: '🎯', target: 'user', field: 'oracleOfYear' },
+  { key: 'annual_most_consistent', label: 'Most Consistent',       emoji: '🎚️', target: 'user', field: 'mostConsistent' },
+  { key: 'annual_wildcard',    label: 'The Wildcard',              emoji: '🎭', target: 'user', field: 'wildcard' },
 ]
 
 // All-Time: from computeAllTimeAwards()

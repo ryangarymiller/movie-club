@@ -30,6 +30,25 @@ function initials(title) {
   return title.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
+function timeAgo(iso) {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const secs = Math.floor((Date.now() - then) / 1000)
+  if (secs < 60) return 'just now'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `${weeks}w ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(days / 365)}y ago`
+}
+
 function formatDate() {
   return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 }
@@ -120,6 +139,40 @@ function StatCard({ label, value, sub }) {
   )
 }
 
+function ActivityRow({ item, onFilmPress, isLast }) {
+  const color = MEMBER_COLORS[item.memberName] ?? 'var(--accent)'
+  return (
+    <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb),0.08)' }}>
+      <div
+        className="shrink-0 flex items-center justify-center rounded-full"
+        style={{ width: '32px', height: '32px', background: 'rgba(var(--fg-rgb),0.03)', border: `1.5px solid ${color}` }}
+      >
+        <span style={{ fontSize: '11px', fontWeight: 600, color, fontFamily: "'DM Mono',monospace" }}>
+          {initials(item.memberName)}
+        </span>
+      </div>
+      <p className="flex-1 min-w-0" style={{ color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.35, margin: 0 }}>
+        <span style={{ color: 'var(--text)', fontWeight: 500 }}>{item.memberName}</span>
+        {' '}{item.verb}{' '}
+        {item.movie ? (
+          <span
+            onClick={() => onFilmPress(item.movie)}
+            style={{ color: 'var(--text)', fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(var(--fg-rgb),0.2)' }}
+          >
+            {item.filmTitle}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--text)', fontWeight: 500 }}>{item.filmTitle}</span>
+        )}
+        {item.suffix ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}> {item.suffix}</span> : null}
+      </p>
+      <span className="shrink-0" style={{ color: 'var(--text-dim)', fontSize: '11px', fontFamily: "'DM Mono',monospace", whiteSpace: 'nowrap' }}>
+        {timeAgo(item.at)}
+      </span>
+    </div>
+  )
+}
+
 export default function Home() {
   const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -128,6 +181,7 @@ export default function Home() {
   const [allMovies, setAllMovies] = useState([])
   const [myRatings, setMyRatings] = useState([])
   const [users, setUsers] = useState([])
+  const [activity, setActivity] = useState([])
 
   // Score modal state
   const [modalMovie, setModalMovie] = useState(null)
@@ -138,11 +192,22 @@ export default function Home() {
 
   const load = useCallback(async () => {
     if (!profile) return
-    const [{ data: activeMonth }, { data: movies }, { data: ratings }, { data: usersData }] = await Promise.all([
+    const [
+      { data: activeMonth },
+      { data: movies },
+      { data: ratings },
+      { data: usersData },
+      { data: recentRatings },
+      { data: recentReviews },
+      { data: recentComments },
+    ] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed'),
       supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
       supabase.from('users').select('id, name, email'),
+      supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
+      supabase.from('reviews').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
+      supabase.from('comments').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
     ])
     const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
     setActiveMovies(active)
@@ -150,7 +215,39 @@ export default function Home() {
     setAllMovies(movies ?? [])
     setMyRatings(ratings ?? [])
     // Test account must be invisible in all UI — filter by email.
-    setUsers((usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com'))
+    const visibleUsers = (usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com')
+    setUsers(visibleUsers)
+
+    // Build the Recent Activity feed: merge ratings, reviews, comments into one list.
+    const userMap = Object.fromEntries(visibleUsers.map(u => [u.id, u.name]))
+    const movieMap = Object.fromEntries((movies ?? []).map(m => [m.id, m]))
+    const events = []
+    for (const r of recentRatings ?? []) {
+      if (!userMap[r.user_id] || r.score == null) continue
+      events.push({
+        key: `rating-${r.id}`, at: r.submitted_at, userId: r.user_id, memberName: userMap[r.user_id],
+        movie: movieMap[r.movie_id] ?? null, filmTitle: movieMap[r.movie_id]?.title ?? 'a film',
+        verb: 'scored', suffix: Number(r.score).toFixed(2),
+      })
+    }
+    for (const r of recentReviews ?? []) {
+      if (!userMap[r.user_id]) continue
+      events.push({
+        key: `review-${r.id}`, at: r.created_at, userId: r.user_id, memberName: userMap[r.user_id],
+        movie: movieMap[r.movie_id] ?? null, filmTitle: movieMap[r.movie_id]?.title ?? 'a film',
+        verb: 'reviewed', suffix: null,
+      })
+    }
+    for (const c of recentComments ?? []) {
+      if (!userMap[c.user_id]) continue
+      events.push({
+        key: `comment-${c.id}`, at: c.created_at, userId: c.user_id, memberName: userMap[c.user_id],
+        movie: movieMap[c.movie_id] ?? null, filmTitle: movieMap[c.movie_id]?.title ?? 'a film',
+        verb: 'commented on', suffix: null,
+      })
+    }
+    events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    setActivity(events.slice(0, 12))
     setLoading(false)
   }, [profile])
 
@@ -261,6 +358,26 @@ export default function Home() {
               <StatCard label="Top Film" value={topFilm ? Number(topFilm.historical_avg_score).toFixed(2) : '—'} sub={topFilm?.title} />
               <StatCard label="Films" value={allMovies.length} sub="watched" />
               <StatCard label="Days" value={daysSince(FOUNDING)} sub="of club" />
+            </div>
+          )}
+        </section>
+
+        {/* Recent Activity */}
+        <section className="mt-8" style={{ animation: 'fadeUp 0.5s 0.4s ease both' }}>
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
+            Recent Activity
+          </p>
+          {loading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+          ) : activity.length === 0 ? (
+            <div className="p-4 rounded-xl" style={{ background: 'rgba(var(--fg-rgb),0.03)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
+              <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: 0 }}>No recent activity yet.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl px-3" style={{ background: 'var(--surface)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
+              {activity.map((item, i) => (
+                <ActivityRow key={item.key} item={item} onFilmPress={setSelectedMovie} isLast={i === activity.length - 1} />
+              ))}
             </div>
           )}
         </section>

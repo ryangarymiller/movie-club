@@ -116,20 +116,26 @@ export function ScoreChangeRequestButton({ rating, currentUserId, movieTitle }) 
     }
     setLoading(true)
     setLoadError(null)
-    const { data, error } = await supabase
-      .from('score_change_requests')
-      .select('id, requested_score, reason, status, admin_note, created_at, resolved_at')
-      .eq('rating_id', ratingId)
-      .eq('user_id', currentUserId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-    if (error) {
+    try {
+      const { data, error } = (await supabase
+        .from('score_change_requests')
+        .select('id, requested_score, reason, status, admin_note, created_at, resolved_at')
+        .eq('rating_id', ratingId)
+        .eq('user_id', currentUserId)
+        .order('created_at', { ascending: false })
+        .limit(1)) ?? {}
+      if (error) {
+        setLoadError('Could not load your request status.')
+        setLatest(null)
+      } else {
+        setLatest(data && data.length ? data[0] : null)
+      }
+    } catch {
       setLoadError('Could not load your request status.')
       setLatest(null)
-    } else {
-      setLatest(data && data.length ? data[0] : null)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [ratingId, currentUserId])
 
   useEffect(() => {
@@ -445,28 +451,34 @@ export function ScoreChangeRequestsAdminPanel() {
     setLoading(true)
     setError(null)
     // Join users(name) and ratings(score, movie_id -> movies(title)).
-    const { data, error: dbErr } = await supabase
-      .from('score_change_requests')
-      .select(`
-        id,
-        requested_score,
-        reason,
-        status,
-        created_at,
-        rating_id,
-        user_id,
-        users:user_id ( name, email ),
-        ratings:rating_id ( score, movie_id, movies:movie_id ( title ) )
-      `)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
-    if (dbErr) {
+    try {
+      const { data, error: dbErr } = (await supabase
+        .from('score_change_requests')
+        .select(`
+          id,
+          requested_score,
+          reason,
+          status,
+          created_at,
+          rating_id,
+          user_id,
+          users:user_id ( name, email ),
+          ratings:rating_id ( score, movie_id, movies:movie_id ( title ) )
+        `)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })) ?? {}
+      if (dbErr) {
+        setError('Could not load pending requests.')
+        setRequests([])
+      } else {
+        setRequests(data ?? [])
+      }
+    } catch {
       setError('Could not load pending requests.')
       setRequests([])
-    } else {
-      setRequests(data ?? [])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   useEffect(() => {

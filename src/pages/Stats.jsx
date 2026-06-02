@@ -183,6 +183,25 @@ function DonutChart({ data, height = 200 }) {
   )
 }
 
+// Whisker shape for BoxPlotChart. Hoisted to module scope so it isn't recreated
+// on every render; the box color `c` is threaded in as an explicit prop while
+// Recharts injects the geometry props (x, y, width, height, payload).
+function BoxWhisker({ c, x, y, width, height: bh, payload }) {
+  if (!payload) return null
+  const scaleX = width / (payload.q3 - payload.q1 || 1)
+  const px = (val) => x + (val - payload.q1) * scaleX
+  const cy = y + bh / 2
+  return (
+    <g stroke={c} strokeWidth={1.5}>
+      <line x1={px(payload.min)} x2={px(payload.q1)} y1={cy} y2={cy} />
+      <line x1={px(payload.q3)} x2={px(payload.max)} y1={cy} y2={cy} />
+      <line x1={px(payload.min)} x2={px(payload.min)} y1={y + 4} y2={y + bh - 4} />
+      <line x1={px(payload.max)} x2={px(payload.max)} y1={y + 4} y2={y + bh - 4} />
+      <line x1={px(payload.median)} x2={px(payload.median)} y1={y} y2={y + bh} strokeWidth={2.5} stroke="white" />
+    </g>
+  )
+}
+
 // Box plot rendered with a floating-bar trick: an invisible base bar to q1, then
 // the visible q1→q3 box, plus whiskers/median drawn as SVG via a custom shape.
 // data: [{ name, min, q1, median, q3, max }]
@@ -191,22 +210,6 @@ function BoxPlotChart({ data, height, color }) {
   const h = height || Math.max(120, data.length * 42 + 30)
   // Recharts can't natively box-plot; we draw bars [q1, q3] with a custom layer.
   const chartData = data.map(d => ({ ...d, base: d.q1, box: d.q3 - d.q1 }))
-  const Whisker = (props) => {
-    const { x, y, width, height: bh, payload } = props
-    if (!payload) return null
-    const scaleX = width / (payload.q3 - payload.q1 || 1)
-    const px = (val) => x + (val - payload.q1) * scaleX
-    const cy = y + bh / 2
-    return (
-      <g stroke={c} strokeWidth={1.5}>
-        <line x1={px(payload.min)} x2={px(payload.q1)} y1={cy} y2={cy} />
-        <line x1={px(payload.q3)} x2={px(payload.max)} y1={cy} y2={cy} />
-        <line x1={px(payload.min)} x2={px(payload.min)} y1={y + 4} y2={y + bh - 4} />
-        <line x1={px(payload.max)} x2={px(payload.max)} y1={y + 4} y2={y + bh - 4} />
-        <line x1={px(payload.median)} x2={px(payload.median)} y1={y} y2={y + bh} strokeWidth={2.5} stroke="white" />
-      </g>
-    )
-  }
   return (
     <ResponsiveContainer width="100%" height={h}>
       <BarChart data={chartData} layout="vertical" margin={{ top: 6, right: 16, left: 4, bottom: 0 }}>
@@ -229,7 +232,7 @@ function BoxPlotChart({ data, height, color }) {
           }}
         />
         <Bar dataKey="base" stackId="a" fill="transparent" isAnimationActive={false} />
-        <Bar dataKey="box" stackId="a" fill={c} fillOpacity={0.28} stroke={c} radius={2} shape={<Whisker />} isAnimationActive={false} />
+        <Bar dataKey="box" stackId="a" fill={c} fillOpacity={0.28} stroke={c} radius={2} shape={<BoxWhisker c={c} />} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -2323,6 +2326,51 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
 
 // ─── Head to Head Tab ────────────────────────────────────────────────────────
 
+// Member selector for the Head-to-Head tab. Hoisted to module scope so it isn't
+// recreated on each render (which would lose the <select> focus). The member
+// list it previously closed over is now threaded in as the `activeUsers` prop.
+function MemberPill({ activeUsers, selected, onSelect, exclude }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+      <select
+        value={selected?.id ?? ''}
+        onChange={e => {
+          const u = activeUsers.find(u => u.id === e.target.value)
+          if (u) onSelect(u)
+        }}
+        style={{
+          width: '100%',
+          appearance: 'none',
+          background: 'rgba(var(--fg-rgb), 0.06)',
+          border: '1px solid rgba(var(--fg-rgb), 0.1)',
+          borderRadius: '10px',
+          padding: '10px 36px 10px 14px',
+          fontFamily: "'DM Sans',sans-serif",
+          fontWeight: 600,
+          fontSize: '14px',
+          color: 'var(--text-strong)',
+          cursor: 'pointer',
+          outline: 'none',
+        }}
+      >
+        {activeUsers
+          .filter(u => u.id !== exclude?.id)
+          .map(u => (
+            <option key={u.id} value={u.id} style={{ background: 'var(--bg-2)', color: 'var(--text-strong)' }}>
+              {u.name}
+            </option>
+          ))}
+      </select>
+      <span style={{
+        position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+        color: 'var(--text-dim)', pointerEvents: 'none', fontSize: '11px',
+      }}>
+        ▾
+      </span>
+    </div>
+  )
+}
+
 function HeadToHeadTab({ movies, ratings, users, loading }) {
   const activeUsers = useMemo(
     () => users.filter(u => u.is_active !== false),
@@ -2423,56 +2471,16 @@ function HeadToHeadTab({ movies, ratings, users, loading }) {
     )
   }
 
-  const MemberPill = ({ selected, onSelect, exclude }) => (
-    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-      <select
-        value={selected?.id ?? ''}
-        onChange={e => {
-          const u = activeUsers.find(u => u.id === e.target.value)
-          if (u) onSelect(u)
-        }}
-        style={{
-          width: '100%',
-          appearance: 'none',
-          background: 'rgba(var(--fg-rgb), 0.06)',
-          border: '1px solid rgba(var(--fg-rgb), 0.1)',
-          borderRadius: '10px',
-          padding: '10px 36px 10px 14px',
-          fontFamily: "'DM Sans',sans-serif",
-          fontWeight: 600,
-          fontSize: '14px',
-          color: 'var(--text-strong)',
-          cursor: 'pointer',
-          outline: 'none',
-        }}
-      >
-        {activeUsers
-          .filter(u => u.id !== exclude?.id)
-          .map(u => (
-            <option key={u.id} value={u.id} style={{ background: 'var(--bg-2)', color: 'var(--text-strong)' }}>
-              {u.name}
-            </option>
-          ))}
-      </select>
-      <span style={{
-        position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-        color: 'var(--text-dim)', pointerEvents: 'none', fontSize: '11px',
-      }}>
-        ▾
-      </span>
-    </div>
-  )
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* Member selectors */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <MemberPill selected={userA} onSelect={setUserA} exclude={userB} />
+        <MemberPill activeUsers={activeUsers} selected={userA} onSelect={setUserA} exclude={userB} />
         <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--hairline)', flexShrink: 0 }}>
           vs
         </span>
-        <MemberPill selected={userB} onSelect={setUserB} exclude={userA} />
+        <MemberPill activeUsers={activeUsers} selected={userB} onSelect={setUserB} exclude={userA} />
       </div>
 
       {(!h2h || h2h.sharedCount < 3) ? (

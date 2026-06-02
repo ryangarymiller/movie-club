@@ -474,6 +474,24 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     }
   })
 
+  // 4b. Most Consistent Picker — picker whose picks' averages vary the least (min 2 picks)
+  let mostConsistentPicker = null
+  let mostConsistentPickerSd = Infinity
+  let mostConsistentPickerCount = 0
+  Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
+    const user = userMap[uid]
+    if (!user) return
+    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
+    const avgs = pickedFilms.map(m => movieAvgScore[m.id]).filter(v => v != null)
+    if (avgs.length < 2) return
+    const sd = stddev(avgs)
+    if (sd != null && sd < mostConsistentPickerSd) {
+      mostConsistentPickerSd = sd
+      mostConsistentPicker = user
+      mostConsistentPickerCount = avgs.length
+    }
+  })
+
   // 5. Most Divisive Film — highest stddev (min 3 scores)
   const threePlus = seasonMovies.filter(m => scoresByMovie[m.id].length >= 3)
   const mostDivisiveFilm = threePlus.length
@@ -577,6 +595,7 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     filmOfSeason, flopOfSeason,
     pickerOfSeason, pickerOfSeasonAvg, pickerOfSeasonCount,
     iceCold, iceColdAvg, iceColdCount,
+    mostConsistentPicker, mostConsistentPickerSd, mostConsistentPickerCount,
     mostDivisiveFilm, mostUnanimousFilm,
     harshestCritic, harshestCriticAvg,
     mostGenerous, mostGenerousAvg,
@@ -681,6 +700,34 @@ export function computeAnnualAwards(movies, allRatings, users, year) {
     if (a > mostGenerousAvg) { mostGenerousAvg = a; mostGenerous = u }
   })
 
+  // 6b. Most Consistent — member whose own scores vary the least (min 3 scores)
+  let mostConsistent = null
+  let mostConsistentSd = Infinity
+  usersWithScores.forEach(u => {
+    const scores = userScoresGiven[u.id]
+    if (!scores || scores.length < 3) return
+    const sd = stddev(scores)
+    if (sd != null && sd < mostConsistentSd) { mostConsistentSd = sd; mostConsistent = u }
+  })
+
+  // 6c. The Wildcard — biggest contrarian: highest avg |score − film avg| (min 3 scored films)
+  const userDevs = {}
+  relevantRatings.forEach(r => {
+    if (r.score == null) return
+    const filmAvgVal = movieAvgScore[r.movie_id]
+    if (filmAvgVal == null) return
+    if (!userDevs[r.user_id]) userDevs[r.user_id] = []
+    userDevs[r.user_id].push(Math.abs(Number(r.score) - filmAvgVal))
+  })
+  let wildcard = null
+  let wildcardHighest = -Infinity
+  users.forEach(u => {
+    const devs = userDevs[u.id]
+    if (!devs || devs.length < 3) return
+    const a = avg(devs)
+    if (a > wildcardHighest) { wildcardHighest = a; wildcard = u }
+  })
+
   // 7. Most Divisive Film — highest stddev (min 3 scores)
   const threePlus = revealedMovies.filter(m => scoresByMovie[m.id].length >= 3)
   const mostDivisiveFilm = threePlus.length
@@ -722,6 +769,8 @@ export function computeAnnualAwards(movies, allRatings, users, year) {
     pickerOfYear, pickerOfYearAvg, pickerOfYearCount,
     harshestCritic, harshestCriticAvg,
     mostGenerous, mostGenerousAvg,
+    mostConsistent, mostConsistentSd,
+    wildcard, wildcardHighest,
     mostDivisiveFilm,
     oracleOfYear, oracleBestDelta,
     movieAvgScore,
@@ -1732,6 +1781,17 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             winnerClickable
             onWinnerClick={() => onMember?.(awards.oracleWinner)}
           />
+
+          {/* 11. Most Consistent Picker */}
+          <AwardCard
+            emoji="🎚️"
+            label="Most Consistent Picker"
+            winner={awards.mostConsistentPicker?.name}
+            metric={awards.mostConsistentPicker ? `pick spread: ±${fmt(awards.mostConsistentPickerSd)}` : null}
+            noData={!awards.mostConsistentPicker}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.mostConsistentPicker)}
+          />
         </div>
       )}
     </div>
@@ -1966,6 +2026,28 @@ function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMembe
           noData={!awards.oracleOfYear}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.oracleOfYear)}
+        />
+
+        {/* 9. Most Consistent */}
+        <AwardCard
+          emoji="🎚️"
+          label="Most Consistent"
+          winner={awards.mostConsistent?.name}
+          metric={awards.mostConsistent ? `score spread: ±${fmt(awards.mostConsistentSd)}` : null}
+          noData={!awards.mostConsistent}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.mostConsistent)}
+        />
+
+        {/* 10. The Wildcard */}
+        <AwardCard
+          emoji="🎭"
+          label="The Wildcard"
+          winner={awards.wildcard?.name}
+          metric={awards.wildcard ? `avg deviation: ±${fmt(awards.wildcardHighest)}` : null}
+          noData={!awards.wildcard}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.wildcard)}
         />
       </div>
     </div>

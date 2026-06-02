@@ -331,28 +331,32 @@ export default function Profile() {
         return
       }
       // DB empty — fall back to compute approach
-      const [
-        { data: moviesData },
-        { data: ratingsData },
-        { data: usersData },
-        { data: monthsData },
-        { data: seasonsData },
-      ] = await Promise.all([
-        supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
-        supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-        supabase.from('users').select('id, name, email, role, joined_at, is_active'),
-        supabase.from('months').select('id, season_id, month_year, status'),
-        supabase.from('seasons').select('id, name, start_date, end_date'),
-      ])
-      if (cancelled) return
-      const data = {
-        movies: moviesData ?? [],
-        ratings: ratingsData ?? [],
-        users: usersData ?? [],
-        months: monthsData ?? [],
-        seasons: seasonsData ?? [],
+      try {
+        const [
+          { data: moviesData },
+          { data: ratingsData },
+          { data: usersData },
+          { data: monthsData },
+          { data: seasonsData },
+        ] = await Promise.all([
+          supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
+          supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
+          supabase.from('users').select('id, name, email, role, joined_at, is_active'),
+          supabase.from('months').select('id, season_id, month_year, status'),
+          supabase.from('seasons').select('id, name, start_date, end_date'),
+        ])
+        if (cancelled) return
+        const data = {
+          movies: moviesData ?? [],
+          ratings: ratingsData ?? [],
+          users: usersData ?? [],
+          months: monthsData ?? [],
+          seasons: seasonsData ?? [],
+        }
+        setUserAwards(getAwardsForUser(displayProfile.id, data))
+      } catch {
+        if (!cancelled) setUserAwards([])
       }
-      setUserAwards(getAwardsForUser(displayProfile.id, data))
     }
     loadAwards()
     return () => { cancelled = true }
