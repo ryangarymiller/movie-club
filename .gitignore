@@ -22,6 +22,9 @@ MOVIE_CLUB_SPEC.md
 
 # Agent skills (local tooling, not app code)
 .agents/
+
+# One-off maintenance scripts (may contain env references)
+scripts/
 dist-ssr
 *.local
 
