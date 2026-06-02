@@ -5,6 +5,32 @@ import ScoreModal from '../components/ScoreModal'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
+export const MEMBER_COLORS = {
+  'Ryan Miller':    '#6366f1',
+  'Ryan Bey':       '#f43f5e',
+  'Andrew Bond':    '#10b981',
+  'Zack Anjoorian': '#f59e0b',
+  'Chris Deschenes':'#3b82f6',
+}
+
+export function pickerColor(pickerName) {
+  if (!pickerName) return undefined
+  return MEMBER_COLORS[pickerName] ?? undefined
+}
+
+export function sortMonthsDescending(months) {
+  return [...months].sort((a, b) => {
+    if (a.month_year < b.month_year) return 1
+    if (a.month_year > b.month_year) return -1
+    return 0
+  })
+}
+
+function formatMonthYear(monthYear) {
+  const d = new Date(monthYear + '-01')
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
 function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
@@ -105,7 +131,7 @@ function SortButton({ label, active, onClick }) {
 
 // ─── PosterCard ───────────────────────────────────────────────────────────────
 
-function PosterCard({ movie, vault = false, onClick }) {
+function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
   const score = movie.historical_avg_score
   const [hovered, setHovered] = useState(false)
   const scored = score != null
@@ -130,6 +156,7 @@ function PosterCard({ movie, vault = false, onClick }) {
             : '0 4px 18px rgba(0,0,0,0.6)',
           transition: 'transform 0.18s ease, box-shadow 0.18s ease',
           transform: hovered ? 'translateY(-3px) scale(1.02)' : 'none',
+          ...(pickerBorderColor ? { borderLeft: `3px solid ${pickerBorderColor}` } : {}),
         }}
       >
         {movie.poster_url ? (
@@ -217,31 +244,94 @@ function PosterCard({ movie, vault = false, onClick }) {
   )
 }
 
+// ─── PickerLegend ─────────────────────────────────────────────────────────────
+
+function PickerLegend({ movies, userById }) {
+  // Collect unique pickers that are revealed
+  const seen = new Set()
+  const entries = []
+  for (const m of movies) {
+    if (m.picker_revealed && m.picked_by_user_id) {
+      const name = userById[m.picked_by_user_id]?.name
+      if (name && !seen.has(name)) {
+        seen.add(name)
+        const color = pickerColor(name)
+        if (color) entries.push({ name, color })
+      }
+    }
+  }
+  if (entries.length === 0) return null
+
+  return (
+    <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      <p style={{
+        fontFamily: "'DM Mono', monospace",
+        fontSize: '10px',
+        letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        color: 'rgba(255,255,255,0.2)',
+        margin: '0 0 10px',
+      }}>
+        Pickers
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 16px' }}>
+        {entries.map(({ name, color }) => (
+          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: color,
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '10px',
+              color: 'rgba(255,255,255,0.4)',
+              letterSpacing: '0.04em',
+            }}>
+              {name}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── PosterGrid ───────────────────────────────────────────────────────────────
 
-function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSelect }) {
+function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSelect, userById = {} }) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '10px',
-      }}
-      className="films-grid"
-    >
-      {loading
-        ? [...Array(skeletonCount)].map((_, i) => (
-            <Skeleton key={i} style={{ aspectRatio: '2/3', borderRadius: '8px' }} />
-          ))
-        : movies.map(m => (
-            <PosterCard
-              key={m.id}
-              movie={m}
-              vault={vault || isVault(m)}
-              onClick={onSelect}
-            />
-          ))
-      }
+    <div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '10px',
+        }}
+        className="films-grid"
+      >
+        {loading
+          ? [...Array(skeletonCount)].map((_, i) => (
+              <Skeleton key={i} style={{ aspectRatio: '2/3', borderRadius: '8px' }} />
+            ))
+          : movies.map(m => {
+              const name = m.picker_revealed ? (userById[m.picked_by_user_id]?.name ?? null) : null
+              const borderColor = name ? pickerColor(name) : undefined
+              return (
+                <PosterCard
+                  key={m.id}
+                  movie={m}
+                  vault={vault || isVault(m)}
+                  onClick={onSelect}
+                  pickerBorderColor={borderColor}
+                />
+              )
+            })
+        }
+      </div>
+      {!loading && <PickerLegend movies={movies} userById={userById} />}
     </div>
   )
 }
@@ -450,6 +540,255 @@ function StreamingSection({ providers }) {
   )
 }
 
+// ─── Prediction helpers (exported for tests) ─────────────────────────────────
+
+export function predictionDelta(predicted, actual) {
+  if (predicted == null || actual == null) return null
+  return Math.abs(Number(predicted) - Number(actual))
+}
+
+export function deltaColor(delta) {
+  if (delta == null) return 'rgba(255,255,255,0.4)'
+  if (delta <= 1.0) return '#86efac'   // green
+  if (delta <= 2.0) return '#fbbf24'   // yellow
+  return '#f87171'                     // red
+}
+
+export function avgAccuracy(predictions, ratings) {
+  // predictions: [{target_user_id, predicted_score}]
+  // ratings: [{user_id, score}]
+  const ratingByUser = {}
+  for (const r of ratings) ratingByUser[r.user_id] = r.score
+  const deltas = predictions
+    .map(p => predictionDelta(p.predicted_score, ratingByUser[p.target_user_id]))
+    .filter(d => d != null)
+  if (!deltas.length) return null
+  return deltas.reduce((s, d) => s + d, 0) / deltas.length
+}
+
+// ─── PredictionsSection ───────────────────────────────────────────────────────
+
+function PredictionsSection({ movie, profile, users, ratings, predictions, onSaved }) {
+  const otherUsers = users.filter(u => u.id !== profile?.id)
+  const [inputMap, setInputMap] = useState({}) // target_user_id → string value
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+
+  // Populate inputs with existing predictions
+  useEffect(() => {
+    const map = {}
+    for (const p of predictions) {
+      map[p.target_user_id] = String(p.predicted_score ?? '')
+    }
+    setInputMap(map)
+  }, [predictions])
+
+  if (!profile) return null
+
+  const scoresRevealed = movie?.scores_revealed
+
+  // After reveal: show predicted vs actual
+  if (scoresRevealed) {
+    if (!predictions.length) return null
+
+    const ratingByUser = {}
+    for (const r of ratings) ratingByUser[r.user_id] = r.score
+
+    const myPredictions = predictions.filter(p => p.predicting_user_id === profile.id)
+    if (!myPredictions.length) return null
+
+    const acc = avgAccuracy(myPredictions, ratings)
+
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <SectionLabel>Predictions</SectionLabel>
+          {acc != null && (
+            <span style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '10px',
+              color: deltaColor(acc),
+              letterSpacing: '0.06em',
+            }}>
+              Your avg accuracy: ±{acc.toFixed(2)}
+            </span>
+          )}
+        </div>
+        {myPredictions.map(p => {
+          const targetUser = users.find(u => u.id === p.target_user_id)
+          const actual = ratingByUser[p.target_user_id]
+          const delta = predictionDelta(p.predicted_score, actual)
+          return (
+            <div
+              key={p.target_user_id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '9px 0',
+                borderBottom: '1px solid rgba(255,255,255,0.04)',
+              }}
+            >
+              <span style={{
+                flex: 1,
+                minWidth: 0,
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: '13px',
+                color: 'rgba(255,255,255,0.7)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {targetUser?.name ?? 'Unknown'}
+              </span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>
+                {p.predicted_score != null ? Number(p.predicted_score).toFixed(2) : '—'}
+              </span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.2)', margin: '0 2px' }}>→</span>
+              <span style={{
+                fontFamily: "'DM Mono', monospace",
+                fontSize: '13px',
+                fontWeight: 600,
+                color: actual != null ? scoreColor(Number(actual)) : 'rgba(255,255,255,0.2)',
+              }}>
+                {actual != null ? Number(actual).toFixed(2) : '—'}
+              </span>
+              {delta != null && (
+                <span style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: '10px',
+                  color: deltaColor(delta),
+                  background: `${deltaColor(delta)}18`,
+                  border: `1px solid ${deltaColor(delta)}40`,
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  flexShrink: 0,
+                }}>
+                  ±{delta.toFixed(2)}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Before reveal: input form
+  async function handleSave() {
+    if (!profile || !movie) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const rows = otherUsers
+        .filter(u => inputMap[u.id] && inputMap[u.id].trim() !== '')
+        .map(u => {
+          const val = parseFloat(inputMap[u.id])
+          if (isNaN(val) || val < 0.01 || val > 10.0) throw new Error(`Invalid score for ${u.name}`)
+          return {
+            movie_id: movie.id,
+            predicting_user_id: profile.id,
+            target_user_id: u.id,
+            predicted_score: Math.round(val * 100) / 100,
+          }
+        })
+      if (rows.length > 0) {
+        const { error } = await supabase
+          .from('score_predictions')
+          .upsert(rows, { onConflict: 'movie_id,predicting_user_id,target_user_id' })
+        if (error) throw error
+      }
+      if (onSaved) onSaved()
+    } catch (err) {
+      setSaveError(err.message ?? 'Failed to save predictions.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <SectionLabel>Predictions</SectionLabel>
+      <p style={{
+        fontFamily: "'DM Sans', sans-serif",
+        fontSize: '12px',
+        color: 'rgba(255,255,255,0.3)',
+        margin: '0 0 14px',
+        lineHeight: 1.5,
+      }}>
+        Predict each member's score. Revealed when scores are shown.
+      </p>
+      {otherUsers.map(u => (
+        <div
+          key={u.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '8px 0',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+          }}
+        >
+          <span style={{
+            flex: 1,
+            minWidth: 0,
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: '13px',
+            color: 'rgba(255,255,255,0.7)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {u.name}
+          </span>
+          <input
+            type="number"
+            min="0.01"
+            max="10"
+            step="0.01"
+            placeholder="—"
+            value={inputMap[u.id] ?? ''}
+            onChange={e => setInputMap(prev => ({ ...prev, [u.id]: e.target.value }))}
+            style={{
+              width: '72px',
+              padding: '5px 8px',
+              borderRadius: '7px',
+              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(255,255,255,0.04)',
+              color: 'white',
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '13px',
+              textAlign: 'right',
+              outline: 'none',
+              flexShrink: 0,
+            }}
+          />
+        </div>
+      ))}
+      {saveError && (
+        <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#f87171', margin: '10px 0 0' }}>
+          {saveError}
+        </p>
+      )}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          marginTop: '14px',
+          background: saving ? 'rgba(255,255,255,0.06)' : 'var(--accent)',
+          color: saving ? '#4b5563' : '#fff',
+          fontFamily: "'DM Sans', sans-serif",
+          fontWeight: 600,
+          fontSize: '13px',
+          border: 'none',
+          borderRadius: '8px',
+          padding: '8px 16px',
+          cursor: saving ? 'not-allowed' : 'pointer',
+          opacity: saving ? 0.6 : 1,
+        }}
+      >
+        {saving ? 'Saving…' : 'Save Predictions'}
+      </button>
+    </div>
+  )
+}
+
 function FilmDetailOverlay({ movie, onClose }) {
   const { profile, isAdmin } = useAuth()
   const [visible, setVisible] = useState(false)
@@ -464,6 +803,7 @@ function FilmDetailOverlay({ movie, onClose }) {
   const [editText, setEditText] = useState('')
   const [reviewError, setReviewError] = useState('')
   const [reviewSubmitting, setReviewSubmitting] = useState(false)
+  const [predictions, setPredictions] = useState([])
   const scrollRef = useRef(null)
 
   // Trigger animation
@@ -484,6 +824,7 @@ function FilmDetailOverlay({ movie, onClose }) {
       { data: ratingsData },
       { data: usersData },
       { data: reviewsData },
+      { data: predictionsData },
     ] = await Promise.all([
       supabase
         .from('movies_safe')
@@ -501,12 +842,17 @@ function FilmDetailOverlay({ movie, onClose }) {
         .from('reviews')
         .select('id, movie_id, user_id, body, created_at')
         .eq('movie_id', movieId),
+      supabase
+        .from('score_predictions')
+        .select('id, predicting_user_id, target_user_id, predicted_score')
+        .eq('movie_id', movieId),
     ])
 
     setFullMovie(movieData ?? movieFallback)
     setRatings(ratingsData ?? [])
     setUsers(usersData ?? [])
     setReviews(reviewsData ?? [])
+    setPredictions(predictionsData ?? [])
     setDetailLoading(false)
   }, [])
 
@@ -517,6 +863,7 @@ function FilmDetailOverlay({ movie, onClose }) {
     setRatings([])
     setUsers([])
     setReviews([])
+    setPredictions([])
     setFullMovie(null)
     setShowScoreModal(false)
     setReviewText('')
@@ -914,6 +1261,17 @@ function FilmDetailOverlay({ movie, onClose }) {
             )}
           </div>
 
+          {/* ── PREDICTIONS ── */}
+          <Divider />
+          <PredictionsSection
+            movie={m}
+            profile={profile}
+            users={users}
+            ratings={ratings}
+            predictions={predictions}
+            onSaved={() => fetchDetails(movie.id, movie)}
+          />
+
           {/* ── PICKER ── */}
           <Divider />
           <div>
@@ -1245,7 +1603,7 @@ const SORTS = [
   { key: 'low', label: 'Lowest Rated' },
 ]
 
-function AllFilmsTab({ movies, loading, onSelect }) {
+function AllFilmsTab({ movies, loading, onSelect, userById }) {
   const [sort, setSort] = useState('recent')
 
   const sorted = [...movies].sort((a, b) => {
@@ -1264,14 +1622,14 @@ function AllFilmsTab({ movies, loading, onSelect }) {
         ))}
       </div>
 
-      <PosterGrid movies={sorted} loading={loading} onSelect={onSelect} />
+      <PosterGrid movies={sorted} loading={loading} onSelect={onSelect} userById={userById} />
     </div>
   )
 }
 
 // ─── VaultTab ─────────────────────────────────────────────────────────────────
 
-function VaultTab({ movies, loading, onSelect }) {
+function VaultTab({ movies, loading, onSelect, userById }) {
   const vaultMovies = [...movies]
     .filter(isVault)
     .sort((a, b) => b.historical_avg_score - a.historical_avg_score)
@@ -1328,6 +1686,7 @@ function VaultTab({ movies, loading, onSelect }) {
           loading={loading}
           skeletonCount={4}
           onSelect={onSelect}
+          userById={userById}
         />
       )}
     </div>
@@ -1336,7 +1695,7 @@ function VaultTab({ movies, loading, onSelect }) {
 
 // ─── BySeasonTab ──────────────────────────────────────────────────────────────
 
-function BySeasonTab({ movies, seasons, loading, onSelect }) {
+function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
   if (loading) {
     return (
       <div>
@@ -1408,16 +1767,265 @@ function BySeasonTab({ movies, seasons, loading, onSelect }) {
             )}
           </div>
 
-          <PosterGrid movies={sMovies} loading={false} onSelect={onSelect} />
+          <PosterGrid movies={sMovies} loading={false} onSelect={onSelect} userById={userById} />
         </div>
       ))}
     </div>
   )
 }
 
+// ─── HistoryTab ───────────────────────────────────────────────────────────────
+
+function HistoryFilmCard({ movie, userById, onSelect }) {
+  const [hovered, setHovered] = useState(false)
+
+  // Compute avg score from ratings if present, else fall back to historical_avg_score
+  const computedScore = movie._avgScore ?? movie.historical_avg_score
+  const scored = computedScore != null
+
+  const pickerName = movie.picker_revealed && movie.picked_by_user_id
+    ? (userById[movie.picked_by_user_id]?.name ?? null)
+    : null
+  const borderColor = pickerName ? pickerColor(pickerName) : undefined
+
+  const badgeColor = scored
+    ? (computedScore >= 8.5 ? '#fbbf24' : computedScore >= 7 ? '#86efac' : computedScore <= 4 ? '#f87171' : 'var(--accent-light, #fca5a5)')
+    : null
+
+  return (
+    <div
+      onClick={() => onSelect(movie)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ cursor: 'pointer' }}
+    >
+      {/* Poster */}
+      <div style={{
+        position: 'relative',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        aspectRatio: '2/3',
+        background: '#111218',
+        boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
+        transition: 'transform 0.18s ease',
+        transform: hovered ? 'translateY(-3px) scale(1.02)' : 'none',
+        ...(borderColor ? { borderLeft: `3px solid ${borderColor}` } : {}),
+      }}>
+        {movie.poster_url ? (
+          <img
+            src={`https://image.tmdb.org/t/p/w342${movie.poster_url}`}
+            alt={movie.title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            onError={e => { e.target.style.display = 'none' }}
+          />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '2rem', color: 'rgba(255,255,255,0.12)' }}>
+              {initials(movie.title)}
+            </span>
+          </div>
+        )}
+
+        {/* Score badge */}
+        {scored && (
+          <div style={{ position: 'absolute', bottom: '6px', right: '6px' }}>
+            <span style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.75)',
+              color: badgeColor,
+              border: `1px solid ${badgeColor}`,
+              display: 'block',
+            }}>
+              {Number(computedScore).toFixed(1)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Title */}
+      <p style={{
+        fontFamily: "'Bebas Neue', sans-serif",
+        fontSize: '0.9rem',
+        letterSpacing: '0.04em',
+        color: '#fff',
+        margin: '6px 0 2px',
+        lineHeight: 1.2,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {movie.title}
+      </p>
+
+      {/* Picker name */}
+      {pickerName && (
+        <p style={{
+          fontFamily: "'DM Mono', monospace",
+          fontSize: '9px',
+          color: 'rgba(255,255,255,0.3)',
+          margin: 0,
+          letterSpacing: '0.04em',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {pickerName}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function HistoryTab({ userById, onSelect }) {
+  const [months, setMonths] = useState([])
+  const [moviesByMonth, setMoviesByMonth] = useState({})
+  const [ratingsByMovie, setRatingsByMovie] = useState({})
+  const [selectedMonthId, setSelectedMonthId] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const { data: monthsData } = await supabase
+        .from('months')
+        .select('id, month_year, status')
+        .eq('status', 'revealed')
+        .order('month_year', { ascending: false })
+
+      if (!monthsData || monthsData.length === 0) {
+        setLoading(false)
+        return
+      }
+
+      // Fetch all movies for revealed months in one query
+      const monthIds = monthsData.map(m => m.id)
+      const { data: moviesData } = await supabase
+        .from('movies_safe')
+        .select('id, month_id, title, poster_url, year_released, director, genre, runtime_minutes, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id')
+        .in('month_id', monthIds)
+
+      const movieIds = (moviesData ?? []).map(m => m.id)
+      let ratingsData = []
+      if (movieIds.length > 0) {
+        const { data } = await supabase
+          .from('ratings')
+          .select('movie_id, score')
+          .in('movie_id', movieIds)
+        ratingsData = data ?? []
+      }
+
+      // Build ratings lookup: movie_id → scores[]
+      const ratingsLookup = {}
+      for (const r of ratingsData) {
+        if (!ratingsLookup[r.movie_id]) ratingsLookup[r.movie_id] = []
+        if (r.score != null) ratingsLookup[r.movie_id].push(Number(r.score))
+      }
+
+      // Build movies by month with computed avg
+      const byMonth = {}
+      for (const m of (moviesData ?? [])) {
+        const scores = ratingsLookup[m.id] ?? []
+        const avgScore = scores.length > 0
+          ? scores.reduce((s, v) => s + v, 0) / scores.length
+          : null
+        const enriched = { ...m, _avgScore: avgScore }
+        if (!byMonth[m.month_id]) byMonth[m.month_id] = []
+        byMonth[m.month_id].push(enriched)
+      }
+
+      setMonths(monthsData)
+      setMoviesByMonth(byMonth)
+      setSelectedMonthId(monthsData[0]?.id ?? null)
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const selectedMovies = selectedMonthId ? (moviesByMonth[selectedMonthId] ?? []) : []
+
+  return (
+    <div>
+      {/* Month pills */}
+      {loading ? (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} style={{ height: '30px', width: '90px', borderRadius: '999px' }} />
+          ))}
+        </div>
+      ) : months.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(255,255,255,0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
+          No revealed months yet.
+        </div>
+      ) : (
+        <>
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '20px',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+            paddingBottom: '2px',
+          }}>
+            {months.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setSelectedMonthId(m.id)}
+                style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: '11px',
+                  letterSpacing: '0.08em',
+                  padding: '6px 14px',
+                  borderRadius: '999px',
+                  border: selectedMonthId === m.id ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                  background: selectedMonthId === m.id ? 'var(--accent)' : 'transparent',
+                  color: selectedMonthId === m.id ? '#fff' : 'rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                {formatMonthYear(m.month_year)}
+              </button>
+            ))}
+          </div>
+
+          {/* Film grid for selected month */}
+          {selectedMovies.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(255,255,255,0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
+              No films for this month.
+            </div>
+          ) : (
+            <div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '14px',
+              }}>
+                {selectedMovies.map(m => (
+                  <HistoryFilmCard
+                    key={m.id}
+                    movie={m}
+                    userById={userById}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+              <PickerLegend movies={selectedMovies} userById={userById} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Films page ──────────────────────────────────────────────────────────
 
-const TABS = ['All Films', 'The Vault', 'By Season']
+const TABS = ['All Films', 'The Vault', 'By Season', 'History']
 
 export default function Films() {
   const { profile } = useAuth()
@@ -1425,6 +2033,7 @@ export default function Films() {
   const [loading, setLoading] = useState(true)
   const [movies, setMovies] = useState([])
   const [seasons, setSeasons] = useState([])
+  const [userById, setUserById] = useState({})
   const [selectedMovie, setSelectedMovie] = useState(null)
 
   useEffect(() => {
@@ -1433,12 +2042,14 @@ export default function Films() {
         { data: moviesData },
         { data: monthsData },
         { data: seasonsData },
+        { data: usersData },
       ] = await Promise.all([
         supabase.from('movies_safe').select(
           'id, month_id, title, tmdb_id, poster_url, genre, director, runtime_minutes, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'
         ),
         supabase.from('months').select('id, month_year, season_id, status').order('month_year', { ascending: true }),
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: true }),
+        supabase.from('users').select('id, name'),
       ])
 
       // Build a lookup: month_id → { order, season_id, month_year }
@@ -1469,8 +2080,13 @@ export default function Films() {
         }
       })
 
+      // Build user lookup by id
+      const userLookup = {}
+      ;(usersData ?? []).forEach(u => { userLookup[u.id] = u })
+
       setMovies(enriched)
       setSeasons(seasonsData ?? [])
+      setUserById(userLookup)
       setLoading(false)
     }
     load()
@@ -1545,13 +2161,16 @@ export default function Films() {
         {/* Tab content */}
         <div style={{ minWidth: 0 }}>
           {activeTab === 'All Films' && (
-            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} />
+            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} />
           )}
           {activeTab === 'The Vault' && (
-            <VaultTab movies={movies} loading={loading} onSelect={handleSelect} />
+            <VaultTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} />
           )}
           {activeTab === 'By Season' && (
-            <BySeasonTab movies={movies} seasons={seasons} loading={loading} onSelect={handleSelect} />
+            <BySeasonTab movies={movies} seasons={seasons} loading={loading} onSelect={handleSelect} userById={userById} />
+          )}
+          {activeTab === 'History' && (
+            <HistoryTab userById={userById} onSelect={handleSelect} />
           )}
         </div>
 

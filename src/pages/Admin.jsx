@@ -400,6 +400,113 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
 // ─────────────────────────────────────────────
 // TAB 3 — Members
 // ─────────────────────────────────────────────
+function InviteCard({ onRefresh, setSuccess }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState(null)
+  const [inviteSuccess, setInviteSuccess] = useState(null)
+
+  const inputStyle = {
+    width: '100%', padding: '9px 10px', borderRadius: '8px', boxSizing: 'border-box',
+    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+    color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none',
+  }
+
+  async function handleInvite(e) {
+    e.preventDefault()
+    setInviteError(null)
+    setInviteSuccess(null)
+
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim().toLowerCase()
+
+    if (!trimmedName) { setInviteError('Name is required'); return }
+    if (!trimmedEmail) { setInviteError('Email is required'); return }
+    if (!trimmedEmail.includes('@')) { setInviteError('Enter a valid email address'); return }
+
+    setInviting(true)
+    const { error } = await supabase.from('users').insert({
+      name: trimmedName,
+      email: trimmedEmail,
+      is_active: true,
+      role: 'member',
+      joined_at: new Date().toISOString().split('T')[0],
+      has_completed_onboarding: false,
+    })
+    setInviting(false)
+
+    if (error) {
+      setInviteError(error.message)
+    } else {
+      setInviteSuccess(`✓ ${trimmedName} invited — they can sign in with ${trimmedEmail}`)
+      setName('')
+      setEmail('')
+      onRefresh()
+    }
+  }
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+      <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Invite Member</p>
+
+      {inviteError && (
+        <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px' }}>
+          <span style={{ color: '#f87171', fontSize: '13px' }}>{inviteError}</span>
+        </div>
+      )}
+      {inviteSuccess && (
+        <div style={{ background: '#14532d', border: '1px solid #166534', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px' }}>
+          <span style={{ color: '#4ade80', fontSize: '13px' }}>{inviteSuccess}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleInvite} noValidate>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+            <Label>Name</Label>
+            <input
+              type="text"
+              placeholder="e.g. Alex Jones"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              style={{ ...inputStyle, marginTop: '6px' }}
+              aria-label="Name"
+            />
+          </div>
+          <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+            <Label>Email</Label>
+            <input
+              type="email"
+              placeholder="e.g. alex@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              style={{ ...inputStyle, marginTop: '6px' }}
+              aria-label="Email"
+            />
+          </div>
+        </div>
+        <button
+          type="submit"
+          disabled={inviting}
+          style={{
+            padding: '9px 20px', borderRadius: '8px', border: 'none',
+            background: 'var(--accent)', color: 'white', fontSize: '13px',
+            fontWeight: 500, cursor: inviting ? 'not-allowed' : 'pointer',
+            opacity: inviting ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif",
+          }}
+        >
+          {inviting ? 'Inviting…' : 'Send Invite'}
+        </button>
+      </form>
+
+      <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
+        This creates their account — share movie-club-blond.vercel.app with them to sign in.
+      </p>
+    </div>
+  )
+}
+
 function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) {
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
@@ -432,6 +539,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <InviteCard onRefresh={onRefresh} setSuccess={setSuccess} />
       {users.map(user => (
         <div key={user.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>

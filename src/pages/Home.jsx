@@ -13,6 +13,14 @@ if (!document.getElementById('mc-fonts')) {
 
 const FOUNDING = new Date('2026-01-05')
 
+const MEMBER_COLORS = {
+  'Ryan Miller':    '#6366f1',
+  'Ryan Bey':       '#f43f5e',
+  'Andrew Bond':    '#10b981',
+  'Zack Anjoorian': '#f59e0b',
+  'Chris Deschenes':'#3b82f6',
+}
+
 function daysSince(d) {
   return Math.floor((Date.now() - d.getTime()) / 86400000)
 }
@@ -29,10 +37,14 @@ function Skeleton({ className = '' }) {
   return <div className={`animate-pulse bg-white/5 rounded ${className}`} />
 }
 
-function PosterCard({ movie, pending }) {
+function PosterCard({ movie, pending, pickerName }) {
   const score = movie.historical_avg_score
+  const borderColor = pickerName ? MEMBER_COLORS[pickerName] : undefined
   return (
-    <div className="relative shrink-0 w-28 cursor-pointer">
+    <div
+      className="relative shrink-0 w-28 cursor-pointer"
+      style={borderColor ? { borderBottom: `3px solid ${borderColor}` } : undefined}
+    >
       <div className="relative overflow-hidden rounded-lg bg-gray-900 shadow-xl shadow-black/60" style={{ aspectRatio: '2/3' }}>
         {movie.poster_url ? (
           <img
@@ -113,6 +125,7 @@ export default function Home() {
   const [activeMovies, setActiveMovies] = useState([])
   const [allMovies, setAllMovies] = useState([])
   const [myRatings, setMyRatings] = useState([])
+  const [users, setUsers] = useState([])
 
   // Score modal state
   const [modalMovie, setModalMovie] = useState(null)
@@ -120,15 +133,17 @@ export default function Home() {
 
   const load = useCallback(async () => {
     if (!profile) return
-    const [{ data: activeMonth }, { data: movies }, { data: ratings }] = await Promise.all([
+    const [{ data: activeMonth }, { data: movies }, { data: ratings }, { data: usersData }] = await Promise.all([
       supabase.from('months').select('id').eq('status', 'active').maybeSingle(),
-      supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score'),
+      supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed'),
       supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
+      supabase.from('users').select('id, name'),
     ])
     const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
     setActiveMovies(active)
     setAllMovies(movies ?? [])
     setMyRatings(ratings ?? [])
+    setUsers(usersData ?? [])
     setLoading(false)
   }, [profile])
 
@@ -211,7 +226,12 @@ export default function Home() {
             </div>
           ) : (
             <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', scrollbarWidth: 'none' }}>
-              {activeMovies.map(m => <PosterCard key={m.id} movie={m} pending={!scoredIds.has(m.id)} />)}
+              {activeMovies.map(m => {
+                const pickerName = m.picker_revealed
+                  ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
+                  : undefined
+                return <PosterCard key={m.id} movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} />
+              })}
             </div>
           )}
         </section>

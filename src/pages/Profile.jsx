@@ -5,6 +5,13 @@ import { useTheme } from '../context/ThemeContext'
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
+const USER_COLORS = [
+  '#ef4444','#f97316','#f59e0b','#84cc16','#22c55e',
+  '#10b981','#06b6d4','#3b82f6','#6366f1','#8b5cf6',
+  '#a855f7','#ec4899','#f43f5e','#0ea5e9','#14b8a6',
+  '#64748b','#78716c','#fbbf24','#4ade80','#c084fc',
+]
+
 const ACCENT_SWATCHES = [
   { name: 'crimson',    hex: '#dc2626', label: 'Crimson'    },
   { name: 'ember',      hex: '#ea580c', label: 'Ember'      },
@@ -387,6 +394,57 @@ export default function Profile() {
                 {memberSince}
               </p>
             </div>
+          </div>
+        </section>
+
+        {/* ── Section 1b: Your Color ── */}
+        <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.04s ease both' }}>
+          <span style={SECTION_LABEL}>Your Color</span>
+
+          <div style={{ ...CARD, padding: '16px' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(5, 36px)',
+              gap: '10px',
+            }}>
+              {USER_COLORS.map(color => {
+                const active = profile?.user_color === color
+                return (
+                  <button
+                    key={color}
+                    onClick={async () => {
+                      await supabase.from('users').update({ user_color: color }).eq('id', profile.id)
+                      await fetchProfile(profile.id)
+                    }}
+                    title={color}
+                    aria-label={color}
+                    aria-pressed={active}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: color,
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      outline: active ? '2px solid white' : 'none',
+                      outlineOffset: active ? '2px' : undefined,
+                      transition: 'outline 0.15s',
+                    }}
+                  />
+                )
+              })}
+            </div>
+
+            <p style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '10px',
+              color: '#6b7280',
+              margin: '12px 0 0',
+            }}>
+              This color appears next to your picks
+            </p>
           </div>
         </section>
 

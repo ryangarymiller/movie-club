@@ -3,6 +3,16 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const MEMBER_COLORS = {
+  'Ryan Miller':    '#6366f1',
+  'Ryan Bey':       '#f43f5e',
+  'Andrew Bond':    '#10b981',
+  'Zack Anjoorian': '#f59e0b',
+  'Chris Deschenes':'#3b82f6',
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDeadline(isoString) {
@@ -52,10 +62,200 @@ function Skeleton({ style = {}, className = '' }) {
   )
 }
 
+// ─── Guess the Picker ────────────────────────────────────────────────────────
+
+function GuessThePicker({ movie, profile, allUsers }) {
+  const [guess, setGuess] = useState(null)      // existing guess row
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!profile || !movie) return
+    supabase
+      .from('picker_guesses')
+      .select('id, guessed_user_id')
+      .eq('movie_id', movie.id)
+      .eq('guessing_user_id', profile.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setGuess(data ?? null)
+        setLoaded(true)
+      })
+  }, [movie, profile])
+
+  if (!profile || !loaded) return null
+
+  const otherUsers = (allUsers ?? []).filter(u => u.id !== profile.id)
+
+  // After reveal — show result
+  if (movie.picker_revealed) {
+    if (!guess) return null
+    const correct = guess.guessed_user_id === movie.picked_by_user_id
+    const guessedUser = (allUsers ?? []).find(u => u.id === guess.guessed_user_id)
+    const pickerUser = (allUsers ?? []).find(u => u.id === movie.picked_by_user_id)
+      ?? (profile.id === movie.picked_by_user_id ? { name: profile.name } : null)
+    return (
+      <div style={{ marginTop: '8px' }}>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          padding: '4px 10px',
+          borderRadius: '999px',
+          border: `1px solid ${correct ? 'rgba(134,239,172,0.3)' : 'rgba(248,113,113,0.3)'}`,
+          background: correct ? 'rgba(134,239,172,0.06)' : 'rgba(248,113,113,0.06)',
+          fontFamily: "'DM Mono',monospace",
+          fontSize: '10px',
+          letterSpacing: '0.04em',
+          color: correct ? '#86efac' : '#f87171',
+        }}>
+          {correct ? '✓' : '✗'}
+          {correct
+            ? ` Correct! It was ${pickerUser?.name ?? 'Unknown'}`
+            : ` You guessed ${guessedUser?.name ?? '?'} — It was ${pickerUser?.name ?? 'Unknown'}`}
+        </span>
+      </div>
+    )
+  }
+
+  async function submitGuess(userId) {
+    setSaving(true)
+    setOpen(false)
+    await supabase.from('picker_guesses').upsert(
+      { movie_id: movie.id, guessing_user_id: profile.id, guessed_user_id: userId },
+      { onConflict: 'movie_id,guessing_user_id' }
+    )
+    const { data: updated } = await supabase
+      .from('picker_guesses')
+      .select('id, guessed_user_id')
+      .eq('movie_id', movie.id)
+      .eq('guessing_user_id', profile.id)
+      .maybeSingle()
+    setGuess(updated ?? null)
+    setSaving(false)
+  }
+
+  // Already guessed, not editing
+  if (guess && !open) {
+    const guessedUser = otherUsers.find(u => u.id === guess.guessed_user_id)
+    return (
+      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '4px 10px',
+          borderRadius: '999px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'rgba(255,255,255,0.04)',
+          fontFamily: "'DM Mono',monospace",
+          fontSize: '10px',
+          color: '#9ca3af',
+          letterSpacing: '0.04em',
+        }}>
+          Guess: {guessedUser?.name ?? '?'}
+        </span>
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            padding: '4px 9px',
+            borderRadius: '999px',
+            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'transparent',
+            color: '#6b7280',
+            fontFamily: "'DM Mono',monospace",
+            fontSize: '10px',
+            cursor: 'pointer',
+            letterSpacing: '0.04em',
+          }}
+        >
+          Edit
+        </button>
+      </div>
+    )
+  }
+
+  // Dropdown open or no guess yet
+  return (
+    <div style={{ marginTop: '8px' }}>
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          disabled={saving}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '4px 10px',
+            borderRadius: '999px',
+            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgba(255,255,255,0.03)',
+            color: '#6b7280',
+            fontFamily: "'DM Mono',monospace",
+            fontSize: '10px',
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+          }}
+        >
+          Guess picker →
+        </button>
+      )}
+      {open && (
+        <div style={{
+          borderRadius: '10px',
+          border: '1px solid rgba(255,255,255,0.08)',
+          overflow: 'hidden',
+          background: 'rgba(255,255,255,0.03)',
+        }}>
+          {otherUsers.map((u, i) => (
+            <button
+              key={u.id}
+              onClick={() => submitGuess(u.id)}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: '8px 12px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: i < otherUsers.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                color: 'rgba(255,255,255,0.75)',
+                fontFamily: "'DM Sans',sans-serif",
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              {u.name}
+            </button>
+          ))}
+          <button
+            onClick={() => setOpen(false)}
+            style={{
+              width: '100%',
+              padding: '7px',
+              background: 'transparent',
+              border: 'none',
+              borderTop: '1px solid rgba(255,255,255,0.05)',
+              color: '#4b5563',
+              fontFamily: "'DM Mono',monospace",
+              fontSize: '10px',
+              cursor: 'pointer',
+              letterSpacing: '0.06em',
+            }}
+          >
+            CANCEL
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Film Card ───────────────────────────────────────────────────────────────
 
-function FilmCard({ movie, rating, onScorePress }) {
+function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }) {
   const status = scoreStatus(rating)
+  const pickerColor = pickerName ? MEMBER_COLORS[pickerName] : undefined
 
   const ctaLabel = status === 'excitement'
     ? 'Excitement'
@@ -77,88 +277,96 @@ function FilmCard({ movie, rating, onScorePress }) {
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: '12px',
       padding: '12px',
       borderRadius: '14px',
       background: 'rgba(255,255,255,0.025)',
       border: '1px solid rgba(255,255,255,0.07)',
+      borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(255,255,255,0.07)',
       width: '100%', boxSizing: 'border-box',
     }}>
-      {/* Poster */}
-      <div style={{
-        flexShrink: 0, width: '48px', height: '68px',
-        borderRadius: '7px', overflow: 'hidden',
-        background: '#1a1b25',
-      }}>
-        {movie.poster_url ? (
-          <img
-            src={`https://image.tmdb.org/t/p/w300${movie.poster_url}`}
-            alt={movie.title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={e => { e.target.style.display = 'none' }}
-          />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '13px' }}>
-              {initials(movie.title)}
-            </span>
-          </div>
-        )}
+      {/* Row: poster + info + CTA */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Poster */}
+        <div style={{
+          flexShrink: 0, width: '48px', height: '68px',
+          borderRadius: '7px', overflow: 'hidden',
+          background: '#1a1b25',
+        }}>
+          {movie.poster_url ? (
+            <img
+              src={`https://image.tmdb.org/t/p/w300${movie.poster_url}`}
+              alt={movie.title}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={e => { e.target.style.display = 'none' }}
+            />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '13px' }}>
+                {initials(movie.title)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{
+            fontFamily: "'DM Mono',monospace", color: labelColor,
+            fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em',
+            margin: '0 0 3px',
+          }}>
+            {labelAbove}
+          </p>
+          <p style={{
+            fontFamily: "'DM Sans',sans-serif", color: 'white',
+            fontWeight: 500, fontSize: '14px',
+            margin: '0 0 2px', lineHeight: 1.3,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {movie.title}
+          </p>
+          <p style={{
+            fontFamily: "'DM Mono',monospace", color: '#374151',
+            fontSize: '11px', margin: 0,
+          }}>
+            {movie.year_released ?? ''}
+            {movie.director ? ` · ${movie.director}` : ''}
+          </p>
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={() => status !== 'done' && onScorePress(movie, rating)}
+          style={{
+            flexShrink: 0,
+            fontFamily: status === 'done' ? "'Bebas Neue',sans-serif" : "'DM Sans',sans-serif",
+            fontWeight: status === 'done' ? 400 : 600,
+            fontSize: status === 'done' ? '1.1rem' : '12px',
+            letterSpacing: status === 'done' ? '0.05em' : '0.01em',
+            padding: status === 'done' ? '5px 10px' : '7px 12px',
+            borderRadius: '8px',
+            cursor: status === 'done' ? 'default' : 'pointer',
+            whiteSpace: 'nowrap',
+            lineHeight: 1,
+            transition: 'opacity 0.15s ease',
+            ...ctaStyle,
+          }}
+        >
+          {ctaLabel}
+        </button>
       </div>
 
-      {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{
-          fontFamily: "'DM Mono',monospace", color: labelColor,
-          fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em',
-          margin: '0 0 3px',
-        }}>
-          {labelAbove}
-        </p>
-        <p style={{
-          fontFamily: "'DM Sans',sans-serif", color: 'white',
-          fontWeight: 500, fontSize: '14px',
-          margin: '0 0 2px', lineHeight: 1.3,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {movie.title}
-        </p>
-        <p style={{
-          fontFamily: "'DM Mono',monospace", color: '#374151',
-          fontSize: '11px', margin: 0,
-        }}>
-          {movie.year_released ?? ''}
-          {movie.director ? ` · ${movie.director}` : ''}
-        </p>
-      </div>
-
-      {/* CTA */}
-      <button
-        onClick={() => status !== 'done' && onScorePress(movie, rating)}
-        style={{
-          flexShrink: 0,
-          fontFamily: status === 'done' ? "'Bebas Neue',sans-serif" : "'DM Sans',sans-serif",
-          fontWeight: status === 'done' ? 400 : 600,
-          fontSize: status === 'done' ? '1.1rem' : '12px',
-          letterSpacing: status === 'done' ? '0.05em' : '0.01em',
-          padding: status === 'done' ? '5px 10px' : '7px 12px',
-          borderRadius: '8px',
-          cursor: status === 'done' ? 'default' : 'pointer',
-          whiteSpace: 'nowrap',
-          lineHeight: 1,
-          transition: 'opacity 0.15s ease',
-          ...ctaStyle,
-        }}
-      >
-        {ctaLabel}
-      </button>
+      {/* Guess the Picker */}
+      {profile && (
+        <GuessThePicker movie={movie} profile={profile} allUsers={allUsers} />
+      )}
     </div>
   )
 }
 
 // ─── Films Tab ───────────────────────────────────────────────────────────────
 
-function FilmsTab({ movies, ratingsMap, loading, onScorePress }) {
+function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile }) {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -180,14 +388,22 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {movies.map(m => (
-        <FilmCard
-          key={m.id}
-          movie={m}
-          rating={ratingsMap[m.id] ?? null}
-          onScorePress={onScorePress}
-        />
-      ))}
+      {movies.map(m => {
+        const pickerName = m.picker_revealed
+          ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
+          : undefined
+        return (
+          <FilmCard
+            key={m.id}
+            movie={m}
+            rating={ratingsMap[m.id] ?? null}
+            onScorePress={onScorePress}
+            pickerName={pickerName}
+            profile={profile}
+            allUsers={users}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -957,6 +1173,7 @@ export default function ThisMonth() {
   const [movies, setMovies] = useState([])
   const [ratingsMap, setRatingsMap] = useState({}) // movie_id → rating row
   const [activeMonth, setActiveMonth] = useState(null)
+  const [users, setUsers] = useState([])
 
   // Score modal state
   const [modalMovie, setModalMovie] = useState(null)
@@ -966,19 +1183,21 @@ export default function ThisMonth() {
     if (!profile) return
     setLoading(true)
 
-    const [{ data: month }, { data: ratings }] = await Promise.all([
+    const [{ data: month }, { data: ratings }, { data: usersData }] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('ratings')
         .select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
         .eq('user_id', profile.id),
+      supabase.from('users').select('id, name'),
     ])
 
     setActiveMonth(month)
+    setUsers(usersData ?? [])
 
     if (month) {
       const { data: movieData } = await supabase
         .from('movies_safe')
-        .select('id, month_id, title, poster_url, genre, director, year_released, scores_revealed, picker_revealed, historical_avg_score, scoring_deadline')
+        .select('id, month_id, title, poster_url, genre, director, year_released, scores_revealed, picker_revealed, historical_avg_score, scoring_deadline, picked_by_user_id')
         .eq('month_id', month.id)
 
       setMovies(movieData ?? [])
@@ -1096,6 +1315,8 @@ export default function ThisMonth() {
               ratingsMap={ratingsMap}
               loading={loading}
               onScorePress={openModal}
+              users={users}
+              profile={profile}
             />
           )}
           {activeTab === 'Deadlines' && (

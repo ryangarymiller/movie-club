@@ -1,20 +1,139 @@
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function NotApproved() {
+  const [email, setEmail] = useState(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.email) setEmail(data.user.email)
+    })
+  }, [])
+
+  async function handleSignOut() {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="text-center px-6 max-w-sm">
-        <div className="text-4xl mb-4">🔒</div>
-        <h2 className="text-xl font-semibold text-white mb-2">Awaiting Approval</h2>
-        <p className="text-gray-400 text-sm mb-6">
-          Your account is pending admin approval. You'll receive an email once you're approved.
+    <div style={{
+      minHeight: '100vh',
+      background: '#07080d',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: "'DM Sans', sans-serif",
+      padding: '1.5rem',
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '360px',
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '16px',
+        padding: '2rem 1.75rem',
+        textAlign: 'center',
+      }}>
+        {/* Lock icon */}
+        <div style={{
+          width: '52px',
+          height: '52px',
+          borderRadius: '14px',
+          background: 'rgba(185,28,28,0.15)',
+          border: '1px solid rgba(185,28,28,0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 1.25rem',
+          fontSize: '22px',
+        }}>
+          🔒
+        </div>
+
+        <h1 style={{
+          fontFamily: "'Bebas Neue', sans-serif",
+          fontSize: '2.5rem',
+          color: 'white',
+          letterSpacing: '0.04em',
+          lineHeight: 1,
+          margin: '0 0 0.75rem',
+        }}>
+          Access Pending
+        </h1>
+
+        <p style={{
+          color: '#9ca3af',
+          fontSize: '14px',
+          lineHeight: '1.6',
+          margin: '0 0 1rem',
+        }}>
+          Your account is waiting for admin approval. Once approved, you'll be
+          able to sign in with Google.
         </p>
+
+        {email && (
+          <p style={{
+            color: '#6b7280',
+            fontSize: '12px',
+            fontFamily: "'DM Mono', monospace",
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            margin: '0 0 1.5rem',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {email}
+          </p>
+        )}
+
+        {!email && (
+          <div style={{ marginBottom: '1.5rem' }} />
+        )}
+
         <button
-          onClick={() => supabase.auth.signOut()}
-          className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
+          onClick={handleSignOut}
+          style={{
+            width: '100%',
+            padding: '11px 20px',
+            borderRadius: '10px',
+            border: 'none',
+            background: 'var(--accent, #b91c1c)',
+            color: 'white',
+            fontSize: '14px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            fontFamily: "'DM Sans', sans-serif",
+            marginBottom: '1rem',
+          }}
         >
-          Sign out
+          Sign Out
         </button>
+
+        <p style={{
+          color: '#6b7280',
+          fontSize: '12px',
+          margin: 0,
+        }}>
+          Already approved?{' '}
+          <button
+            onClick={handleSignOut}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: 'var(--accent, #b91c1c)',
+              fontSize: '12px',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+          >
+            Try signing in again
+          </button>
+        </p>
       </div>
     </div>
   )
