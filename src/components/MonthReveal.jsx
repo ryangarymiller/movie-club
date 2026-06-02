@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
-const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
-
 // ── small shared helpers (kept local so the component is self-contained) ──
 function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()

@@ -224,7 +224,7 @@ export default function Profile() {
   // If viewing another member's profile, load their data
   const isOwnProfile = !userId || userId === profile?.id
   const [viewedUser, setViewedUser] = useState(null)
-  const [viewedUserLoading, setViewedUserLoading] = useState(false)
+  const [, setViewedUserLoading] = useState(false)
 
   useEffect(() => {
     if (isOwnProfile) {

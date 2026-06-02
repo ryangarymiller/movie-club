@@ -526,7 +526,7 @@ async function tmdbFetch(path) {
   return res.json()
 }
 
-function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
+function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
   // existing pick (may be pre-loaded by parent)
   const [existingPick, setExistingPick] = useState(null)
   const [pickLoading, setPickLoading] = useState(true)

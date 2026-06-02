@@ -17,6 +17,16 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Fast-Refresh advisory only (no runtime impact). Several files intentionally
+      // co-locate hooks/helpers with their component (and the test suite imports those
+      // helpers, e.g. compute fns from Awards.jsx and prediction helpers from Films.jsx),
+      // so splitting them would be churn for a dev-HMR nicety. Keep it visible as a warning.
+      'react-refresh/only-export-components': 'warn',
+      // Idiomatic async data-loader effects (setLoading(true) then await/fetch). A new,
+      // opinionated React-19 rule; these patterns are intentional and have no runtime issue.
+      'react-hooks/set-state-in-effect': 'warn',
+    },
   },
   {
     // Vitest test files run with globals: true (see vite.config.js), so teach

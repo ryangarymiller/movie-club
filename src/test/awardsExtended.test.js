@@ -6,23 +6,6 @@ function avg(arr) {
   return arr.reduce((a, b) => a + b, 0) / arr.length
 }
 
-function stddev(arr) {
-  if (arr.length < 2) return null
-  const mean = arr.reduce((a, b) => a + b, 0) / arr.length
-  const variance = arr.reduce((a, b) => a + (b - mean) ** 2, 0) / arr.length
-  return Math.sqrt(variance)
-}
-
-// Zack Anjoorian joined April 2026 — exclude from Jan–Mar
-function isZackEligible(userName, monthYear) {
-  if (!userName || !monthYear) return true
-  const isZack = userName.toLowerCase().includes('zack') || userName.toLowerCase().includes('anjoorian')
-  if (!isZack) return true
-  const [year, month] = monthYear.split('-').map(Number)
-  if (year === 2026 && month < 4) return false
-  return true
-}
-
 function isWinter2026(season, months) {
   if (!season) return false
   const seasonMonths = months.filter(m => m.season_id === season.id)

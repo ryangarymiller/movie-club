@@ -166,6 +166,12 @@
 - Only **Auteur Award** remains ⏳ (needs the Phase 6 ranked-choice vote)
 - [x] Guess/predictions placement (option A+C): functional placement stays the film overlay (predictions picker-only; guess on current films). Added a **Picks-tab nudge** that routes the picker to the overlay to predict their own pick once the movie exists. (Literal "submit in Picks tab" is blocked by the data model — picker_guesses/score_predictions FK to `movies.id`, not `upcoming_picks` — deferred unless a schema change is wanted.)
 
+### Phase 2 polish — final pre-browser batch (session 7)
+- [x] **Stats: Guess-the-Picker Accuracy** — filled the stub (Me tab) with the viewer's correct-guess rate, now that picker_guesses has data
+- [x] **Tests** — `awardsNew.test.js`: 18 real-import tests for the new awards (suite now **252 passing**)
+- [x] **Auto-awards on reveal** — verified already wired (per-film + per-month reveal both call `triggerAwardsWrite`)
+- [x] **Lint cleanup** — `npm run lint` now **0 errors** (was ~620 false + 42 real): hoisted `ProviderRow` (real static-components bug), removed 20 dead-code unused vars; downgraded advisory-only rules (`set-state-in-effect`, `only-export-components`) to documented warnings. Remaining 49 are intentional advisories (incl. `exhaustive-deps` ×7).
+
 ### Carried from audit — resolved
 - [x] **Stats: film/member names clickable** — films open FilmDetailOverlay (Overview/Me/Members); member names → /profile/:id. (Recharts axis labels in Club/H2H still static — low value.)
 - [x] Tech-debt: removed debug2/3/4.test.jsx (superseded by inviteFlow.test.jsx); eslint now knows vitest globals (620 false errors → 0). Remaining 76 lint advisories are pre-existing React-19 patterns (set-state-in-effect, static-components, only-export-components) — separate refactor, no runtime impact.
@@ -199,7 +205,7 @@
 
 ## Phase 6 — Awards & Recaps
 - [ ] Automated award calculation written to DB on reveal (monthly, seasonal, annual, all-time)
-- [ ] Auteur Award — ranked choice (instant runoff) vote + notification flow
+- [ ] **Auteur Award** — ranked-choice (instant runoff) member vote + notification flow. ⭐ This is the **only remaining award** in the catalog (all 43 others implemented in session 7); add it once the voting system exists. Award key/scope already reserved: `auteur_award`, season scope, backed by the `auteur_votes` table.
 - [ ] AI monthly recap (Claude API via Edge Function, admin editable before publish)
 - [ ] AI best review detection (Claude API)
 - [ ] The Vault — auto-add/remove based on configurable threshold (default 8.5)

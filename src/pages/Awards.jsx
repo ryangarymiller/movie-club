@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../context/AuthContext'
 import { FilmDetailOverlay } from './Films.jsx'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -1236,7 +1235,6 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
       .sort((a, b) => b.month_year.localeCompare(a.month_year))
   }, [months, movies])
 
-  const defaultMonth = revealedMonths[0] ?? null
   const [selectedMonth, setSelectedMonth] = useState(null)
 
   // set default once revealed months load
@@ -1608,47 +1606,11 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
   )
 }
 
-// ─── Member Initials Avatar ──────────────────────────────────────────────────
-
-function MemberAvatar({ name }) {
-  const initials = (name ?? '')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0])
-    .join('')
-    .toUpperCase()
-
-  return (
-    <div style={{
-      flexShrink: 0,
-      width: '40px',
-      height: '40px',
-      borderRadius: '50%',
-      background: 'rgba(var(--fg-rgb), 0.07)',
-      border: '1px solid rgba(var(--fg-rgb), 0.1)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }}>
-      <span style={{
-        fontFamily: "'Bebas Neue',sans-serif",
-        color: 'rgba(var(--fg-rgb), 0.6)',
-        fontSize: '13px',
-        letterSpacing: '0.05em',
-      }}>
-        {initials}
-      </span>
-    </div>
-  )
-}
-
 // ─── Season Tab ───────────────────────────────────────────────────────────────
 
 function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm, onMember }) {
   // Only seasons that have at least one movie with scores_revealed
   const revealedSeasons = useMemo(() => {
-    const seasonIds = new Set(months.map(m => m.season_id))
     return seasons
       .filter(s => {
         const seasonMonthIds = new Set(months.filter(m => m.season_id === s.id).map(m => m.id))
@@ -2199,7 +2161,6 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
 const TABS = ['Monthly', 'Season', 'Annual', 'All-Time']
 
 export default function Awards() {
-  const { profile } = useAuth()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('Monthly')
   const [selectedMovie, setSelectedMovie] = useState(null)

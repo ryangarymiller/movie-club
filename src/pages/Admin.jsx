@@ -264,7 +264,7 @@ async function triggerAwardsWrite() {
 // ─────────────────────────────────────────────
 // TAB 2 — Films
 // ─────────────────────────────────────────────
-function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSuccess }) {
+function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) {
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
@@ -957,7 +957,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
 // ─────────────────────────────────────────────
 // TAB 3 — Members
 // ─────────────────────────────────────────────
-function InviteCard({ onRefresh, setSuccess }) {
+function InviteCard({ onRefresh }) {
   const todayStr = new Date().toISOString().split('T')[0]
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -1325,21 +1325,6 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
     const missing = expUsers.some(u => !ratingSet.has(`${m.id}:${u.id}`))
     return missing
   })
-
-  // For each movie in matrix, which users are expected?
-  function expectedUsers(movieId) {
-    const m = movies.find(mv => mv.id === movieId)
-    if (!m) return activeUsers
-    const mo = monthMap[m.month_id]
-    if (!mo) return activeUsers
-    return activeUsers.filter(u => {
-      if (isZackPreApril(u, mo.month_year)) return false
-      const joined = new Date(u.joined_at)
-      const [y, month] = mo.month_year.split('-').map(Number)
-      const filmMonth = new Date(y, month - 1, 1)
-      return joined <= filmMonth
-    })
-  }
 
   async function submitScore() {
     if (!selectedMovie || !selectedUser || !score) return

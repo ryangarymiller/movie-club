@@ -42,10 +42,6 @@ function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
-function fmtScore(s) {
-  return s != null ? Number(s).toFixed(2) : null
-}
-
 function isVault(movie) {
   return movie.historical_avg_score != null && movie.historical_avg_score >= 8.5
 }
@@ -477,6 +473,45 @@ function PlotSummary({ text }) {
   )
 }
 
+// Hoisted out of StreamingSection so it isn't recreated on every render.
+function ProviderRow({ label, items }) {
+  if (!items || items.length === 0) return null
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', color: 'rgba(var(--fg-rgb), 0.2)', margin: '0 0 8px', textTransform: 'uppercase' }}>
+        {label}
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        {items.map(p => (
+          <div key={p.provider_id ?? p.provider_name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {p.logo_path ? (
+              <img
+                src={`https://image.tmdb.org/t/p/w45${p.logo_path}`}
+                alt={p.provider_name}
+                title={p.provider_name}
+                style={{ width: '28px', height: '28px', borderRadius: '6px', display: 'block' }}
+                onError={e => { e.target.style.display = 'none' }}
+              />
+            ) : (
+              <span style={{
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: '11px',
+                color: 'rgba(var(--fg-rgb), 0.55)',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                background: 'rgba(var(--fg-rgb), 0.06)',
+                border: '1px solid rgba(var(--fg-rgb), 0.08)',
+              }}>
+                {p.provider_name}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function StreamingSection({ providers }) {
   // providers is the full TMDB watch_providers response JSON stored in the DB
   const us = providers?.results?.US ?? providers?.US ?? null
@@ -494,44 +529,6 @@ function StreamingSection({ providers }) {
         <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(var(--fg-rgb), 0.25)', margin: 0 }}>
           No streaming info available
         </p>
-      </div>
-    )
-  }
-
-  function ProviderRow({ label, items }) {
-    if (!items || items.length === 0) return null
-    return (
-      <div style={{ marginBottom: '12px' }}>
-        <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', color: 'rgba(var(--fg-rgb), 0.2)', margin: '0 0 8px', textTransform: 'uppercase' }}>
-          {label}
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-          {items.map(p => (
-            <div key={p.provider_id ?? p.provider_name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {p.logo_path ? (
-                <img
-                  src={`https://image.tmdb.org/t/p/w45${p.logo_path}`}
-                  alt={p.provider_name}
-                  title={p.provider_name}
-                  style={{ width: '28px', height: '28px', borderRadius: '6px', display: 'block' }}
-                  onError={e => { e.target.style.display = 'none' }}
-                />
-              ) : (
-                <span style={{
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontSize: '11px',
-                  color: 'rgba(var(--fg-rgb), 0.55)',
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  background: 'rgba(var(--fg-rgb), 0.06)',
-                  border: '1px solid rgba(var(--fg-rgb), 0.08)',
-                }}>
-                  {p.provider_name}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
       </div>
     )
   }
@@ -933,7 +930,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
             providersData = candidate
           }
         }
-      } catch (_e) {
+      } catch {
         // Ignore — fall through to the Edge Function fallback.
       }
 
@@ -956,7 +953,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           if (candidate.flatrate.length || candidate.rent.length || candidate.buy.length) {
             providersData = candidate
           }
-        } catch (_e) {
+        } catch {
           // Silently ignore — StreamingSection will show "No streaming info available".
         }
       }
@@ -2359,7 +2356,6 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
 function HistoryTab({ userById, onSelect }) {
   const [months, setMonths] = useState([])
   const [moviesByMonth, setMoviesByMonth] = useState({})
-  const [ratingsByMovie, setRatingsByMovie] = useState({})
   const [selectedMonthId, setSelectedMonthId] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -2512,7 +2508,6 @@ function HistoryTab({ userById, onSelect }) {
 const TABS = ['All Films', 'The Vault', 'By Season', 'History']
 
 export default function Films() {
-  const { profile } = useAuth()
   const [activeTab, setActiveTab] = useState('All Films')
   const [loading, setLoading] = useState(true)
   const [movies, setMovies] = useState([])

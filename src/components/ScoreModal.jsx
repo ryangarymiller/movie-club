@@ -2,12 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-function clampScore(val) {
-  const n = parseFloat(val)
-  if (isNaN(n)) return null
-  return Math.min(10.0, Math.max(0.01, n))
-}
-
 function validateScore(val) {
   const n = parseFloat(val)
   if (val === '' || val === null || val === undefined) return 'Score is required'

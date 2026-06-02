@@ -890,7 +890,21 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
 
 // ─── Me Tab ───────────────────────────────────────────────────────────────────
 
-function MeTab({ movies, ratings, allRatings = [], loading, monthsById = {}, onFilm }) {
+function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, monthsById = {}, onFilm }) {
+  // Your guess-the-picker accuracy across resolved (picker-revealed) films.
+  const guessAcc = useMemo(() => {
+    const movieById = {}
+    movies.forEach(m => { movieById[m.id] = m })
+    let correct = 0, total = 0
+    guesses.forEach(g => {
+      const m = movieById[g.movie_id]
+      if (!m || !m.picker_revealed || !m.picked_by_user_id) return
+      total += 1
+      if (g.guessed_user_id === m.picked_by_user_id) correct += 1
+    })
+    return total > 0 ? { correct, total, pct: (correct / total) * 100 } : null
+  }, [movies, guesses])
+
   const [showAll, setShowAll] = useState(false)
 
   const stats = useMemo(() => {
@@ -1147,12 +1161,22 @@ function MeTab({ movies, ratings, allRatings = [], loading, monthsById = {}, onF
         </GlassCard>
       </div>
 
-      {/* Guess-the-picker accuracy — needs picker_guesses data not loaded here */}
+      {/* Guess-the-picker accuracy — how often you guessed the picker right */}
       <div>
         <SectionLabel>Guess-the-Picker Accuracy</SectionLabel>
-        <GlassCard style={{ padding: '16px' }}>
-          {/* TODO: needs picker_guesses data (guessing_user_id, guessed_user_id vs actual picker) */}
-          <ChartPlaceholder>Guess-the-picker data not yet available.</ChartPlaceholder>
+        <GlassCard style={{ padding: '18px 20px', textAlign: 'center' }}>
+          {guessAcc ? (
+            <>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '3rem', lineHeight: 1, letterSpacing: '0.04em', margin: 0 }}>
+                {Math.round(guessAcc.pct)}<span style={{ fontSize: '1.4rem' }}>%</span>
+              </p>
+              <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)', fontSize: '12px', margin: '8px 0 0' }}>
+                You guessed the picker correctly on {guessAcc.correct} of {guessAcc.total} revealed film{guessAcc.total !== 1 ? 's' : ''}.
+              </p>
+            </>
+          ) : (
+            <ChartPlaceholder height={60}>No guesses yet — guess the picker on this month's films.</ChartPlaceholder>
+          )}
         </GlassCard>
       </div>
 
@@ -2711,6 +2735,7 @@ export default function Stats() {
   const [allRatings, setAllRatings] = useState([])
   const [users, setUsers] = useState([])
   const [myRatings, setMyRatings] = useState([])
+  const [myGuesses, setMyGuesses] = useState([]) // current user's picker_guesses
   const [monthsById, setMonthsById] = useState({})
   const [loading, setLoading] = useState(true)
 
@@ -2724,6 +2749,7 @@ export default function Stats() {
         { data: usersData },
         { data: myRatingsData },
         { data: monthsData },
+        { data: myGuessesData },
       ] = await Promise.all([
         supabase
           .from('movies_safe')
@@ -2742,6 +2768,10 @@ export default function Stats() {
         supabase
           .from('months')
           .select('id, month_year'),
+        supabase
+          .from('picker_guesses')
+          .select('movie_id, guessed_user_id')
+          .eq('guessing_user_id', profile.id),
       ])
 
       // Build month lookup
@@ -2772,6 +2802,7 @@ export default function Stats() {
       setAllRatings(cleanRatings)
       setUsers(filteredUsers)
       setMyRatings(myRatingsData ?? [])
+      setMyGuesses(myGuessesData ?? [])
       setMonthsById(mById)
       setLoading(false)
     }
@@ -2864,6 +2895,7 @@ export default function Stats() {
               movies={movies}
               ratings={myRatings}
               allRatings={allRatings}
+              guesses={myGuesses}
               loading={loading}
               monthsById={monthsById}
               onFilm={onFilm}
