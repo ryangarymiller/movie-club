@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { FilmDetailOverlay } from './Films.jsx'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,7 +56,7 @@ function Skeleton({ height = 120 }) {
 }
 
 // Detect if a season is Winter 2026 by checking if any of its months are Jan–Mar 2026
-function isWinter2026(season, months) {
+export function isWinter2026(season, months) {
   if (!season) return false
   const seasonMonths = months.filter(m => m.season_id === season.id)
   return seasonMonths.some(m => {
@@ -117,7 +119,8 @@ function PosterThumb({ posterUrl, title }) {
 
 // ─── Award Card ──────────────────────────────────────────────────────────────
 
-function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noData }) {
+function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noData, onWinnerClick, winnerClickable }) {
+  const clickable = winnerClickable && onWinnerClick && winner
   return (
     <div style={{
       background: 'rgba(255,255,255,0.025)',
@@ -152,17 +155,27 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* Winner text */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{
-              fontFamily: "'Bebas Neue',sans-serif",
-              fontSize: '1.55rem',
-              letterSpacing: '0.03em',
-              color: 'white',
-              margin: '0 0 4px',
-              lineHeight: 1.1,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
+            <p
+              onClick={clickable ? onWinnerClick : undefined}
+              role={clickable ? 'button' : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onKeyDown={clickable ? (e => { if (e.key === 'Enter') onWinnerClick() }) : undefined}
+              style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                fontSize: '1.55rem',
+                letterSpacing: '0.03em',
+                color: 'white',
+                margin: '0 0 4px',
+                lineHeight: 1.1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                cursor: clickable ? 'pointer' : 'default',
+                textDecoration: clickable ? 'underline' : 'none',
+                textDecorationColor: clickable ? 'rgba(255,255,255,0.2)' : undefined,
+                textUnderlineOffset: '3px',
+              }}
+            >
               {winner ?? '—'}
             </p>
             {metric && (
@@ -180,7 +193,12 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
 
           {/* Optional poster */}
           {(posterUrl || posterTitle) && (
-            <PosterThumb posterUrl={posterUrl} title={posterTitle} />
+            <div
+              onClick={clickable ? onWinnerClick : undefined}
+              style={{ cursor: clickable ? 'pointer' : 'default' }}
+            >
+              <PosterThumb posterUrl={posterUrl} title={posterTitle} />
+            </div>
           )}
         </div>
       )}
@@ -190,7 +208,8 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
 
 // ─── Big Poster Hero Card ────────────────────────────────────────────────────
 
-function BigPosterCard({ emoji, label, movie, avgScore, noData }) {
+function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
+  const clickable = !!onClick && !!movie
   const initials = (movie?.title ?? '')
     .split(' ')
     .filter(Boolean)
@@ -224,7 +243,16 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData }) {
           Not enough data
         </p>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', minWidth: 0 }}>
+        <div
+          onClick={clickable ? onClick : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '16px',
+            minWidth: 0,
+            cursor: clickable ? 'pointer' : 'default',
+          }}
+        >
           {/* Poster */}
           <div style={{
             flexShrink: 0,
@@ -701,7 +729,7 @@ export function computeAnnualAwards(movies, allRatings, users, year) {
   }
 }
 
-function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
+export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
   // Filter movies for the selected month with scores revealed
   const monthMovies = movies.filter(m => m.month_id === selectedMonth?.id && m.scores_revealed)
   if (!monthMovies.length) return null
@@ -875,7 +903,7 @@ function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
   }
 }
 
-function computeAllTimeAwards(movies, allRatings, users) {
+export function computeAllTimeAwards(movies, allRatings, users) {
   const revealedMovies = movies.filter(m => m.scores_revealed)
   if (!revealedMovies.length) return null
 
@@ -1055,7 +1083,7 @@ function computeAllTimeAwards(movies, allRatings, users) {
 
 // ─── Monthly Tab ─────────────────────────────────────────────────────────────
 
-function MonthlyTab({ months, movies, allRatings, users, loading }) {
+function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMember }) {
   const revealedMonths = useMemo(() => {
     return months
       .filter(m => {
@@ -1159,6 +1187,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             posterUrl={awards.pickOfMonth?.poster_url}
             posterTitle={awards.pickOfMonth?.title}
             noData={!awards.pickOfMonth}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.pickOfMonth)}
           />
 
           {/* 2. Flop of the Month */}
@@ -1170,6 +1200,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             posterUrl={awards.flopOfMonth?.poster_url}
             posterTitle={awards.flopOfMonth?.title}
             noData={!awards.flopOfMonth || awards.flopOfMonth.id === awards.pickOfMonth?.id}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.flopOfMonth)}
           />
 
           {/* 3. The Oracle */}
@@ -1179,6 +1211,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             winner={awards.oracleWinner?.name}
             metric={awards.oracleWinner ? `avg delta: ±${fmt(awards.oracleBestDelta)}` : null}
             noData={!awards.oracleWinner}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.oracleWinner)}
           />
 
           {/* 4. Hype Machine */}
@@ -1188,6 +1222,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             winner={awards.hypeMachineWinner?.name}
             metric={awards.hypeMachineWinner ? `avg excitement: ${fmt(awards.hypeMachineAvg)}` : null}
             noData={!awards.hypeMachineWinner}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.hypeMachineWinner)}
           />
 
           {/* 5. The Letdown */}
@@ -1201,6 +1237,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             posterUrl={awards.letdownMovie?.poster_url}
             posterTitle={awards.letdownMovie?.title}
             noData={!awards.letdownMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.letdownMovie)}
           />
 
           {/* 6. The Surprise */}
@@ -1214,6 +1252,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             posterUrl={awards.surpriseMovie?.poster_url}
             posterTitle={awards.surpriseMovie?.title}
             noData={!awards.surpriseMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.surpriseMovie)}
           />
 
           {/* 7. Most Divisive */}
@@ -1227,6 +1267,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             posterUrl={awards.divisiveMovie?.poster_url}
             posterTitle={awards.divisiveMovie?.title}
             noData={!awards.divisiveMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.divisiveMovie)}
           />
 
           {/* 8. Most Unanimous */}
@@ -1240,6 +1282,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             posterUrl={awards.unanimousMovie?.poster_url}
             posterTitle={awards.unanimousMovie?.title}
             noData={!awards.unanimousMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.unanimousMovie)}
           />
 
           {/* 9. The Contrarian */}
@@ -1249,6 +1293,8 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
             winner={awards.contrarianWinner?.name}
             metric={awards.contrarianWinner ? `avg deviation: ±${fmt(awards.contrarianHighest)}` : null}
             noData={!awards.contrarianWinner}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.contrarianWinner)}
           />
         </div>
       )}
@@ -1258,7 +1304,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading }) {
 
 // ─── All-Time Tab ─────────────────────────────────────────────────────────────
 
-function AllTimeTab({ movies, allRatings, users, loading }) {
+function AllTimeTab({ movies, allRatings, users, loading, onFilm, onMember }) {
   const awards = useMemo(() => {
     if (loading || !movies.length) return null
     return computeAllTimeAwards(movies, allRatings, users)
@@ -1303,6 +1349,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         posterUrl={awards.greatestFilm?.poster_url}
         posterTitle={awards.greatestFilm?.title}
         noData={!awards.greatestFilm}
+        winnerClickable
+        onWinnerClick={() => onFilm?.(awards.greatestFilm)}
       />
 
       {/* 2. Worst Film */}
@@ -1314,6 +1362,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         posterUrl={awards.worstFilm?.poster_url}
         posterTitle={awards.worstFilm?.title}
         noData={!awards.worstFilm}
+        winnerClickable
+        onWinnerClick={() => onFilm?.(awards.worstFilm)}
       />
 
       {/* 3. Most Divisive Film */}
@@ -1327,6 +1377,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         posterUrl={awards.mostDivisiveFilm?.poster_url}
         posterTitle={awards.mostDivisiveFilm?.title}
         noData={!awards.mostDivisiveFilm}
+        winnerClickable
+        onWinnerClick={() => onFilm?.(awards.mostDivisiveFilm)}
       />
 
       {/* 4. Most Unanimous Film */}
@@ -1340,6 +1392,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         posterUrl={awards.mostUnanimousFilm?.poster_url}
         posterTitle={awards.mostUnanimousFilm?.title}
         noData={!awards.mostUnanimousFilm}
+        winnerClickable
+        onWinnerClick={() => onFilm?.(awards.mostUnanimousFilm)}
       />
 
       {/* 5. Top Picker */}
@@ -1349,6 +1403,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         winner={awards.topPicker?.name}
         metric={awards.topPickerStr || null}
         noData={!awards.topPicker}
+        winnerClickable
+        onWinnerClick={() => onMember?.(awards.topPicker)}
       />
 
       {/* 6. Harshest Critic */}
@@ -1358,6 +1414,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         winner={awards.harshestCritic?.name}
         metric={awards.harshestCritic ? `avg score given: ${fmt(awards.harshestAvg)}` : null}
         noData={!awards.harshestCritic}
+        winnerClickable
+        onWinnerClick={() => onMember?.(awards.harshestCritic)}
       />
 
       {/* 7. Most Generous */}
@@ -1367,6 +1425,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         winner={awards.mostGenerous?.name}
         metric={awards.mostGenerous ? `avg score given: ${fmt(awards.mostGenerousAvg)}` : null}
         noData={!awards.mostGenerous}
+        winnerClickable
+        onWinnerClick={() => onMember?.(awards.mostGenerous)}
       />
 
       {/* 8. Biggest Contrarian */}
@@ -1376,6 +1436,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         winner={awards.biggestContrarian?.name}
         metric={awards.biggestContrarian ? `avg deviation: ±${fmt(awards.biggestContrarianDev)}` : null}
         noData={!awards.biggestContrarian}
+        winnerClickable
+        onWinnerClick={() => onMember?.(awards.biggestContrarian)}
       />
 
       {/* 9. The Oracle (all-time) */}
@@ -1385,6 +1447,8 @@ function AllTimeTab({ movies, allRatings, users, loading }) {
         winner={awards.oracleAllTime?.name}
         metric={awards.oracleAllTime ? `avg delta: ±${fmt(awards.oracleAllTimeDelta)}` : null}
         noData={!awards.oracleAllTime}
+        winnerClickable
+        onWinnerClick={() => onMember?.(awards.oracleAllTime)}
       />
     </div>
   )
@@ -1427,7 +1491,7 @@ function MemberAvatar({ name }) {
 
 // ─── Season Tab ───────────────────────────────────────────────────────────────
 
-function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
+function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm, onMember }) {
   // Only seasons that have at least one movie with scores_revealed
   const revealedSeasons = useMemo(() => {
     const seasonIds = new Set(months.map(m => m.season_id))
@@ -1548,6 +1612,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             posterUrl={awards.filmOfSeason?.poster_url}
             posterTitle={awards.filmOfSeason?.title}
             noData={!awards.filmOfSeason}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.filmOfSeason)}
           />
 
           {/* 2. Flop of the Season */}
@@ -1559,6 +1625,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             posterUrl={awards.flopOfSeason?.poster_url}
             posterTitle={awards.flopOfSeason?.title}
             noData={!awards.flopOfSeason || awards.flopOfSeason.id === awards.filmOfSeason?.id}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.flopOfSeason)}
           />
 
           {/* 3. Picker of the Season */}
@@ -1572,6 +1640,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
                 : null
             }
             noData={!awards.pickerOfSeason}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.pickerOfSeason)}
           />
 
           {/* 4. Ice Cold */}
@@ -1585,6 +1655,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
                 : null
             }
             noData={!awards.iceCold || awards.iceCold?.id === awards.pickerOfSeason?.id}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.iceCold)}
           />
 
           {/* 5. Most Divisive Film */}
@@ -1598,6 +1670,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             posterUrl={awards.mostDivisiveFilm?.poster_url}
             posterTitle={awards.mostDivisiveFilm?.title}
             noData={!awards.mostDivisiveFilm}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.mostDivisiveFilm)}
           />
 
           {/* 6. Most Unanimous Film */}
@@ -1611,6 +1685,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             posterUrl={awards.mostUnanimousFilm?.poster_url}
             posterTitle={awards.mostUnanimousFilm?.title}
             noData={!awards.mostUnanimousFilm}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.mostUnanimousFilm)}
           />
 
           {/* 7. Harshest Critic */}
@@ -1620,6 +1696,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             winner={awards.harshestCritic?.name}
             metric={awards.harshestCritic ? `avg score given: ${fmt(awards.harshestCriticAvg)}` : null}
             noData={!awards.harshestCritic}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.harshestCritic)}
           />
 
           {/* 8. Most Generous */}
@@ -1629,6 +1707,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             winner={awards.mostGenerous?.name}
             metric={awards.mostGenerous ? `avg score given: ${fmt(awards.mostGenerousAvg)}` : null}
             noData={!awards.mostGenerous}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.mostGenerous)}
           />
 
           {/* 9. The Contrarian */}
@@ -1638,6 +1718,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             winner={awards.contrarianWinner?.name}
             metric={awards.contrarianWinner ? `avg deviation: ±${fmt(awards.contrarianHighest)}` : null}
             noData={!awards.contrarianWinner}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.contrarianWinner)}
           />
 
           {/* 10. The Oracle */}
@@ -1647,6 +1729,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
             winner={awards.oracleWinner?.name}
             metric={awards.oracleWinner ? `avg delta: ±${fmt(awards.oracleBestDelta)}` : null}
             noData={!awards.oracleWinner}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.oracleWinner)}
           />
         </div>
       )}
@@ -1656,7 +1740,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading }) {
 
 // ─── Annual Tab ────────────────────────────────────────────────────────────────
 
-function AnnualTab({ movies, allRatings, users, months, loading }) {
+function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMember }) {
   // Group movies by year via their month's month_year
   const monthYearById = useMemo(() => {
     const map = {}
@@ -1808,6 +1892,7 @@ function AnnualTab({ movies, allRatings, users, months, loading }) {
           movie={awards.filmOfYear}
           avgScore={awards.filmOfYear ? awards.movieAvgScore[awards.filmOfYear.id] : null}
           noData={!awards.filmOfYear}
+          onClick={() => onFilm?.(awards.filmOfYear)}
         />
 
         {/* 3. Worst Film of the Year — hero card */}
@@ -1817,6 +1902,7 @@ function AnnualTab({ movies, allRatings, users, months, loading }) {
           movie={awards.worstFilmOfYear}
           avgScore={awards.worstFilmOfYear ? awards.movieAvgScore[awards.worstFilmOfYear.id] : null}
           noData={!awards.worstFilmOfYear || awards.worstFilmOfYear?.id === awards.filmOfYear?.id}
+          onClick={() => onFilm?.(awards.worstFilmOfYear)}
         />
 
         {/* 4. Picker of the Year */}
@@ -1830,6 +1916,8 @@ function AnnualTab({ movies, allRatings, users, months, loading }) {
               : null
           }
           noData={!awards.pickerOfYear}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.pickerOfYear)}
         />
 
         {/* 5. Harshest Critic */}
@@ -1839,6 +1927,8 @@ function AnnualTab({ movies, allRatings, users, months, loading }) {
           winner={awards.harshestCritic?.name}
           metric={awards.harshestCritic ? `avg score given: ${fmt(awards.harshestCriticAvg)}` : null}
           noData={!awards.harshestCritic}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.harshestCritic)}
         />
 
         {/* 6. Most Generous */}
@@ -1848,6 +1938,8 @@ function AnnualTab({ movies, allRatings, users, months, loading }) {
           winner={awards.mostGenerous?.name}
           metric={awards.mostGenerous ? `avg score given: ${fmt(awards.mostGenerousAvg)}` : null}
           noData={!awards.mostGenerous}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.mostGenerous)}
         />
 
         {/* 7. Most Divisive Film */}
@@ -1861,6 +1953,8 @@ function AnnualTab({ movies, allRatings, users, months, loading }) {
           posterUrl={awards.mostDivisiveFilm?.poster_url}
           posterTitle={awards.mostDivisiveFilm?.title}
           noData={!awards.mostDivisiveFilm}
+          winnerClickable
+          onWinnerClick={() => onFilm?.(awards.mostDivisiveFilm)}
         />
 
         {/* 8. The Oracle */}
@@ -1870,6 +1964,8 @@ function AnnualTab({ movies, allRatings, users, months, loading }) {
           winner={awards.oracleOfYear?.name}
           metric={awards.oracleOfYear ? `avg delta: ±${fmt(awards.oracleBestDelta)}` : null}
           noData={!awards.oracleOfYear}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.oracleOfYear)}
         />
       </div>
     </div>
@@ -1882,7 +1978,14 @@ const TABS = ['Monthly', 'Season', 'Annual', 'All-Time']
 
 export default function Awards() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('Monthly')
+  const [selectedMovie, setSelectedMovie] = useState(null)
+
+  // Clicking a film title/poster opens the shared film overlay.
+  const onFilm = (movie) => { if (movie?.id) setSelectedMovie(movie) }
+  // Clicking a member name navigates to the profile page.
+  const onMember = (user) => { if (user?.id) navigate('/profile') }
 
   const [loading, setLoading] = useState(true)
   const [seasons, setSeasons] = useState([])
@@ -2000,6 +2103,8 @@ export default function Awards() {
               allRatings={allRatings}
               users={users}
               loading={loading}
+              onFilm={onFilm}
+              onMember={onMember}
             />
           )}
           {activeTab === 'Season' && (
@@ -2010,6 +2115,8 @@ export default function Awards() {
               allRatings={allRatings}
               users={users}
               loading={loading}
+              onFilm={onFilm}
+              onMember={onMember}
             />
           )}
           {activeTab === 'Annual' && (
@@ -2019,6 +2126,8 @@ export default function Awards() {
               users={users}
               months={months}
               loading={loading}
+              onFilm={onFilm}
+              onMember={onMember}
             />
           )}
           {activeTab === 'All-Time' && (
@@ -2027,10 +2136,15 @@ export default function Awards() {
               allRatings={allRatings}
               users={users}
               loading={loading}
+              onFilm={onFilm}
+              onMember={onMember}
             />
           )}
         </div>
       </div>
+
+      {/* Shared film overlay (opened by clicking a film title) */}
+      <FilmDetailOverlay movie={selectedMovie} onClose={() => setSelectedMovie(null)} />
 
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }

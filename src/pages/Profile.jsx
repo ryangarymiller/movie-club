@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import { getAwardsForUser } from '../lib/awards'
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -224,6 +225,7 @@ export default function Profile() {
   const [recentRatings, setRecentRatings] = useState([]) // [{movie, score, submitted_at}]
   const [signingOut, setSigningOut] = useState(false)
   const [adminToggling, setAdminToggling] = useState(false)
+  const [userAwards, setUserAwards] = useState([])
 
   // ── Fetch stats + recent scores ──────────────────────────────────────────────
   useEffect(() => {
@@ -285,6 +287,38 @@ export default function Profile() {
     }
 
     load()
+  }, [profile])
+
+  // ── Load awards this user has won (computed at runtime — no awards table) ──────
+  useEffect(() => {
+    if (!profile) return
+    let cancelled = false
+    async function loadAwards() {
+      const [
+        { data: moviesData },
+        { data: ratingsData },
+        { data: usersData },
+        { data: monthsData },
+        { data: seasonsData },
+      ] = await Promise.all([
+        supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
+        supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active'),
+        supabase.from('months').select('id, season_id, month_year, status'),
+        supabase.from('seasons').select('id, name, start_date, end_date'),
+      ])
+      if (cancelled) return
+      const data = {
+        movies: moviesData ?? [],
+        ratings: ratingsData ?? [],
+        users: usersData ?? [],
+        months: monthsData ?? [],
+        seasons: seasonsData ?? [],
+      }
+      setUserAwards(getAwardsForUser(profile.id, data))
+    }
+    loadAwards()
+    return () => { cancelled = true }
   }, [profile])
 
   // ── Sign out ─────────────────────────────────────────────────────────────────
@@ -510,6 +544,47 @@ export default function Profile() {
             )}
           </div>
         </section>
+
+        {/* ── Section 3b: Awards ── */}
+        {userAwards.length > 0 && (
+          <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.2s ease both' }}>
+            <span style={SECTION_LABEL}>Awards</span>
+            <div style={{ ...CARD, padding: '8px 14px' }}>
+              {userAwards.map((a, i) => (
+                <div
+                  key={`${a.scope}-${a.key}-${a.periodRef ?? i}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '10px 0',
+                    borderBottom: i === userAwards.length - 1
+                      ? 'none'
+                      : '1px solid rgba(255,255,255,0.05)',
+                  }}
+                >
+                  <span style={{ fontSize: '20px', flexShrink: 0 }}>{a.emoji}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: 500, margin: 0, lineHeight: 1.2 }}>
+                      {a.label}
+                    </p>
+                    {a.period && (
+                      <p style={{
+                        fontFamily: "'DM Mono', monospace",
+                        fontSize: '10px',
+                        letterSpacing: '0.08em',
+                        color: '#6b7280',
+                        margin: '3px 0 0',
+                      }}>
+                        {a.period}{a.metric ? ` · ${a.metric}` : ''}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ── Section 4: Appearance Settings ── */}
         <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.24s ease both' }}>

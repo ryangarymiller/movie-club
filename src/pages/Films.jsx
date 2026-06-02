@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
+import { getAwardsForFilm } from '../lib/awards'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -816,6 +817,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const [reviewError, setReviewError] = useState('')
   const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [predictions, setPredictions] = useState([])
+  const [awardData, setAwardData] = useState(null) // { movies, ratings, users, months, seasons }
   const scrollRef = useRef(null)
 
   // Trigger animation
@@ -862,8 +864,11 @@ export function FilmDetailOverlay({ movie, onClose }) {
 
     let resolvedMovie = movieData ?? movieFallback
 
-    // Fix 1: Fetch and cache streaming providers if not yet stored
+    // Fix 1: Fetch and cache streaming providers if not yet stored.
+    // Order: TMDB first; if it returns nothing, fall back to the streaming-fallback
+    // Edge Function (server-side Claude web search). Cache whichever yields results.
     if (resolvedMovie && resolvedMovie.streaming_providers == null && resolvedMovie.tmdb_id) {
+      let providersData = null
       try {
         const tmdbToken = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
         const resp = await fetch(
@@ -873,22 +878,49 @@ export function FilmDetailOverlay({ movie, onClose }) {
         if (resp.ok) {
           const tmdbData = await resp.json()
           const us = tmdbData?.results?.US ?? null
-          const providersData = {
+          const candidate = {
             flatrate: (us?.flatrate ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
             rent:     (us?.rent     ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
             buy:      (us?.buy      ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
           }
-          const hasAny = providersData.flatrate.length > 0 || providersData.rent.length > 0 || providersData.buy.length > 0
-          if (hasAny) {
-            await supabase
-              .from('movies')
-              .update({ streaming_providers: providersData })
-              .eq('id', resolvedMovie.id)
-            resolvedMovie = { ...resolvedMovie, streaming_providers: providersData }
+          if (candidate.flatrate.length || candidate.rent.length || candidate.buy.length) {
+            providersData = candidate
           }
         }
       } catch (_e) {
-        // Silently ignore — StreamingSection will show "No streaming info available"
+        // Ignore — fall through to the Edge Function fallback.
+      }
+
+      // Fallback: TMDB had nothing/failed → ask the streaming-fallback Edge Function.
+      if (!providersData) {
+        try {
+          const { data: fb } = await supabase.functions.invoke('streaming-fallback', {
+            body: {
+              title: resolvedMovie.title,
+              year: resolvedMovie.year_released ?? null,
+              tmdb_id: resolvedMovie.tmdb_id ?? null,
+            },
+          })
+          const us = fb?.results?.US ?? null
+          const candidate = {
+            flatrate: (us?.flatrate ?? []).map(p => ({ provider_name: p.provider_name })),
+            rent:     (us?.rent     ?? []).map(p => ({ provider_name: p.provider_name })),
+            buy:      (us?.buy      ?? []).map(p => ({ provider_name: p.provider_name })),
+          }
+          if (candidate.flatrate.length || candidate.rent.length || candidate.buy.length) {
+            providersData = candidate
+          }
+        } catch (_e) {
+          // Silently ignore — StreamingSection will show "No streaming info available".
+        }
+      }
+
+      if (providersData) {
+        await supabase
+          .from('movies')
+          .update({ streaming_providers: providersData })
+          .eq('id', resolvedMovie.id)
+        resolvedMovie = { ...resolvedMovie, streaming_providers: providersData }
       }
     }
 
@@ -917,6 +949,37 @@ export function FilmDetailOverlay({ movie, onClose }) {
 
     fetchDetails(movie.id, movie)
   }, [movie, fetchDetails])
+
+  // Load the club-wide dataset once so awards (computed at runtime) can be shown.
+  useEffect(() => {
+    if (!movie || awardData) return
+    let cancelled = false
+    async function loadAwardData() {
+      const [
+        { data: moviesData },
+        { data: ratingsData },
+        { data: usersData },
+        { data: monthsData },
+        { data: seasonsData },
+      ] = await Promise.all([
+        supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
+        supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active'),
+        supabase.from('months').select('id, season_id, month_year, status'),
+        supabase.from('seasons').select('id, name, start_date, end_date'),
+      ])
+      if (cancelled) return
+      setAwardData({
+        movies: moviesData ?? [],
+        ratings: ratingsData ?? [],
+        users: usersData ?? [],
+        months: monthsData ?? [],
+        seasons: seasonsData ?? [],
+      })
+    }
+    loadAwardData()
+    return () => { cancelled = true }
+  }, [movie, awardData])
 
   function handleClose() {
     setVisible(false)
@@ -1034,6 +1097,9 @@ export function FilmDetailOverlay({ movie, onClose }) {
   // Reviews
   const sortedReviews = [...reviews].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   const myReview = reviews.find(r => r.user_id === myUserId) ?? null
+
+  // Awards this film has won (computed at runtime — no awards table)
+  const filmAwards = awardData ? getAwardsForFilm(m.id, awardData) : []
 
   return (
     <>
@@ -1321,6 +1387,56 @@ export function FilmDetailOverlay({ movie, onClose }) {
               </div>
             )}
           </div>
+
+          {/* ── AWARDS ── */}
+          {filmAwards.length > 0 && (
+            <>
+              <Divider />
+              <div>
+                <SectionLabel>Awards</SectionLabel>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {filmAwards.map((a, i) => (
+                    <div
+                      key={`${a.scope}-${a.key}-${a.periodRef ?? i}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      <span style={{ fontSize: '18px', flexShrink: 0 }}>{a.emoji}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p style={{
+                          fontFamily: "'DM Sans', sans-serif",
+                          fontSize: '14px',
+                          color: '#fff',
+                          margin: 0,
+                          lineHeight: 1.2,
+                        }}>
+                          {a.label}
+                        </p>
+                        {a.period && (
+                          <p style={{
+                            fontFamily: "'DM Mono', monospace",
+                            fontSize: '10px',
+                            letterSpacing: '0.08em',
+                            color: 'rgba(255,255,255,0.3)',
+                            margin: '3px 0 0',
+                          }}>
+                            {a.period}{a.metric ? ` · ${a.metric}` : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ── PREDICTIONS ── */}
           <Divider />
