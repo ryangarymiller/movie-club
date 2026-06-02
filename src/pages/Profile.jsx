@@ -345,6 +345,7 @@ export default function Profile() {
                   fontSize: '1.5rem',
                   color: profile?.user_color ?? 'var(--accent)',
                   letterSpacing: '0.05em',
+                  paddingLeft: '0.05em',
                   lineHeight: 1,
                   marginTop: '4px',
                 }}
