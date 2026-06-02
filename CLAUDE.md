@@ -137,18 +137,23 @@ Before a film's scoring deadline: you can only see scores and discussions for me
 ## Key Data Models
 
 ```
-users          — id, name, email, avatar_id, user_color, role, timezone, joined_at
+users          — id, name, email, avatar_id, user_color, role, timezone, joined_at,
+                 is_active, has_completed_onboarding, admin_mode_enabled,
+                 last_online_at, show_last_online, created_at
 seasons        — id, name, start_date, end_date
+                 (Season 1 = Jan 2026 – Dec 2026, Season 2 = Jan 2027 – Dec 2027, etc.)
 months         — id, season_id, month_year, reveal_date, end_of_month_reveal_date, status
 movies         — id, month_id, title, tmdb_id, picked_by_user_id, pick_justification,
                  scores_revealed (bool), picker_revealed (bool), scoring_deadline,
-                 streaming_providers (json), historical_avg_score
-ratings        — id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club
+                 streaming_providers (json), historical_avg_score,
+                 poster_url, year_released, director, runtime, overview
+ratings        — id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club,
+                 submitted_at
 reviews        — id, movie_id, user_id, body (one primary review per user per film)
 comments       — id, movie_id, user_id, parent_comment_id (nullable), body, reaction_counts
 picker_guesses — id, movie_id, guessing_user_id, guessed_user_id
 score_predictions — id, movie_id, predicting_user_id, target_user_id, predicted_score
-upcoming_picks — id, user_id, tmdb_id (hidden from all others until reveal)
+upcoming_picks — id, user_id, month_id, tmdb_id, justification (hidden from all others until reveal)
 veto_votes     — id, movie_id, voting_user_id (3+/5 triggers picker resubmission)
 watchlist      — private per user
 draft_queue    — private per user, drag-and-drop ranked
@@ -169,10 +174,10 @@ awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltim
 - Film search must handle disambiguation (multiple results for same title) in the pick submission UI
 - Use `/movie/{id}/watch/providers` for US streaming availability; cache result in `movies.streaming_providers`
 - **Streaming provider fetch order:**
-  1. Try TMDB `/movie/{id}/watch/providers` (US region)
-  2. If TMDB returns no providers or errors: fall back to server-side Claude API call (web search)
+  1. Try TMDB `/movie/{id}/watch/providers` (US region) — client-side, safe with anon key
+  2. If TMDB returns no providers or errors: fall back to a **server-side** Supabase Edge Function that calls the Claude API (web search) — `ANTHROPIC_API_KEY` must never be exposed to the client
   3. If both fail: display "No streaming availability found"
-- Streaming providers should be fetched and cached when a film is first added, and refreshable from Admin
+- Streaming providers should be fetched and cached when a film overlay is first opened, and refreshable from Admin
 
 ---
 
@@ -187,8 +192,9 @@ Films · Deadlines · Picks · Reveal *(active only after end-of-month reveal)*
 
 - **Films tab:** Shows current month's films with scoring status
 - **Deadlines tab:** Countdown timers per film
-- **Picks tab:** Shows all 5 members' upcoming picks for the *next* month (hidden until reveal). A "Pick your next movie" CTA button triggers the TMDB search → disambiguation → justification → confirm submission flow. No search/filter bar on the picks display (max 5 entries).
-- If current month has no films yet: show "No picks yet for [Month]" state
+- **Picks tab:** Shows all active members' upcoming picks for the *next* month (hidden until reveal — could be 4 or 5 depending on who sits out). A "Pick your next movie" CTA button triggers the TMDB search → disambiguation → justification → confirm submission flow. No search/filter bar on the picks display.
+- If current month has no films yet (e.g. picks not entered yet): show "No picks yet for [Month]" state
+- **June 2026 exception:** Picks are being entered manually by the admin — the Picks tab may show an incomplete list until all picks are in.
 
 ### Films sub-tabs
 All Films · The Vault · By Season

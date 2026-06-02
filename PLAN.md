@@ -33,7 +33,7 @@
 | May scores_revealed + picker_revealed | ✅ Flipped session 4 |
 | All members is_active = true | ✅ Fixed session 4 |
 | auth.users NULL columns fixed | ✅ Fixed session 4 |
-| Back-calculate missing scores (1 missing) | ❌ |
+| Back-calculate missing scores (1 missing) | ✅ | Smashing Machine: Andrew=7.00; Spirited Away: Ryan Bey=8.50 |
 
 ---
 
@@ -42,20 +42,20 @@
 | Page / Feature | Status | Notes |
 |----------------|--------|-------|
 | Login | ✅ | Google OAuth |
-| AuthCallback | ✅ | Remove debug text display |
+| AuthCallback | ✅ | Clean "Signing you in…" only |
 | NotApproved | ✅ | |
 | AppLayout | ✅ | |
-| Home | ⚠️ | Clicking movie doesn't open film page |
+| Home | ✅ | Film click opens FilmDetailOverlay |
 | ThisMonth — Films tab | ✅ | |
-| ThisMonth — Deadlines tab | ⚠️ | Past deadlines show blank |
-| ThisMonth — Picks tab (renamed from Upcoming) | ⚠️ | Needs "Pick your next movie" CTA; remove inline search |
-| ThisMonth — No picks yet state | ❌ | |
-| Films — Poster wall | ⚠️ | Within-month ordering wrong; vault gold border → star only |
-| Films — FilmDetailOverlay | ⚠️ | Streaming info missing; review blocked if not scored |
-| Films — Score predictions locked after score submitted | ❌ | |
-| Films — Show own score before reveal | ❌ | |
-| Stats — Overview | ⚠️ | Clicking film/user should navigate; test user visible |
-| Stats — Me | ⚠️ | Score over time shows UUIDs; charts needed |
+| ThisMonth — Deadlines tab | ⚠️ | Past deadlines handle in progress (agent) |
+| ThisMonth — Picks tab (renamed from Upcoming) | 🔄 | Agent in progress |
+| ThisMonth — No picks yet state | 🔄 | Agent in progress |
+| Films — Poster wall | ✅ | Sorted by id ASC; vault = gold star only |
+| Films — FilmDetailOverlay | ✅ | Streaming fetch, review gate, own score, prediction lock |
+| Films — Score predictions locked after score submitted | ✅ | |
+| Films — Show own score before reveal | ✅ | |
+| Stats — Overview | ⚠️ | Clicking film/user to navigate — still needed |
+| Stats — Me | ✅ | Month names on x-axis; test user excluded |
 | Stats — Members | ❌ | |
 | Stats — Club | ❌ | |
 | Stats — Head to Head | ❌ | |
@@ -65,36 +65,37 @@
 | Awards — Annual | ❌ | |
 | Awards on film pages | ❌ | |
 | Awards on profile pages | ❌ | |
-| Profile | ⚠️ | Missing light/dark mode toggle; no link to other profiles |
+| Profile | ✅ | Light/dark toggle added; user_color on avatar |
 | Profile — Admin mode toggle | ❌ | |
 | Members directory / clickable names | ❌ | |
-| Admin — Dashboard | ⚠️ | Missing score count uses wrong expected total; excludes test user |
-| Admin — Films | ⚠️ | Needs full TMDB field editing; trigger by month |
+| Admin — Dashboard | ⚠️ | Score count fix + N/A cells in progress (agent) |
+| Admin — Films | ⚠️ | Full TMDB editing + month trigger in progress (agent) |
 | Admin — Members | ✅ | |
-| Admin — Scores | ⚠️ | N/A cells not crossed out for ineligible members |
+| Admin — Scores | 🔄 | N/A cells agent in progress |
 | Admin — Streaming refresh | ❌ | |
 | WelcomeDialog | ✅ | |
-| ScoreModal | ⚠️ | Excitement score not locked when final score exists |
-| Streaming providers fetch (TMDB → Claude fallback) | ❌ | |
+| ScoreModal | ✅ | Excitement locked when final score exists |
+| Streaming providers fetch (TMDB → Claude fallback) | ⚠️ | TMDB fetch done; Claude fallback needs Edge Function |
 
 ---
 
 ## Pending Fixes (session 4 feedback)
 
 ### Quick / isolated
-- [ ] Remove debug logging display from AuthCallback (revert to clean "Signing you in…")
-- [ ] Home page: clicking a movie card opens film detail
-- [ ] Films page: sort within month by movie id ASC
-- [ ] Films page: vault = gold star only, no gold border
-- [ ] Stats: score-over-time x-axis shows month names not UUIDs
-- [ ] Stats: test user excluded from all displays
-- [ ] ScoreModal: lock excitement score input if final score already submitted
-- [ ] Movie page: hide/disable review form if user hasn't submitted a final score yet
-- [ ] Movie page: lock score prediction for a user once that user has scored
-- [ ] Movie page: always show the viewing user's own score even before scores_revealed
+- [x] Remove debug logging display from AuthCallback
+- [x] Home page: clicking a movie card opens film detail
+- [x] Films page: sort within month by movie id ASC
+- [x] Films page: vault = gold star only, no gold border
+- [x] Stats: score-over-time x-axis shows month names not UUIDs
+- [x] Stats: test user excluded from all displays
+- [x] ScoreModal: lock excitement score input if final score already submitted
+- [x] Movie page: hide/disable review form if user hasn't submitted a final score yet
+- [x] Movie page: lock score prediction for a user once that user has scored
+- [x] Movie page: always show the viewing user's own score even before scores_revealed
 
 ### Medium
-- [ ] Streaming providers: fetch from TMDB on film load; Claude API fallback; cache in DB
+- [x] Streaming providers: fetch from TMDB on film load; cache in DB
+- [ ] Streaming providers: Claude API fallback via Edge Function (ANTHROPIC_API_KEY server-side only)
 - [ ] This Month — Deadlines: handle past-deadline state gracefully (show result, not blank)
 - [ ] This Month — Picks tab: rename, add "Pick your next movie" button, remove display search bar
 - [ ] This Month — current month with no films: show "No picks yet for [Month]" state
@@ -102,15 +103,16 @@
 - [ ] Admin: N/A cells crossed out in scores matrix for ineligible months
 - [ ] Admin: bulk month-level reveal triggers (scores_revealed + picker_revealed for whole month)
 - [ ] Admin: full TMDB metadata editing on film edit form (title, poster, plot, year, director, runtime)
-- [ ] Light/dark mode toggle on Profile page
+- [x] Light/dark mode toggle on Profile page
 - [ ] Clickable member names throughout app → their profile page
-- [ ] Members directory (accessible from Stats Members tab or nav)
+- [ ] Members directory (Stats > Members tab acts as directory; names clickable throughout)
+- [ ] Stats — Overview: clicking film/member name navigates to their page
 
 ### Larger
-- [ ] Charts: Recharts — score distribution histogram, score over time line chart (month name x-axis), member comparison bar, excitement vs final scatter/bar, head-to-head matrix
+- [ ] Charts: Recharts — score distribution histogram, score over time line, member comparison bar, excitement vs final, head-to-head matrix
 - [ ] Awards shown on film pages (awards that film won)
 - [ ] Awards shown on profile pages (all awards user won, including for films they picked)
-- [ ] Back-calculate missing score: when exactly 1 score missing + historical_avg_score set, compute and insert
+- [x] Back-calculate missing score: Smashing Machine (Andrew=7.00), Spirited Away (Ryan Bey=8.50)
 - [ ] Stats — Members tab (full)
 - [ ] Stats — Club tab (full)
 - [ ] Stats — Head to Head tab (full)
