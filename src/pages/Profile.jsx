@@ -345,6 +345,8 @@ export default function Profile() {
                   fontSize: '1.6rem',
                   color: profile?.user_color ?? 'var(--accent)',
                   letterSpacing: '0.05em',
+                  lineHeight: 1,
+                  display: 'block',
                 }}
               >
                 {initials}
