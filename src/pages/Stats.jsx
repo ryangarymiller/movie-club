@@ -963,7 +963,15 @@ function MeTab({ movies, ratings, allRatings = [], loading, monthsById = {} }) {
     const myPercentile = (myAvg != null && memberAvgList.length) ? percentileRank(memberAvgList, myAvg) : null
 
     // Favourite genres (mine) — only films I scored that have a genre.
-    const myGenreStrings = scored.map(r => movieMap[r.movie_id]?.genre).filter(Boolean)
+    // Handle genre as text[] (array) or comma-separated string.
+    const myGenreStrings = scored
+      .map(r => {
+        const g = movieMap[r.movie_id]?.genre
+        if (!g) return null
+        if (Array.isArray(g)) return g.join(', ')
+        return String(g)
+      })
+      .filter(Boolean)
     const myGenreCounts = calcGenreBreakdown(myGenreStrings)
     const myGenreDonut = Object.entries(myGenreCounts)
       .sort((a, b) => b[1] - a[1]).slice(0, 8)
@@ -1755,13 +1763,22 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       ratingsByUser,
     )
 
-    // Genre breakdown
-    const genres = movies.filter(m => m.genre).map(m => m.genre)
-    const genreCounts = calcGenreBreakdown(genres)
+    // Genre breakdown — only count revealed films; handle genre as text[] (array) or string
+    const revealedMovies = movies.filter(m => m.scores_revealed)
+    const genreStrings = revealedMovies
+      .map(m => {
+        if (!m.genre) return null
+        if (Array.isArray(m.genre)) return m.genre.join(', ')
+        return String(m.genre)
+      })
+      .filter(Boolean)
+    const genreCounts = calcGenreBreakdown(genreStrings)
     const topGenres = Object.entries(genreCounts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-    const totalFilmsForGenre = movies.length
+      .slice(0, 10)
+    const totalFilmsForGenre = revealedMovies.length
+    // Are there any movies with genre data at all?
+    const hasAnyGenreData = revealedMovies.some(m => m.genre && (Array.isArray(m.genre) ? m.genre.length > 0 : String(m.genre).trim() !== ''))
 
     // Excitement vs Reality
     const excitements = ratings
@@ -1867,8 +1884,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       })
       .sort((a, b) => b.value - a.value)
 
-    // ── Genre donut + bar ──
+    // ── Genre bar chart data ──
     const genreDonut = topGenres.map(([name, value]) => ({ name, value }))
+    const genreBarData = topGenres.map(([name, count]) => ({ genre: name, count }))
 
     return {
       monthAvgs,
@@ -1879,6 +1897,8 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       activeUsers,
       topGenres,
       genreDonut,
+      genreBarData,
+      hasAnyGenreData,
       totalFilmsForGenre,
       avgExcitement,
       avgFinal,
@@ -2036,15 +2056,40 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
         </GlassCard>
       </div>
 
-      {/* Genre Breakdown (donut + bar) */}
+      {/* Genre Breakdown */}
       <div>
         <SectionLabel>Genre Breakdown</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
-          {stats.genreDonut.length > 0 ? (
-            <DonutChart data={stats.genreDonut} height={220} />
+          {stats.genreBarData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={stats.genreBarData} margin={{ top: 8, right: 8, left: -22, bottom: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+                <XAxis
+                  dataKey="genre"
+                  tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
+                  axisLine={{ stroke: CHART.axisLine }}
+                  tickLine={false}
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  content={<ChartTooltip suffix=" films" />}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                />
+                <Bar dataKey="count" name="Films" fill={accentColor()} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : stats.hasAnyGenreData === false ? (
+            <ChartPlaceholder>Run genre backfill in Admin to see this chart.</ChartPlaceholder>
           ) : (
-            /* TODO: needs genre data on movies */
-            <ChartPlaceholder>Genre data not yet available.</ChartPlaceholder>
+            <ChartPlaceholder>No revealed films with genre data yet.</ChartPlaceholder>
           )}
         </GlassCard>
       </div>

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { getAwardsForUser } from '../lib/awards'
+import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -318,11 +318,19 @@ export default function Profile() {
     load()
   }, [displayProfile])
 
-  // ── Load awards this user has won (computed at runtime — no awards table) ──────
+  // ── Load awards this user has won — prefer DB read; fall back to compute ────────
   useEffect(() => {
     if (!displayProfile) return
     let cancelled = false
     async function loadAwards() {
+      // Try DB first
+      const dbAwards = await fetchAwardsForUser(supabase, displayProfile.id)
+      if (cancelled) return
+      if (dbAwards.length > 0) {
+        setUserAwards(dbAwards)
+        return
+      }
+      // DB empty — fall back to compute approach
       const [
         { data: moviesData },
         { data: ratingsData },

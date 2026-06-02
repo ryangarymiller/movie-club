@@ -32,6 +32,13 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   const isExcitementMode = !finalScoreAlreadySubmitted && !existingRating?.pre_watch_excitement
   const isFinalMode = !finalScoreAlreadySubmitted && existingRating?.pre_watch_excitement && !existingRating?.score
 
+  // Pre-populate recommend checkbox from existing rating
+  useEffect(() => {
+    if (existingRating?.recommend_outside_club != null) {
+      setRecommendOutside(!!existingRating.recommend_outside_club)
+    }
+  }, [existingRating])
+
   // Animate in
   useEffect(() => {
     const t = requestAnimationFrame(() => setVisible(true))
@@ -235,11 +242,10 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               Are you sure?
             </p>
             <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: '14px', margin: '0 0 24px', lineHeight: 1.5 }}>
-              That's a bold score.{' '}
+              That's a {parseFloat(scoreInput) >= 9 ? 'very high' : 'very low'} score.{' '}
               <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '1.1rem', verticalAlign: 'middle' }}>
                 {parseFloat(scoreInput).toFixed(2)}
               </span>
-              {' '}will be permanently locked once confirmed.
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
@@ -251,7 +257,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                   fontSize: '14px', cursor: 'pointer',
                 }}
               >
-                Go Back
+                Wait, go back
               </button>
               <button
                 onClick={handleSubmit}
@@ -264,7 +270,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                   opacity: saving ? 0.7 : 1,
                 }}
               >
-                {saving ? 'Saving…' : 'Confirm'}
+                {saving ? 'Saving…' : `Yes, submit ${parseFloat(scoreInput).toFixed(2)}`}
               </button>
             </div>
           </div>
@@ -332,8 +338,8 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                     </svg>
                   )}
                 </div>
-                <span style={{ fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: '14px', userSelect: 'none' }}>
-                  Would recommend outside the club
+                <span style={{ fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: '13px', userSelect: 'none' }}>
+                  I'd recommend this outside the club
                 </span>
               </label>
             )}

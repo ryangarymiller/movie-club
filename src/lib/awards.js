@@ -235,3 +235,107 @@ export function getAwardsForUser(userId, data) {
 export function getAllAwardRecords(data) {
   return getRecords(data)
 }
+
+// ─── DB-backed reads ──────────────────────────────────────────────────────────
+
+// Build a flat lookup: award_key → { label, emoji }
+function buildKeyLookup() {
+  const map = {}
+  for (const def of [...MONTHLY_DEFS, ...SEASON_DEFS, ...ANNUAL_DEFS, ...ALLTIME_DEFS]) {
+    map[def.key] = { label: def.label, emoji: def.emoji }
+  }
+  return map
+}
+const KEY_LOOKUP = buildKeyLookup()
+
+function fmtPeriodRef(scope, periodRef) {
+  if (scope === 'monthly') return fmtMonthYear(periodRef)
+  if (scope === 'alltime') return 'All-Time'
+  return periodRef ?? ''
+}
+
+function mapDbRow(row) {
+  const info = KEY_LOOKUP[row.award_key] ?? { label: row.award_key, emoji: '🏅' }
+  return {
+    key: row.award_key,
+    label: info.label,
+    emoji: info.emoji,
+    scope: row.scope,
+    period: fmtPeriodRef(row.scope, row.period_ref),
+    periodRef: row.period_ref,
+    movieId: row.movie_id ?? undefined,
+    userId: row.user_id ?? undefined,
+    pickerUserId: row.picker_user_id ?? undefined,
+    metric: row.metric ?? undefined,
+  }
+}
+
+// Read this film's awards from the DB. Falls back to [] on error.
+export async function fetchAwardsForFilm(supabase, movieId) {
+  if (movieId == null) return []
+  try {
+    const { data, error } = await supabase
+      .from('awards')
+      .select('*')
+      .eq('movie_id', movieId)
+    if (error) return []
+    return (data ?? []).map(mapDbRow)
+  } catch {
+    return []
+  }
+}
+
+// Read this user's awards from the DB (direct wins + picker credits).
+export async function fetchAwardsForUser(supabase, userId) {
+  if (userId == null) return []
+  try {
+    const { data, error } = await supabase
+      .from('awards')
+      .select('*')
+      .or(`user_id.eq.${userId},picker_user_id.eq.${userId}`)
+    if (error) return []
+    return (data ?? []).map(mapDbRow)
+  } catch {
+    return []
+  }
+}
+
+// ─── DB persistence ───────────────────────────────────────────────────────────
+//
+// Compute all award records from rawData and upsert them to the `awards` table.
+// Returns { count, error }.
+//
+export async function writeAwardsToDb(supabase, rawData) {
+  const records = getAllAwardRecords(rawData)
+
+  const rows = records.map(rec => {
+    if (rec.movieId != null) {
+      // Film award
+      return {
+        award_key: rec.key,
+        scope: rec.scope,
+        period_ref: rec.periodRef ?? null,
+        movie_id: rec.movieId,
+        picker_user_id: rec.pickerUserId ?? null,
+        metric: rec.metric ?? null,
+      }
+    } else {
+      // User award
+      return {
+        award_key: rec.key,
+        scope: rec.scope,
+        period_ref: rec.periodRef ?? null,
+        user_id: rec.userId,
+        metric: rec.metric ?? null,
+      }
+    }
+  })
+
+  if (rows.length === 0) return { count: 0, error: null }
+
+  const { error } = await supabase
+    .from('awards')
+    .upsert(rows, { onConflict: 'award_key,scope,period_ref', ignoreDuplicates: false })
+
+  return { count: rows.length, error }
+}

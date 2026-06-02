@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
-import { getAwardsForFilm } from '../lib/awards'
+import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -818,6 +818,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [predictions, setPredictions] = useState([])
   const [awardData, setAwardData] = useState(null) // { movies, ratings, users, months, seasons }
+  const [filmAwardsState, setFilmAwardsState] = useState(null) // null = not yet loaded
   const scrollRef = useRef(null)
 
   // Trigger animation
@@ -851,7 +852,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
         .eq('movie_id', movieId),
       supabase
         .from('users')
-        .select('id, name, role, joined_at'),
+        .select('id, name, email, role, joined_at'),
       supabase
         .from('reviews')
         .select('id, movie_id, user_id, body, created_at')
@@ -946,6 +947,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
     setEditingReview(false)
     setEditText('')
     setReviewError('')
+    setFilmAwardsState(null)
 
     fetchDetails(movie.id, movie)
   }, [movie, fetchDetails])
@@ -980,6 +982,24 @@ export function FilmDetailOverlay({ movie, onClose }) {
     loadAwardData()
     return () => { cancelled = true }
   }, [movie, awardData])
+
+  // Fetch this film's awards from DB; fall back to computed set if DB is empty.
+  useEffect(() => {
+    if (!movie) return
+    let cancelled = false
+    async function loadFilmAwards() {
+      const dbAwards = await fetchAwardsForFilm(supabase, movie.id)
+      if (cancelled) return
+      if (dbAwards.length > 0) {
+        setFilmAwardsState(dbAwards)
+      } else {
+        // DB not yet populated — fall back to compute approach once awardData is ready
+        setFilmAwardsState(null)
+      }
+    }
+    loadFilmAwards()
+    return () => { cancelled = true }
+  }, [movie])
 
   function handleClose() {
     setVisible(false)
@@ -1076,8 +1096,12 @@ export function FilmDetailOverlay({ movie, onClose }) {
     ? scoredRatings.reduce((s, r) => s + Number(r.score), 0) / scoredRatings.length
     : null
 
-  // Recommend count
-  const ratedWithRecommend = ratings.filter(r => r.recommend_outside_club != null)
+  // Recommend count — exclude test user
+  const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+  const testUserId = users.find(u => u.email === TEST_EMAIL)?.id ?? null
+  const ratedWithRecommend = ratings.filter(r =>
+    r.recommend_outside_club != null && r.user_id !== testUserId
+  )
   const recommendYes = ratedWithRecommend.filter(r => r.recommend_outside_club).length
   const recommendTotal = ratedWithRecommend.length
 
@@ -1098,8 +1122,10 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const sortedReviews = [...reviews].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   const myReview = reviews.find(r => r.user_id === myUserId) ?? null
 
-  // Awards this film has won (computed at runtime — no awards table)
-  const filmAwards = awardData ? getAwardsForFilm(m.id, awardData) : []
+  // Awards this film has won — prefer DB read; fall back to compute if DB empty.
+  const filmAwards = filmAwardsState != null
+    ? filmAwardsState
+    : (awardData ? getAwardsForFilm(m.id, awardData) : [])
 
   return (
     <>
@@ -1316,7 +1342,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           {/* ── SCORES ── */}
           <Divider />
           <div style={{ marginBottom: '0' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: m.scores_revealed && recommendTotal > 0 ? '8px' : '16px' }}>
               <SectionLabel>Scores</SectionLabel>
               {groupAvg != null && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px' }}>
@@ -1335,6 +1361,18 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 </div>
               )}
             </div>
+            {/* Recommend stat — only after scores revealed and if any ratings have the field set */}
+            {m.scores_revealed && recommendTotal > 0 && (
+              <p style={{
+                fontFamily: "'DM Mono', monospace",
+                fontSize: '10px',
+                color: 'rgba(255,255,255,0.3)',
+                letterSpacing: '0.05em',
+                margin: '0 0 16px',
+              }}>
+                {recommendYes}/{recommendTotal} would recommend outside the club
+              </p>
+            )}
 
             {detailLoading ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1509,7 +1547,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           )}
 
           {/* ── RECOMMEND ── */}
-          {recommendTotal > 0 && (
+          {m.scores_revealed && recommendTotal > 0 && (
             <>
               <Divider />
               <div>
@@ -1781,29 +1819,158 @@ export function FilmDetailOverlay({ movie, onClose }) {
 
 // ─── AllFilms tab ─────────────────────────────────────────────────────────────
 
-const SORTS = [
-  { key: 'recent', label: 'Most Recent' },
+const SORT_OPTIONS = [
+  { key: 'recent', label: 'Recent' },
   { key: 'high', label: 'Highest Rated' },
   { key: 'low', label: 'Lowest Rated' },
+  { key: 'picker', label: 'By Picker', requiresReveal: true },
 ]
 
-function AllFilmsTab({ movies, loading, onSelect, userById }) {
+function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
   const [sort, setSort] = useState('recent')
+  const [filterSeason, setFilterSeason] = useState('all')
+  const [filterMinScore, setFilterMinScore] = useState('')
+  const [filterMaxScore, setFilterMaxScore] = useState('')
 
-  const sorted = [...movies].sort((a, b) => {
+  // Determine if any picker is revealed (to show "By Picker" option)
+  const anyPickerRevealed = movies.some(m => m.picker_revealed)
+
+  // Build season options from seasons prop
+  const seasonOptions = seasons.map(s => ({ id: s.id, name: s.name }))
+
+  // Apply filters first
+  let filtered = [...movies]
+  if (filterSeason !== 'all') {
+    filtered = filtered.filter(m => m._seasonId === filterSeason)
+  }
+  const minScore = filterMinScore !== '' ? parseFloat(filterMinScore) : null
+  const maxScore = filterMaxScore !== '' ? parseFloat(filterMaxScore) : null
+  if (minScore != null && !isNaN(minScore)) {
+    filtered = filtered.filter(m => m.historical_avg_score != null && m.historical_avg_score >= minScore)
+  }
+  if (maxScore != null && !isNaN(maxScore)) {
+    filtered = filtered.filter(m => m.historical_avg_score != null && m.historical_avg_score <= maxScore)
+  }
+
+  // Apply sort
+  const sorted = filtered.sort((a, b) => {
     if (sort === 'high') return (b.historical_avg_score ?? -1) - (a.historical_avg_score ?? -1)
     if (sort === 'low') return (a.historical_avg_score ?? 999) - (b.historical_avg_score ?? 999)
-    // recent: higher month_id = more recent (months are sequential by id)
-    return (b._monthOrder ?? 0) - (a._monthOrder ?? 0)
+    if (sort === 'picker') {
+      // Group by picker; nulls last
+      const pa = a.picker_revealed ? (a.picked_by_user_id ?? '') : ''
+      const pb = b.picker_revealed ? (b.picked_by_user_id ?? '') : ''
+      if (pa < pb) return -1
+      if (pa > pb) return 1
+      return (a._monthOrder ?? 0) - (b._monthOrder ?? 0)
+    }
+    // recent: descending month order, id asc within month
+    if ((b._monthOrder ?? 0) !== (a._monthOrder ?? 0)) return (b._monthOrder ?? 0) - (a._monthOrder ?? 0)
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
+
+  const selectStyle = {
+    fontFamily: "'DM Mono', monospace",
+    fontSize: '10px',
+    letterSpacing: '0.06em',
+    padding: '5px 10px',
+    borderRadius: '8px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: '#0e0f16',
+    color: 'rgba(255,255,255,0.55)',
+    cursor: 'pointer',
+    outline: 'none',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    minWidth: 0,
+  }
+
+  const scoreInputStyle = {
+    fontFamily: "'DM Mono', monospace",
+    fontSize: '10px',
+    letterSpacing: '0.06em',
+    padding: '5px 8px',
+    borderRadius: '8px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: '#0e0f16',
+    color: 'rgba(255,255,255,0.55)',
+    outline: 'none',
+    width: '52px',
+    flexShrink: 0,
+  }
 
   return (
     <div>
-      {/* Sort bar */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: '2px' }}>
-        {SORTS.map(s => (
-          <SortButton key={s.key} label={s.label} active={sort === s.key} onClick={() => setSort(s.key)} />
-        ))}
+      {/* Sort + filter bar */}
+      <div style={{ marginBottom: '16px' }}>
+        {/* Sort pills row */}
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: '2px' }}>
+          {SORT_OPTIONS
+            .filter(s => !s.requiresReveal || anyPickerRevealed)
+            .map(s => (
+              <SortButton key={s.key} label={s.label} active={sort === s.key} onClick={() => setSort(s.key)} />
+            ))}
+        </div>
+        {/* Filter row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Season dropdown */}
+          {seasonOptions.length > 0 && (
+            <select
+              value={filterSeason}
+              onChange={e => setFilterSeason(e.target.value === 'all' ? 'all' : e.target.value)}
+              style={selectStyle}
+            >
+              <option value="all">All seasons</option>
+              {seasonOptions.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+          {/* Score range */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+              placeholder="Min"
+              value={filterMinScore}
+              onChange={e => setFilterMinScore(e.target.value)}
+              style={scoreInputStyle}
+            />
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.2)' }}>–</span>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+              placeholder="Max"
+              value={filterMaxScore}
+              onChange={e => setFilterMaxScore(e.target.value)}
+              style={scoreInputStyle}
+            />
+          </div>
+          {/* Clear filters if any active */}
+          {(filterSeason !== 'all' || filterMinScore !== '' || filterMaxScore !== '') && (
+            <button
+              onClick={() => { setFilterSeason('all'); setFilterMinScore(''); setFilterMaxScore('') }}
+              style={{
+                fontFamily: "'DM Mono', monospace",
+                fontSize: '9px',
+                letterSpacing: '0.08em',
+                padding: '4px 10px',
+                borderRadius: '999px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'transparent',
+                color: 'rgba(255,255,255,0.3)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <PosterGrid movies={sorted} loading={loading} onSelect={onSelect} userById={userById} />
@@ -2352,7 +2519,7 @@ export default function Films() {
         {/* Tab content */}
         <div style={{ minWidth: 0 }}>
           {activeTab === 'All Films' && (
-            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} />
+            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} seasons={seasons} />
           )}
           {activeTab === 'The Vault' && (
             <VaultTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} />

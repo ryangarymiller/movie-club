@@ -64,7 +64,7 @@ async function renderMembersTab() {
   const membersBtn = await screen.findByRole('button', { name: /^members$/i })
   await user.click(membersBtn)
 
-  await screen.findByRole('button', { name: /send invite/i }, { timeout: 5000 })
+  await screen.findByRole('button', { name: /add member/i }, { timeout: 5000 })
 
   return user
 }
@@ -72,13 +72,13 @@ async function renderMembersTab() {
 test('renders invite form', async () => {
   await renderMembersTab()
   expect(screen.getByRole('textbox', { name: /^name$/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /send invite/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
 })
 
 test('validation - empty name', async () => {
   const user = await renderMembersTab()
   await user.type(screen.getByRole('textbox', { name: /^email$/i }), 'test@example.com')
-  await user.click(screen.getByRole('button', { name: /send invite/i }))
+  await user.click(screen.getByRole('button', { name: /add member/i }))
   expect(await screen.findByText('Name is required')).toBeInTheDocument()
 })
 
@@ -88,7 +88,7 @@ test('success clears form', async () => {
   const emailInput = screen.getByRole('textbox', { name: /^email$/i })
   await user.type(nameInput, 'Alex Jones')
   await user.type(emailInput, 'alex@example.com')
-  await user.click(screen.getByRole('button', { name: /send invite/i }))
+  await user.click(screen.getByRole('button', { name: /add member/i }))
   await waitFor(() => {
     expect(nameInput.value).toBe('')
     expect(emailInput.value).toBe('')

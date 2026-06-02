@@ -190,14 +190,14 @@ describe('Confirmation dialog for extreme scores (final score mode)', () => {
     expect(screen.getByRole('button', { name: /submit score/i })).toBeInTheDocument()
   })
 
-  it('"Confirm" in the dialog saves and calls onSaved', async () => {
+  it('"Yes, submit" in the dialog saves and calls onSaved', async () => {
     const { onSaved } = renderModal({ existingRating })
     const input = screen.getByRole('spinbutton')
     await userEvent.type(input, '9.5')
     await userEvent.click(screen.getByRole('button', { name: /submit score/i }))
     await waitFor(() => expect(screen.getByText('Are you sure?')).toBeInTheDocument())
 
-    await userEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    await userEvent.click(screen.getByRole('button', { name: /yes, submit/i }))
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 
@@ -245,16 +245,16 @@ describe('Recommend outside club checkbox (final score mode)', () => {
     user_id: 'user-1',
   }
 
-  it('renders the "Would recommend outside the club" label', () => {
+  it('renders the recommend outside the club label', () => {
     renderModal({ existingRating })
     expect(
-      screen.getByText(/would recommend outside the club/i)
+      screen.getByText(/recommend.*outside.*club/i)
     ).toBeInTheDocument()
   })
 
   it('toggling the custom checkbox changes its visual state', async () => {
     renderModal({ existingRating })
-    const labelText = screen.getByText(/would recommend outside the club/i)
+    const labelText = screen.getByText(/recommend.*outside.*club/i)
 
     // Walk up to the <label> element, then find its first child (the checkbox div)
     const labelEl = labelText.closest('label')
@@ -274,7 +274,7 @@ describe('Recommend outside club checkbox (final score mode)', () => {
   it('does NOT render the recommend checkbox in excitement mode', () => {
     renderModal() // no existingRating
     expect(
-      screen.queryByText(/would recommend outside the club/i)
+      screen.queryByText(/recommend.*outside.*club/i)
     ).not.toBeInTheDocument()
   })
 })

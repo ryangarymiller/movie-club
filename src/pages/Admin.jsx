@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { writeAwardsToDb } from '../lib/awards'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -214,6 +215,41 @@ function DashboardTab({ movies, ratings, users, months }) {
 }
 
 // ─────────────────────────────────────────────
+// Awards helper — fetch full dataset and write to DB (fire-and-forget)
+// ─────────────────────────────────────────────
+async function triggerAwardsWrite() {
+  try {
+    const [
+      { data: movies },
+      { data: ratings },
+      { data: users },
+      { data: months },
+      { data: seasons },
+    ] = await Promise.all([
+      supabase.from('movies').select('*').order('id'),
+      supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
+      supabase.from('users').select('id, name, email, role, joined_at, is_active'),
+      supabase.from('months').select('id, season_id, month_year, status').order('month_year'),
+      supabase.from('seasons').select('*').order('start_date'),
+    ])
+    const { count, error } = await writeAwardsToDb(supabase, {
+      movies: movies ?? [],
+      ratings: ratings ?? [],
+      users: users ?? [],
+      months: months ?? [],
+      seasons: seasons ?? [],
+    })
+    if (error) {
+      console.error('[awards] write failed', error)
+    } else {
+      console.log('[awards] wrote', count, 'records')
+    }
+  } catch (e) {
+    console.error('[awards] unexpected error', e)
+  }
+}
+
+// ─────────────────────────────────────────────
 // TAB 2 — Films
 // ─────────────────────────────────────────────
 function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSuccess }) {
@@ -221,6 +257,9 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
   const [refreshingId, setRefreshingId] = useState(null)
+  const [refetchingId, setRefetchingId] = useState(null)
+  const [backfillStatus, setBackfillStatus] = useState(null) // null | 'running' | 'done'
+  const [backfillMsg, setBackfillMsg] = useState('')
 
   // Bulk reveal state
   const [selectedBulkMonth, setSelectedBulkMonth] = useState('')
@@ -259,6 +298,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
       director: movie.director ?? '',
       runtime: movie.runtime ?? '',
       tmdb_id: movie.tmdb_id ?? '',
+      genre: Array.isArray(movie.genre) ? movie.genre.join(', ') : (movie.genre ?? ''),
     })
   }
 
@@ -285,6 +325,9 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
     updates.poster_url = editForm.poster_url?.trim() || null
     updates.overview = editForm.overview?.trim() || null
     updates.director = editForm.director?.trim() || null
+    updates.genre = editForm.genre
+      ? editForm.genre.split(',').map(s => s.trim()).filter(Boolean)
+      : []
 
     if (editForm.year_released !== '' && editForm.year_released != null) {
       const y = parseInt(editForm.year_released, 10)
@@ -311,6 +354,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
       return
     }
 
+    const prevMovie = movies.find(m => m.id === movieId)
     const { error } = await supabase.from('movies').update(updates).eq('id', movieId)
     setSaving(false)
     if (error) {
@@ -319,6 +363,19 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
       setSuccess('Film updated')
       setEditingId(null)
       onRefresh()
+      // Trigger awards write if picker_revealed just turned on.
+      // Also trigger if scores_revealed just turned on and picker is already/now revealed for this film's month.
+      const pickerJustRevealed = !prevMovie?.picker_revealed && updates.picker_revealed
+      const scoresJustRevealed = !prevMovie?.scores_revealed && updates.scores_revealed
+      if (pickerJustRevealed) {
+        triggerAwardsWrite()
+      } else if (scoresJustRevealed) {
+        // Check if all films in this movie's month have picker_revealed (including this one which now does/doesn't)
+        const movieMonth = prevMovie?.month_id
+        const siblingFilms = movies.filter(m => m.month_id === movieMonth && m.id !== movieId)
+        const pickerRevealedForMonth = updates.picker_revealed && siblingFilms.every(m => m.picker_revealed)
+        if (pickerRevealedForMonth) triggerAwardsWrite()
+      }
     }
   }
 
@@ -365,6 +422,88 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
     }
   }
 
+  async function refetchFromTmdb(movie) {
+    const tmdbId = editForm.tmdb_id || movie.tmdb_id
+    if (!tmdbId) {
+      setError('No TMDB ID set for this film — add one and save before re-fetching.')
+      return
+    }
+    setRefetchingId(movie.id)
+    try {
+      const tmdbToken = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
+      const resp = await fetch(
+        `https://api.themoviedb.org/3/movie/${tmdbId}?append_to_response=credits`,
+        { headers: { Authorization: `Bearer ${tmdbToken}` } }
+      )
+      if (!resp.ok) throw new Error(`TMDB returned ${resp.status}`)
+      const data = await resp.json()
+
+      const director = data.credits?.crew?.find(c => c.job === 'Director')?.name ?? editForm.director
+      const genreNames = (data.genres ?? []).map(g => g.name)
+
+      setEditForm(f => ({
+        ...f,
+        title: data.title ?? f.title,
+        overview: data.overview ?? f.overview,
+        poster_url: data.poster_path ?? f.poster_url,
+        year_released: data.release_date ? new Date(data.release_date).getFullYear() : f.year_released,
+        runtime: data.runtime ?? f.runtime,
+        director: director ?? f.director,
+        genre: genreNames.length > 0 ? genreNames.join(', ') : f.genre,
+      }))
+      setSuccess('Metadata fetched from TMDB — review and save.')
+    } catch (e) {
+      setError('Failed to fetch from TMDB: ' + (e.message ?? 'unknown error'))
+    } finally {
+      setRefetchingId(null)
+    }
+  }
+
+  async function backfillGenres() {
+    const toBackfill = movies.filter(m => m.tmdb_id && (!m.genre || m.genre.length === 0))
+    if (toBackfill.length === 0) {
+      setBackfillMsg('All films already have genre data.')
+      setBackfillStatus('done')
+      return
+    }
+    setBackfillStatus('running')
+    setBackfillMsg(`Backfilling ${toBackfill.length} film${toBackfill.length !== 1 ? 's' : ''}…`)
+
+    const tmdbToken = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
+    let done = 0
+    let errors = 0
+
+    for (const movie of toBackfill) {
+      try {
+        const resp = await fetch(
+          `https://api.themoviedb.org/3/movie/${movie.tmdb_id}`,
+          { headers: { Authorization: `Bearer ${tmdbToken}` } }
+        )
+        if (!resp.ok) throw new Error(`TMDB ${resp.status}`)
+        const data = await resp.json()
+        const genreNames = (data.genres ?? []).map(g => g.name)
+        if (genreNames.length > 0) {
+          const { error } = await supabase
+            .from('movies')
+            .update({ genre: genreNames })
+            .eq('id', movie.id)
+          if (error) throw error
+        }
+        done++
+        setBackfillMsg(`Backfilling… ${done}/${toBackfill.length} done`)
+      } catch (e) {
+        errors++
+        console.error(`Genre backfill failed for ${movie.title}:`, e)
+      }
+      // Rate-limit: 200ms between requests
+      await new Promise(r => setTimeout(r, 200))
+    }
+
+    setBackfillStatus('done')
+    setBackfillMsg(`Done — ${done} film${done !== 1 ? 's' : ''} updated${errors > 0 ? `, ${errors} failed (see console)` : ''}`)
+    onRefresh()
+  }
+
   async function bulkReveal(type) {
     if (!selectedBulkMonth) return
     const monthRow = months.find(m => m.month_year === selectedBulkMonth)
@@ -391,6 +530,15 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
     } else {
       setSuccess(`All ${label} revealed for ${selectedBulkMonth}`)
       onRefresh()
+      // Recompute and persist awards whenever pickers are revealed (full reveal).
+      // Also trigger on scores reveal if all films in the month already have picker_revealed.
+      if (type === 'pickers') {
+        triggerAwardsWrite()
+      } else if (type === 'scores') {
+        // Only write awards if every film in this month already has picker_revealed
+        const allPickersRevealed = moviesInMonth.every(m => m.picker_revealed)
+        if (allPickersRevealed) triggerAwardsWrite()
+      }
     }
   }
 
@@ -470,6 +618,36 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
         <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
           Sets scores_revealed / picker_revealed = true for all films in the selected month.
         </p>
+      </div>
+
+      {/* Genre backfill */}
+      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+        <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 10px' }}>Genre Backfill</p>
+        <p style={{ color: '#6b7280', fontSize: '12px', margin: '0 0 12px', fontFamily: "'DM Mono',monospace" }}>
+          Fetches genre data from TMDB for all films that have a TMDB ID but no genre set.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            onClick={backfillGenres}
+            disabled={backfillStatus === 'running'}
+            style={{
+              padding: '9px 16px', borderRadius: '8px',
+              border: '1px solid rgba(99,102,241,0.3)',
+              background: 'rgba(99,102,241,0.08)',
+              color: backfillStatus === 'running' ? '#4b5563' : '#a5b4fc',
+              fontSize: '12px', fontFamily: "'DM Mono',monospace",
+              cursor: backfillStatus === 'running' ? 'not-allowed' : 'pointer',
+              opacity: backfillStatus === 'running' ? 0.6 : 1,
+            }}
+          >
+            {backfillStatus === 'running' ? 'Running…' : 'Backfill genres from TMDB'}
+          </button>
+          {backfillMsg && (
+            <span style={{ color: backfillStatus === 'done' ? '#4ade80' : '#fbbf24', fontSize: '12px', fontFamily: "'DM Mono',monospace" }}>
+              {backfillMsg}
+            </span>
+          )}
+        </div>
       </div>
 
       {sortedMonths.map(monthYear => (
@@ -591,6 +769,24 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                       </div>
 
                       <div>
+                        <Label>Genres (comma-separated)</Label>
+                        <input
+                          type="text"
+                          value={editForm.genre}
+                          onChange={e => setEditForm(f => ({ ...f, genre: e.target.value }))}
+                          placeholder="e.g. Drama, Thriller, Crime"
+                          style={{
+                            display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
+                          }}
+                        />
+                        <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
+                          Stored as an array. Separate multiple genres with commas.
+                        </p>
+                      </div>
+
+                      <div>
                         <Label>Overview (plot)</Label>
                         <textarea
                           value={editForm.overview}
@@ -701,6 +897,21 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           {saving ? 'Saving…' : 'Save'}
                         </button>
                         <button
+                          onClick={() => refetchFromTmdb(movie)}
+                          disabled={refetchingId === movie.id || !editForm.tmdb_id}
+                          title={!editForm.tmdb_id ? 'Set a TMDB ID first' : 'Re-fetch metadata (title, poster, overview, year, runtime, director, genres) from TMDB'}
+                          style={{
+                            padding: '9px 16px', borderRadius: '8px',
+                            border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)',
+                            color: (refetchingId === movie.id || !editForm.tmdb_id) ? '#4b5563' : '#a5b4fc',
+                            fontSize: '12px', fontFamily: "'DM Mono',monospace",
+                            cursor: (refetchingId === movie.id || !editForm.tmdb_id) ? 'not-allowed' : 'pointer',
+                            opacity: (refetchingId === movie.id || !editForm.tmdb_id) ? 0.6 : 1,
+                          }}
+                        >
+                          {refetchingId === movie.id ? 'Fetching…' : 'Re-fetch from TMDB'}
+                        </button>
+                        <button
                           onClick={() => refreshProviders(movie)}
                           disabled={refreshingId === movie.id || !editForm.tmdb_id}
                           title={!editForm.tmdb_id ? 'Set a TMDB ID first' : 'Re-fetch US streaming providers from TMDB'}
@@ -717,7 +928,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                         </button>
                       </div>
                       <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '-4px', fontFamily: "'DM Mono',monospace" }}>
-                        Refresh fetches current US providers from TMDB and caches them on the film. Uses the saved TMDB ID.
+                        Re-fetch pulls metadata + genres from TMDB into the form (save to apply). Refresh streaming updates cached providers.
                       </p>
                     </div>
                   </div>
@@ -735,8 +946,11 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
 // TAB 3 — Members
 // ─────────────────────────────────────────────
 function InviteCard({ onRefresh, setSuccess }) {
+  const todayStr = new Date().toISOString().split('T')[0]
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [role, setRole] = useState('member')
+  const [joinedAt, setJoinedAt] = useState(todayStr)
   const [inviting, setInviting] = useState(false)
   const [inviteError, setInviteError] = useState(null)
   const [inviteSuccess, setInviteSuccess] = useState(null)
@@ -764,25 +978,31 @@ function InviteCard({ onRefresh, setSuccess }) {
       name: trimmedName,
       email: trimmedEmail,
       is_active: true,
-      role: 'member',
-      joined_at: new Date().toISOString().split('T')[0],
+      role,
+      joined_at: joinedAt || todayStr,
       has_completed_onboarding: false,
     })
     setInviting(false)
 
     if (error) {
-      setInviteError(error.message)
+      if (error.message?.toLowerCase().includes('duplicate') || error.code === '23505') {
+        setInviteError(`${trimmedEmail} is already in the system`)
+      } else {
+        setInviteError(error.message)
+      }
     } else {
-      setInviteSuccess(`✓ ${trimmedName} invited — they can sign in with ${trimmedEmail}`)
+      setInviteSuccess(`Member added. They can now log in with ${trimmedEmail} via Google.`)
       setName('')
       setEmail('')
+      setRole('member')
+      setJoinedAt(todayStr)
       onRefresh()
     }
   }
 
   return (
     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-      <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Invite Member</p>
+      <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Add Member</p>
 
       {inviteError && (
         <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px' }}>
@@ -820,6 +1040,30 @@ function InviteCard({ onRefresh, setSuccess }) {
             />
           </div>
         </div>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+            <Label>Role</Label>
+            <select
+              value={role}
+              onChange={e => setRole(e.target.value)}
+              style={{ ...inputStyle, marginTop: '6px' }}
+              aria-label="Role"
+            >
+              <option value="member">member</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+            <Label>Joined Date</Label>
+            <input
+              type="date"
+              value={joinedAt}
+              onChange={e => setJoinedAt(e.target.value)}
+              style={{ ...inputStyle, marginTop: '6px', fontFamily: "'DM Mono',monospace" }}
+              aria-label="Joined Date"
+            />
+          </div>
+        </div>
         <button
           type="submit"
           disabled={inviting}
@@ -830,12 +1074,12 @@ function InviteCard({ onRefresh, setSuccess }) {
             opacity: inviting ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif",
           }}
         >
-          {inviting ? 'Inviting…' : 'Send Invite'}
+          {inviting ? 'Adding…' : 'Add Member'}
         </button>
       </form>
 
       <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
-        This creates their account — share movie-club-blond.vercel.app with them to sign in.
+        Adds their account — they can then sign in at movie-club-blond.vercel.app using Google with this email.
       </p>
     </div>
   )
@@ -846,15 +1090,36 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
 
-  function startEdit(user) {
-    setEditingId(user.id)
-    const joined = user.joined_at ? user.joined_at.slice(0, 10) : ''
-    setEditForm({ joined_at: joined })
+  const fieldStyle = {
+    display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
+    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+    color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif",
+    outline: 'none', boxSizing: 'border-box',
   }
 
-  async function saveJoinedAt(userId) {
+  function startEdit(user) {
+    setEditingId(user.id)
+    setEditForm({
+      name: user.name ?? '',
+      email: user.email ?? '',
+      role: user.role ?? 'member',
+      joined_at: user.joined_at ? user.joined_at.slice(0, 10) : '',
+    })
+  }
+
+  async function saveMember(userId) {
+    const trimmedName = editForm.name.trim()
+    const trimmedEmail = editForm.email.trim().toLowerCase()
+    if (!trimmedName) { setError('Name is required'); return }
+    if (!trimmedEmail || !trimmedEmail.includes('@')) { setError('Enter a valid email address'); return }
+
     setSaving(true)
-    const { error } = await supabase.from('users').update({ joined_at: editForm.joined_at }).eq('id', userId)
+    const { error } = await supabase.from('users').update({
+      name: trimmedName,
+      email: trimmedEmail,
+      role: editForm.role,
+      joined_at: editForm.joined_at || null,
+    }).eq('id', userId)
     setSaving(false)
     if (error) setError('Save failed: ' + error.message)
     else { setSuccess('Member updated'); setEditingId(null); onRefresh() }
@@ -875,7 +1140,12 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <InviteCard onRefresh={onRefresh} setSuccess={setSuccess} />
       {users.map(user => (
-        <div key={user.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
+        <div key={user.id} style={{
+          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '12px', overflow: 'hidden',
+          opacity: user.is_active ? 1 : 0.45,
+          transition: 'opacity 0.2s',
+        }}>
           <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
             {/* Avatar placeholder */}
             <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(185,28,28,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -901,7 +1171,8 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
                 onClick={() => editingId === user.id ? setEditingId(null) : startEdit(user)}
                 style={{
                   padding: '5px 10px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)',
-                  background: 'transparent', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', fontFamily: "'DM Mono',monospace"
+                  background: editingId === user.id ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  color: '#9ca3af', fontSize: '11px', cursor: 'pointer', fontFamily: "'DM Mono',monospace"
                 }}
               >
                 {editingId === user.id ? 'Cancel' : 'Edit'}
@@ -920,31 +1191,79 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
             </div>
           </div>
 
-          {/* Edit form */}
+          {/* Inline edit form */}
           {editingId === user.id && (
-            <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
-              <Label>Joined Date</Label>
-              <input
-                type="date"
-                value={editForm.joined_at}
-                onChange={e => setEditForm(f => ({ ...f, joined_at: e.target.value }))}
-                style={{
-                  display: 'block', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace"
-                }}
-              />
-              <button
-                onClick={() => saveJoinedAt(user.id)}
-                disabled={saving}
-                style={{
-                  marginTop: '10px', padding: '8px 18px', borderRadius: '8px', border: 'none',
-                  background: 'var(--accent)', color: 'white', fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer',
-                  opacity: saving ? 0.7 : 1
-                }}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
+            <div style={{ padding: '14px', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 130px', minWidth: 0 }}>
+                    <Label>Name</Label>
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Full name"
+                      style={fieldStyle}
+                    />
+                  </div>
+                  <div style={{ flex: '1 1 170px', minWidth: 0 }}>
+                    <Label>Email</Label>
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="email@example.com"
+                      style={{ ...fieldStyle, fontFamily: "'DM Mono',monospace" }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 100px', minWidth: 0 }}>
+                    <Label>Role</Label>
+                    <select
+                      value={editForm.role}
+                      onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
+                      style={fieldStyle}
+                    >
+                      <option value="member">member</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+                    <Label>Joined Date</Label>
+                    <input
+                      type="date"
+                      value={editForm.joined_at}
+                      onChange={e => setEditForm(f => ({ ...f, joined_at: e.target.value }))}
+                      style={{ ...fieldStyle, fontFamily: "'DM Mono',monospace" }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => saveMember(user.id)}
+                    disabled={saving}
+                    style={{
+                      padding: '8px 18px', borderRadius: '8px', border: 'none',
+                      background: 'var(--accent)', color: 'white', fontSize: '13px',
+                      fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
+                      opacity: saving ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif",
+                    }}
+                  >
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    style={{
+                      padding: '8px 14px', borderRadius: '8px',
+                      border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+                      color: '#9ca3af', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

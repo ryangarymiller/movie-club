@@ -112,7 +112,7 @@ async function renderMembersTab() {
   await user.click(membersBtn)
 
   // Wait until loading completes and InviteCard appears (up to 5s)
-  await screen.findByRole('button', { name: /send invite/i }, { timeout: 5000 })
+  await screen.findByRole('button', { name: /add member/i }, { timeout: 5000 })
 
   return user
 }
@@ -127,7 +127,7 @@ describe('InviteCard — rendering', () => {
 
     expect(screen.getByRole('textbox', { name: /^name$/i })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /^email$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /send invite/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
   })
 })
 
@@ -137,7 +137,7 @@ describe('InviteCard — validation', () => {
 
     // Fill email only, leave name blank
     await user.type(screen.getByRole('textbox', { name: /^email$/i }), 'test@example.com')
-    await user.click(screen.getByRole('button', { name: /send invite/i }))
+    await user.click(screen.getByRole('button', { name: /add member/i }))
 
     expect(await screen.findByText('Name is required')).toBeInTheDocument()
   })
@@ -147,7 +147,7 @@ describe('InviteCard — validation', () => {
 
     await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'Alex')
     // leave email blank
-    await user.click(screen.getByRole('button', { name: /send invite/i }))
+    await user.click(screen.getByRole('button', { name: /add member/i }))
 
     expect(await screen.findByText('Email is required')).toBeInTheDocument()
   })
@@ -157,7 +157,7 @@ describe('InviteCard — validation', () => {
 
     await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'Alex')
     await user.type(screen.getByRole('textbox', { name: /^email$/i }), 'notanemail')
-    await user.click(screen.getByRole('button', { name: /send invite/i }))
+    await user.click(screen.getByRole('button', { name: /add member/i }))
 
     expect(await screen.findByText('Enter a valid email address')).toBeInTheDocument()
   })
@@ -169,7 +169,7 @@ describe('InviteCard — valid submission', () => {
 
     await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'Alex Jones')
     await user.type(screen.getByRole('textbox', { name: /^email$/i }), 'alex@example.com')
-    await user.click(screen.getByRole('button', { name: /send invite/i }))
+    await user.click(screen.getByRole('button', { name: /add member/i }))
 
     await waitFor(() => {
       expect(insertMock).toHaveBeenCalledWith(
@@ -191,7 +191,7 @@ describe('InviteCard — valid submission', () => {
 
     await user.type(nameInput, 'Alex Jones')
     await user.type(emailInput, 'alex@example.com')
-    await user.click(screen.getByRole('button', { name: /send invite/i }))
+    await user.click(screen.getByRole('button', { name: /add member/i }))
 
     await waitFor(() => {
       expect(nameInput.value).toBe('')
@@ -204,10 +204,10 @@ describe('InviteCard — valid submission', () => {
 
     await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'Alex Jones')
     await user.type(screen.getByRole('textbox', { name: /^email$/i }), 'alex@example.com')
-    await user.click(screen.getByRole('button', { name: /send invite/i }))
+    await user.click(screen.getByRole('button', { name: /add member/i }))
 
     expect(
-      await screen.findByText(/alex jones invited.*alex@example\.com/i)
+      await screen.findByText(/member added.*alex@example\.com/i)
     ).toBeInTheDocument()
   })
 
@@ -217,10 +217,10 @@ describe('InviteCard — valid submission', () => {
 
     await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'Alex Jones')
     await user.type(screen.getByRole('textbox', { name: /^email$/i }), 'alex@example.com')
-    await user.click(screen.getByRole('button', { name: /send invite/i }))
+    await user.click(screen.getByRole('button', { name: /add member/i }))
 
     expect(
-      await screen.findByText(/duplicate key value/i)
+      await screen.findByText(/is already in the system/i)
     ).toBeInTheDocument()
   })
 })
