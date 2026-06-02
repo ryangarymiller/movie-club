@@ -9,7 +9,7 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: '2rem', color: 'white', background: '#0a0a0a', fontFamily: 'monospace', minHeight: '100vh' }}>
+        <div style={{ padding: '2rem', color: 'var(--text-strong)', background: 'var(--bg)', fontFamily: 'monospace', minHeight: '100vh' }}>
           <h2 style={{ color: '#f87171', marginBottom: '1rem' }}>App crashed</h2>
           <pre style={{ whiteSpace: 'pre-wrap', color: '#fca5a5', fontSize: '13px' }}>
             {this.state.error.toString()}

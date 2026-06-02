@@ -47,7 +47,7 @@ function Skeleton({ height = 120 }) {
       className="animate-pulse"
       style={{
         height,
-        background: 'rgba(255,255,255,0.04)',
+        background: 'rgba(var(--fg-rgb), 0.04)',
         borderRadius: '14px',
         width: '100%',
       }}
@@ -90,7 +90,7 @@ function PosterThumb({ posterUrl, title }) {
       height: '56px',
       borderRadius: '6px',
       overflow: 'hidden',
-      background: 'rgba(255,255,255,0.05)',
+      background: 'rgba(var(--fg-rgb), 0.05)',
     }}>
       {posterUrl ? (
         <img
@@ -106,7 +106,7 @@ function PosterThumb({ posterUrl, title }) {
         }}>
           <span style={{
             fontFamily: "'Bebas Neue',sans-serif",
-            color: 'rgba(255,255,255,0.15)',
+            color: 'rgba(var(--fg-rgb), 0.15)',
             fontSize: '11px',
           }}>
             {initials}
@@ -123,8 +123,8 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
   const clickable = winnerClickable && onWinnerClick && winner
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.025)',
-      border: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(var(--fg-rgb), 0.025)',
+      border: '1px solid rgba(var(--fg-rgb), 0.07)',
       borderRadius: '14px',
       padding: '16px',
       width: '100%',
@@ -136,7 +136,7 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
         fontSize: '10px',
         textTransform: 'uppercase',
         letterSpacing: '0.18em',
-        color: '#374151',
+        color: 'var(--hairline)',
         margin: '0 0 10px',
       }}>
         {emoji} {label}
@@ -145,7 +145,7 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
       {noData ? (
         <p style={{
           fontFamily: "'DM Sans',sans-serif",
-          color: '#374151',
+          color: 'var(--hairline)',
           fontSize: '13px',
           margin: 0,
         }}>
@@ -164,7 +164,7 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
                 fontFamily: "'Bebas Neue',sans-serif",
                 fontSize: '1.55rem',
                 letterSpacing: '0.03em',
-                color: 'white',
+                color: 'var(--text-strong)',
                 margin: '0 0 4px',
                 lineHeight: 1.1,
                 overflow: 'hidden',
@@ -172,7 +172,7 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
                 whiteSpace: 'nowrap',
                 cursor: clickable ? 'pointer' : 'default',
                 textDecoration: clickable ? 'underline' : 'none',
-                textDecorationColor: clickable ? 'rgba(255,255,255,0.2)' : undefined,
+                textDecorationColor: clickable ? 'rgba(var(--fg-rgb), 0.2)' : undefined,
                 textUnderlineOffset: '3px',
               }}
             >
@@ -182,7 +182,7 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
               <p style={{
                 fontFamily: "'DM Mono',monospace",
                 fontSize: '11px',
-                color: '#4b5563',
+                color: 'var(--text-faint)',
                 margin: 0,
                 lineHeight: 1.4,
               }}>
@@ -220,8 +220,8 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
 
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.025)',
-      border: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(var(--fg-rgb), 0.025)',
+      border: '1px solid rgba(var(--fg-rgb), 0.07)',
       borderRadius: '14px',
       padding: '16px',
       width: '100%',
@@ -232,14 +232,14 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
         fontSize: '10px',
         textTransform: 'uppercase',
         letterSpacing: '0.18em',
-        color: '#374151',
+        color: 'var(--hairline)',
         margin: '0 0 14px',
       }}>
         {emoji} {label}
       </p>
 
       {noData ? (
-        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
           Not enough data
         </p>
       ) : (
@@ -260,7 +260,7 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
             height: '90px',
             borderRadius: '8px',
             overflow: 'hidden',
-            background: 'rgba(255,255,255,0.05)',
+            background: 'rgba(var(--fg-rgb), 0.05)',
           }}>
             {movie?.poster_url ? (
               <img
@@ -276,7 +276,7 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
               }}>
                 <span style={{
                   fontFamily: "'Bebas Neue',sans-serif",
-                  color: 'rgba(255,255,255,0.15)',
+                  color: 'rgba(var(--fg-rgb), 0.15)',
                   fontSize: '13px',
                 }}>
                   {initials}
@@ -291,7 +291,7 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
               fontFamily: "'Bebas Neue',sans-serif",
               fontSize: '1.8rem',
               letterSpacing: '0.03em',
-              color: 'white',
+              color: 'var(--text-strong)',
               margin: '0 0 6px',
               lineHeight: 1.05,
               overflow: 'hidden',
@@ -304,7 +304,7 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
               <p style={{
                 fontFamily: "'DM Mono',monospace",
                 fontSize: '10px',
-                color: '#4b5563',
+                color: 'var(--text-faint)',
                 margin: '0 0 8px',
                 letterSpacing: '0.06em',
               }}>
@@ -313,14 +313,14 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
             )}
             <div style={{
               display: 'inline-block',
-              background: 'var(--accent, rgba(255,255,255,0.1))',
+              background: 'var(--accent, rgba(var(--fg-rgb), 0.1))',
               borderRadius: '6px',
               padding: '4px 10px',
             }}>
               <span style={{
                 fontFamily: "'Bebas Neue',sans-serif",
                 fontSize: '1.1rem',
-                color: 'white',
+                color: 'var(--text-strong)',
                 letterSpacing: '0.04em',
               }}>
                 {fmt(avgScore)}
@@ -338,8 +338,8 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
 function StatMiniCard({ label, value }) {
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.025)',
-      border: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(var(--fg-rgb), 0.025)',
+      border: '1px solid rgba(var(--fg-rgb), 0.07)',
       borderRadius: '14px',
       padding: '16px',
       flex: '1 1 calc(50% - 5px)',
@@ -351,7 +351,7 @@ function StatMiniCard({ label, value }) {
         fontSize: '9px',
         textTransform: 'uppercase',
         letterSpacing: '0.18em',
-        color: '#374151',
+        color: 'var(--hairline)',
         margin: '0 0 6px',
       }}>
         {label}
@@ -359,7 +359,7 @@ function StatMiniCard({ label, value }) {
       <p style={{
         fontFamily: "'Bebas Neue',sans-serif",
         fontSize: '1.7rem',
-        color: 'white',
+        color: 'var(--text-strong)',
         margin: 0,
         lineHeight: 1,
         letterSpacing: '0.02em',
@@ -1122,13 +1122,13 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
         <p style={{
           fontFamily: "'Bebas Neue',sans-serif",
           fontSize: '1.4rem',
-          color: 'rgba(255,255,255,0.12)',
+          color: 'rgba(var(--fg-rgb), 0.12)',
           letterSpacing: '0.05em',
           margin: '0 0 8px',
         }}>
           No data yet
         </p>
-        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
           Awards appear once film scores are revealed.
         </p>
       </div>
@@ -1156,9 +1156,9 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
                 flexShrink: 0,
                 padding: '7px 14px',
                 borderRadius: '20px',
-                border: active ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.07)',
-                background: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
-                color: active ? 'white' : '#4b5563',
+                border: active ? '1px solid rgba(var(--fg-rgb), 0.15)' : '1px solid rgba(var(--fg-rgb), 0.07)',
+                background: active ? 'rgba(var(--fg-rgb), 0.1)' : 'rgba(var(--fg-rgb), 0.03)',
+                color: active ? 'var(--text-strong)' : 'var(--text-faint)',
                 fontFamily: "'DM Mono',monospace",
                 fontSize: '11px',
                 letterSpacing: '0.08em',
@@ -1324,13 +1324,13 @@ function AllTimeTab({ movies, allRatings, users, loading, onFilm, onMember }) {
         <p style={{
           fontFamily: "'Bebas Neue',sans-serif",
           fontSize: '1.4rem',
-          color: 'rgba(255,255,255,0.12)',
+          color: 'rgba(var(--fg-rgb), 0.12)',
           letterSpacing: '0.05em',
           margin: '0 0 8px',
         }}>
           No data yet
         </p>
-        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
           Awards appear once film scores are revealed.
         </p>
       </div>
@@ -1471,15 +1471,15 @@ function MemberAvatar({ name }) {
       width: '40px',
       height: '40px',
       borderRadius: '50%',
-      background: 'rgba(255,255,255,0.07)',
-      border: '1px solid rgba(255,255,255,0.1)',
+      background: 'rgba(var(--fg-rgb), 0.07)',
+      border: '1px solid rgba(var(--fg-rgb), 0.1)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
     }}>
       <span style={{
         fontFamily: "'Bebas Neue',sans-serif",
-        color: 'rgba(255,255,255,0.6)',
+        color: 'rgba(var(--fg-rgb), 0.6)',
         fontSize: '13px',
         letterSpacing: '0.05em',
       }}>
@@ -1535,13 +1535,13 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
         <p style={{
           fontFamily: "'Bebas Neue',sans-serif",
           fontSize: '1.4rem',
-          color: 'rgba(255,255,255,0.12)',
+          color: 'rgba(var(--fg-rgb), 0.12)',
           letterSpacing: '0.05em',
           margin: '0 0 8px',
         }}>
           No season data yet
         </p>
-        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
           Awards appear once film scores are revealed.
         </p>
       </div>
@@ -1569,9 +1569,9 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
                 flexShrink: 0,
                 padding: '7px 14px',
                 borderRadius: '20px',
-                border: active ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.07)',
-                background: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
-                color: active ? 'white' : '#4b5563',
+                border: active ? '1px solid rgba(var(--fg-rgb), 0.15)' : '1px solid rgba(var(--fg-rgb), 0.07)',
+                background: active ? 'rgba(var(--fg-rgb), 0.1)' : 'rgba(var(--fg-rgb), 0.03)',
+                color: active ? 'var(--text-strong)' : 'var(--text-faint)',
                 fontFamily: "'DM Mono',monospace",
                 fontSize: '11px',
                 letterSpacing: '0.08em',
@@ -1591,7 +1591,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
         <p style={{
           fontFamily: "'DM Mono',monospace",
           fontSize: '10px',
-          color: '#374151',
+          color: 'var(--hairline)',
           letterSpacing: '0.1em',
           margin: '0 0 16px',
         }}>
@@ -1793,13 +1793,13 @@ function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMembe
         <p style={{
           fontFamily: "'Bebas Neue',sans-serif",
           fontSize: '1.4rem',
-          color: 'rgba(255,255,255,0.12)',
+          color: 'rgba(var(--fg-rgb), 0.12)',
           letterSpacing: '0.05em',
           margin: '0 0 8px',
         }}>
           No annual data yet
         </p>
-        <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '13px', margin: 0 }}>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
           Awards appear once film scores are revealed.
         </p>
       </div>
@@ -1828,9 +1828,9 @@ function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMembe
                   flexShrink: 0,
                   padding: '7px 14px',
                   borderRadius: '20px',
-                  border: active ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.07)',
-                  background: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
-                  color: active ? 'white' : '#4b5563',
+                  border: active ? '1px solid rgba(var(--fg-rgb), 0.15)' : '1px solid rgba(var(--fg-rgb), 0.07)',
+                  background: active ? 'rgba(var(--fg-rgb), 0.1)' : 'rgba(var(--fg-rgb), 0.03)',
+                  color: active ? 'var(--text-strong)' : 'var(--text-faint)',
                   fontFamily: "'DM Mono',monospace",
                   fontSize: '11px',
                   letterSpacing: '0.08em',
@@ -1851,7 +1851,7 @@ function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMembe
         fontFamily: "'Bebas Neue',sans-serif",
         fontSize: '1.15rem',
         letterSpacing: '0.08em',
-        color: 'rgba(255,255,255,0.35)',
+        color: 'rgba(var(--fg-rgb), 0.35)',
         margin: '0 0 14px',
       }}>
         {selectedYear} Season in Review
@@ -1875,7 +1875,7 @@ function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMembe
         <p style={{
           fontFamily: "'DM Mono',monospace",
           fontSize: '10px',
-          color: '#374151',
+          color: 'var(--hairline)',
           letterSpacing: '0.1em',
           margin: '0 0 14px',
         }}>
@@ -2024,7 +2024,7 @@ export default function Awards() {
 
   return (
     <div style={{
-      background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)',
+      background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
       fontFamily: "'DM Sans',sans-serif",
       minHeight: '100vh',
       paddingBottom: '6rem',
@@ -2038,7 +2038,7 @@ export default function Awards() {
         <div style={{ marginBottom: '24px', animation: 'fadeUp 0.45s ease both' }}>
           <p style={{
             fontFamily: "'DM Mono',monospace",
-            color: '#374151',
+            color: 'var(--hairline)',
             fontSize: '10px',
             textTransform: 'uppercase',
             letterSpacing: '0.18em',
@@ -2049,7 +2049,7 @@ export default function Awards() {
           <h1 style={{
             fontFamily: "'Bebas Neue',sans-serif",
             fontSize: '2.6rem',
-            color: 'white',
+            color: 'var(--text-strong)',
             lineHeight: 1,
             margin: 0,
             letterSpacing: '0.03em',
@@ -2062,8 +2062,8 @@ export default function Awards() {
         <div style={{
           display: 'flex',
           gap: '4px',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.07)',
+          background: 'rgba(var(--fg-rgb), 0.04)',
+          border: '1px solid rgba(var(--fg-rgb), 0.07)',
           borderRadius: '12px',
           padding: '4px',
           marginBottom: '24px',
@@ -2079,8 +2079,8 @@ export default function Awards() {
                 padding: '8px 12px',
                 borderRadius: '9px',
                 border: 'none',
-                background: activeTab === tab ? 'rgba(255,255,255,0.09)' : 'transparent',
-                color: activeTab === tab ? 'white' : '#4b5563',
+                background: activeTab === tab ? 'rgba(var(--fg-rgb), 0.09)' : 'transparent',
+                color: activeTab === tab ? 'var(--text-strong)' : 'var(--text-faint)',
                 fontFamily: "'DM Sans',sans-serif",
                 fontWeight: activeTab === tab ? 600 : 400,
                 fontSize: '13px',

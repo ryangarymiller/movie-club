@@ -29,8 +29,8 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
 // ─── Style helpers ──────────────────────────────────────────────────────────────
 
 const CARD = {
-  background: 'rgba(255,255,255,0.025)',
-  border: '1px solid rgba(255,255,255,0.07)',
+  background: 'rgba(var(--fg-rgb), 0.025)',
+  border: '1px solid rgba(var(--fg-rgb), 0.07)',
   borderRadius: '14px',
 }
 
@@ -39,12 +39,12 @@ const LABEL_STYLE = {
   fontSize: '10px',
   letterSpacing: '0.18em',
   textTransform: 'uppercase',
-  color: '#374151',
+  color: 'var(--hairline)',
 }
 
 const SECTION_LABEL = {
   ...LABEL_STYLE,
-  color: '#4b5563',
+  color: 'var(--text-faint)',
   marginBottom: '12px',
   display: 'block',
 }
@@ -55,7 +55,7 @@ function Skeleton({ style = {} }) {
   return (
     <div
       className="animate-pulse"
-      style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', ...style }}
+      style={{ background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: '8px', ...style }}
     />
   )
 }
@@ -68,7 +68,7 @@ function StatCard({ label, value, sub }) {
         style={{
           fontFamily: "'Bebas Neue', sans-serif",
           fontSize: '2rem',
-          color: 'white',
+          color: 'var(--text-strong)',
           lineHeight: 1,
           margin: '6px 0 4px',
         }}
@@ -78,7 +78,7 @@ function StatCard({ label, value, sub }) {
       {sub && (
         <p
           style={{
-            color: '#6b7280',
+            color: 'var(--text-dim)',
             fontSize: '11px',
             lineHeight: 1.3,
             overflow: 'hidden',
@@ -116,7 +116,7 @@ function RecentRow({ rating, loading }) {
         alignItems: 'center',
         gap: '12px',
         padding: '10px 0',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        borderBottom: '1px solid rgba(var(--fg-rgb), 0.05)',
       }}
     >
       {/* Poster */}
@@ -151,7 +151,7 @@ function RecentRow({ rating, loading }) {
               style={{
                 fontFamily: "'Bebas Neue', sans-serif",
                 fontSize: '18px',
-                color: 'rgba(255,255,255,0.15)',
+                color: 'rgba(var(--fg-rgb), 0.15)',
               }}
             >
               {(movie?.title || '?').slice(0, 2).toUpperCase()}
@@ -164,7 +164,7 @@ function RecentRow({ rating, loading }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <p
           style={{
-            color: 'white',
+            color: 'var(--text-strong)',
             fontSize: '14px',
             fontWeight: 500,
             whiteSpace: 'nowrap',
@@ -176,7 +176,7 @@ function RecentRow({ rating, loading }) {
           {movie?.title ?? '—'}
         </p>
         {movie?.year_released && (
-          <p style={{ color: '#6b7280', fontSize: '12px', margin: '2px 0 0' }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: '2px 0 0' }}>
             {movie.year_released}
           </p>
         )}
@@ -383,7 +383,7 @@ export default function Profile() {
   return (
     <div
       style={{
-        background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)',
+        background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
         fontFamily: "'DM Sans', sans-serif",
         minHeight: '100vh',
         paddingBottom: '6rem',
@@ -402,7 +402,7 @@ export default function Profile() {
                 width: 64,
                 height: 64,
                 borderRadius: '50%',
-                background: 'rgba(255,255,255,0.06)',
+                background: 'rgba(var(--fg-rgb), 0.06)',
                 border: `2px solid ${displayProfile?.user_color ?? 'var(--accent)'}`,
                 display: 'grid',
                 placeItems: 'center',
@@ -432,7 +432,7 @@ export default function Profile() {
                   style={{
                     fontFamily: "'Bebas Neue', sans-serif",
                     fontSize: '2rem',
-                    color: 'white',
+                    color: 'var(--text-strong)',
                     margin: 0,
                     lineHeight: 1,
                     letterSpacing: '0.04em',
@@ -460,7 +460,7 @@ export default function Profile() {
               </div>
               <p
                 style={{
-                  color: '#6b7280',
+                  color: 'var(--text-dim)',
                   fontSize: '13px',
                   margin: '4px 0 0',
                 }}
@@ -514,7 +514,7 @@ export default function Profile() {
             <p style={{
               fontFamily: "'DM Mono', monospace",
               fontSize: '10px',
-              color: '#6b7280',
+              color: 'var(--text-dim)',
               margin: '12px 0 0',
             }}>
               This color appears next to your picks
@@ -566,7 +566,7 @@ export default function Profile() {
             {recentLoading ? (
               [...Array(5)].map((_, i) => <RecentRow key={i} loading />)
             ) : recentRatings.length === 0 ? (
-              <p style={{ color: '#4b5563', fontSize: '13px', padding: '16px 0', textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-faint)', fontSize: '13px', padding: '16px 0', textAlign: 'center' }}>
                 No scores submitted yet.
               </p>
             ) : (
@@ -597,12 +597,12 @@ export default function Profile() {
                     padding: '10px 0',
                     borderBottom: i === userAwards.length - 1
                       ? 'none'
-                      : '1px solid rgba(255,255,255,0.05)',
+                      : '1px solid rgba(var(--fg-rgb), 0.05)',
                   }}
                 >
                   <span style={{ fontSize: '20px', flexShrink: 0 }}>{a.emoji}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: 500, margin: 0, lineHeight: 1.2 }}>
+                    <p style={{ color: 'var(--text-strong)', fontSize: '14px', fontWeight: 500, margin: 0, lineHeight: 1.2 }}>
                       {a.label}
                     </p>
                     {a.period && (
@@ -610,7 +610,7 @@ export default function Profile() {
                         fontFamily: "'DM Mono', monospace",
                         fontSize: '10px',
                         letterSpacing: '0.08em',
-                        color: '#6b7280',
+                        color: 'var(--text-dim)',
                         margin: '3px 0 0',
                       }}>
                         {a.period}{a.metric ? ` · ${a.metric}` : ''}
@@ -633,7 +633,7 @@ export default function Profile() {
               <p style={{ ...LABEL_STYLE, margin: 0 }}>
                 Theme
               </p>
-              <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '10px', padding: '4px' }}>
+              <div style={{ display: 'flex', gap: '4px', background: 'rgba(var(--fg-rgb), 0.06)', borderRadius: '10px', padding: '4px' }}>
                 <button
                   onClick={() => mode !== 'light' && toggleMode()}
                   aria-pressed={mode === 'light'}
@@ -644,8 +644,8 @@ export default function Profile() {
                     padding: '5px 14px',
                     borderRadius: '7px',
                     border: 'none',
-                    background: mode === 'light' ? 'rgba(255,255,255,0.15)' : 'transparent',
-                    color: mode === 'light' ? 'white' : 'rgba(255,255,255,0.35)',
+                    background: mode === 'light' ? 'rgba(var(--fg-rgb), 0.15)' : 'transparent',
+                    color: mode === 'light' ? 'var(--text-strong)' : 'rgba(var(--fg-rgb), 0.35)',
                     cursor: 'pointer',
                     transition: 'background 0.15s, color 0.15s',
                     fontWeight: mode === 'light' ? 600 : 400,
@@ -663,8 +663,8 @@ export default function Profile() {
                     padding: '5px 14px',
                     borderRadius: '7px',
                     border: 'none',
-                    background: mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'transparent',
-                    color: mode === 'dark' ? 'white' : 'rgba(255,255,255,0.35)',
+                    background: mode === 'dark' ? 'rgba(var(--fg-rgb), 0.15)' : 'transparent',
+                    color: mode === 'dark' ? 'var(--text-strong)' : 'rgba(var(--fg-rgb), 0.35)',
                     cursor: 'pointer',
                     transition: 'background 0.15s, color 0.15s',
                     fontWeight: mode === 'dark' ? 600 : 400,
@@ -715,7 +715,7 @@ export default function Profile() {
 
             <p
               style={{
-                color: '#4b5563',
+                color: 'var(--text-faint)',
                 fontSize: '12px',
                 marginTop: '12px',
                 margin: '12px 0 0',
@@ -738,7 +738,7 @@ export default function Profile() {
                   style={{
                     fontFamily: "'DM Sans', sans-serif",
                     fontSize: '14px',
-                    color: 'rgba(255,255,255,0.8)',
+                    color: 'rgba(var(--fg-rgb), 0.8)',
                   }}
                 >
                   Admin Mode
@@ -760,7 +760,7 @@ export default function Profile() {
                     cursor: adminToggling ? 'not-allowed' : 'pointer',
                     background: profile?.admin_mode_enabled
                       ? 'var(--accent)'
-                      : 'rgba(255,255,255,0.12)',
+                      : 'rgba(var(--fg-rgb), 0.12)',
                     transition: 'background 0.2s ease',
                     flexShrink: 0,
                     outline: 'none',
@@ -774,7 +774,7 @@ export default function Profile() {
                       width: '18px',
                       height: '18px',
                       borderRadius: '50%',
-                      background: '#fff',
+                      background: 'var(--text-strong)',
                       transition: 'left 0.2s ease',
                       boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
                     }}
@@ -787,7 +787,7 @@ export default function Profile() {
                 style={{
                   fontFamily: "'DM Mono', monospace",
                   fontSize: '10px',
-                  color: '#4b5563',
+                  color: 'var(--text-faint)',
                   margin: '10px 0 0',
                   letterSpacing: '0.04em',
                 }}
@@ -809,7 +809,7 @@ export default function Profile() {
               borderRadius: '14px',
               background: 'rgba(220,38,38,0.08)',
               border: '1px solid rgba(220,38,38,0.2)',
-              color: signingOut ? '#6b7280' : '#f87171',
+              color: signingOut ? 'var(--text-dim)' : '#f87171',
               fontFamily: "'DM Sans', sans-serif",
               fontSize: '15px',
               fontWeight: 500,

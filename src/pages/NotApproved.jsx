@@ -18,7 +18,7 @@ export default function NotApproved() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#07080d',
+      background: 'var(--bg)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -28,8 +28,8 @@ export default function NotApproved() {
       <div style={{
         width: '100%',
         maxWidth: '360px',
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(var(--fg-rgb), 0.03)',
+        border: '1px solid rgba(var(--fg-rgb), 0.08)',
         borderRadius: '16px',
         padding: '2rem 1.75rem',
         textAlign: 'center',
@@ -53,7 +53,7 @@ export default function NotApproved() {
         <h1 style={{
           fontFamily: "'Bebas Neue', sans-serif",
           fontSize: '2.5rem',
-          color: 'white',
+          color: 'var(--text-strong)',
           letterSpacing: '0.04em',
           lineHeight: 1,
           margin: '0 0 0.75rem',
@@ -62,7 +62,7 @@ export default function NotApproved() {
         </h1>
 
         <p style={{
-          color: '#9ca3af',
+          color: 'var(--text-muted)',
           fontSize: '14px',
           lineHeight: '1.6',
           margin: '0 0 1rem',
@@ -73,11 +73,11 @@ export default function NotApproved() {
 
         {email && (
           <p style={{
-            color: '#6b7280',
+            color: 'var(--text-dim)',
             fontSize: '12px',
             fontFamily: "'DM Mono', monospace",
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.07)',
+            background: 'rgba(var(--fg-rgb), 0.04)',
+            border: '1px solid rgba(var(--fg-rgb), 0.07)',
             borderRadius: '8px',
             padding: '8px 12px',
             margin: '0 0 1.5rem',
@@ -101,7 +101,7 @@ export default function NotApproved() {
             borderRadius: '10px',
             border: 'none',
             background: 'var(--accent, #b91c1c)',
-            color: 'white',
+            color: 'var(--text-strong)',
             fontSize: '14px',
             fontWeight: 500,
             cursor: 'pointer',
@@ -113,7 +113,7 @@ export default function NotApproved() {
         </button>
 
         <p style={{
-          color: '#6b7280',
+          color: 'var(--text-dim)',
           fontSize: '12px',
           margin: 0,
         }}>

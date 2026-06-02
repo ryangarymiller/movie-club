@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { writeAwardsToDb } from '../lib/awards'
+import { ScoreChangeRequestsAdminPanel } from '../components/ScoreChangeRequest'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -43,7 +44,7 @@ function Skeleton({ className = '' }) {
 
 function Label({ children }) {
   return (
-    <span style={{ fontSize: '9px', letterSpacing: '0.14em', fontFamily: "'DM Mono',monospace", color: '#4b5563', textTransform: 'uppercase' }}>
+    <span style={{ fontSize: '9px', letterSpacing: '0.14em', fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', textTransform: 'uppercase' }}>
       {children}
     </span>
   )
@@ -54,7 +55,7 @@ function Badge({ children, color = 'green' }) {
     green: { background: '#14532d', color: '#4ade80', border: '1px solid #166534' },
     red: { background: '#450a0a', color: '#f87171', border: '1px solid #7f1d1d' },
     yellow: { background: '#422006', color: '#fbbf24', border: '1px solid #78350f' },
-    gray: { background: '#1f2937', color: '#9ca3af', border: '1px solid #374151' },
+    gray: { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--hairline)' },
   }
   return (
     <span style={{ ...colors[color], borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontFamily: "'DM Mono',monospace" }}>
@@ -70,13 +71,13 @@ function Toggle({ value, onChange, disabled }) {
       disabled={disabled}
       style={{
         width: '36px', height: '20px', borderRadius: '10px', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
-        background: value ? 'var(--accent)' : '#374151', position: 'relative', transition: 'background 0.2s', opacity: disabled ? 0.5 : 1,
+        background: value ? 'var(--accent)' : 'var(--hairline)', position: 'relative', transition: 'background 0.2s', opacity: disabled ? 0.5 : 1,
         flexShrink: 0,
       }}
     >
       <span style={{
         position: 'absolute', top: '2px', left: value ? '18px' : '2px',
-        width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.2s',
+        width: '16px', height: '16px', borderRadius: '50%', background: 'var(--text-strong)', transition: 'left 0.2s',
       }} />
     </button>
   )
@@ -163,20 +164,20 @@ function DashboardTab({ movies, ratings, users, months }) {
           { label: 'Members', value: activeUsers.length },
           { label: 'The Vault', value: vaultFilms.length, sub: 'avg ≥ 8.5' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px' }}>
+          <div key={s.label} style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '14px' }}>
             <Label>{s.label}</Label>
-            <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '2.2rem', color: 'white', margin: '4px 0 0', lineHeight: 1 }}>{s.value}</p>
-            {s.sub && <p style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>{s.sub}</p>}
+            <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '2.2rem', color: 'var(--text-strong)', margin: '4px 0 0', lineHeight: 1 }}>{s.value}</p>
+            {s.sub && <p style={{ color: 'var(--text-dim)', fontSize: '11px', marginTop: '2px' }}>{s.sub}</p>}
           </div>
         ))}
       </div>
 
       {/* Active month status */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
         <Label>Active Month</Label>
         {activeMonth ? (
           <div style={{ marginTop: '8px' }}>
-            <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 6px' }}>
+            <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 6px' }}>
               {activeMonth.month_year}
             </p>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -187,12 +188,12 @@ function DashboardTab({ movies, ratings, users, months }) {
             </div>
           </div>
         ) : (
-          <p style={{ color: '#6b7280', fontSize: '13px', marginTop: '8px' }}>No active month</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '8px' }}>No active month</p>
         )}
       </div>
 
       {/* Missing scores */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px' }}>
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px' }}>
         <Label>Films with Missing Scores</Label>
         {missingScoreFilms.length === 0 ? (
           <p style={{ color: '#4ade80', fontSize: '13px', marginTop: '10px' }}>All films fully scored</p>
@@ -201,14 +202,22 @@ function DashboardTab({ movies, ratings, users, months }) {
             {missingScoreFilms.map(f => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <p style={{ color: 'white', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
-                  <p style={{ color: '#6b7280', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>{f.month_year}</p>
+                  <p style={{ color: 'var(--text-strong)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>{f.month_year}</p>
                 </div>
                 <Badge color="red">{f.actual}/{f.expected}</Badge>
               </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* Pending score-change requests (member → admin approval) */}
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px' }}>
+        <Label>Score-Change Requests</Label>
+        <div style={{ marginTop: '10px' }}>
+          <ScoreChangeRequestsAdminPanel />
+        </div>
       </div>
     </div>
   )
@@ -562,8 +571,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
   return (
     <div>
       {/* Bulk reveal section */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
-        <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Bulk Month Reveal</p>
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+        <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Bulk Month Reveal</p>
         <div style={{ marginBottom: '12px' }}>
           <Label>Month</Label>
           <select
@@ -571,8 +580,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
             onChange={e => setSelectedBulkMonth(e.target.value)}
             style={{
               display: 'block', width: '100%', marginTop: '6px', padding: '9px 10px', borderRadius: '8px',
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-              color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none', boxSizing: 'border-box',
+              background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+              color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none', boxSizing: 'border-box',
             }}
           >
             <option value="">Select month…</option>
@@ -589,7 +598,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
               flex: 1, minWidth: '140px', padding: '9px 12px', borderRadius: '8px',
               border: '1px solid rgba(74,222,128,0.25)',
               background: 'rgba(74,222,128,0.07)',
-              color: (!selectedBulkMonth || bulkRevealing != null) ? '#374151' : '#4ade80',
+              color: (!selectedBulkMonth || bulkRevealing != null) ? 'var(--hairline)' : '#4ade80',
               fontSize: '12px', fontFamily: "'DM Sans',sans-serif",
               cursor: (!selectedBulkMonth || bulkRevealing != null) ? 'not-allowed' : 'pointer',
               opacity: (!selectedBulkMonth || bulkRevealing != null) ? 0.5 : 1,
@@ -605,7 +614,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
               flex: 1, minWidth: '140px', padding: '9px 12px', borderRadius: '8px',
               border: '1px solid rgba(251,191,36,0.25)',
               background: 'rgba(251,191,36,0.07)',
-              color: (!selectedBulkMonth || bulkRevealing != null) ? '#374151' : '#fbbf24',
+              color: (!selectedBulkMonth || bulkRevealing != null) ? 'var(--hairline)' : '#fbbf24',
               fontSize: '12px', fontFamily: "'DM Sans',sans-serif",
               cursor: (!selectedBulkMonth || bulkRevealing != null) ? 'not-allowed' : 'pointer',
               opacity: (!selectedBulkMonth || bulkRevealing != null) ? 0.5 : 1,
@@ -615,15 +624,15 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
             {bulkRevealing === 'pickers' ? 'Revealing…' : `Reveal all pickers${selectedBulkMonth ? ` for ${selectedBulkMonth}` : ''}`}
           </button>
         </div>
-        <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
+        <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
           Sets scores_revealed / picker_revealed = true for all films in the selected month.
         </p>
       </div>
 
       {/* Genre backfill */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
-        <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 10px' }}>Genre Backfill</p>
-        <p style={{ color: '#6b7280', fontSize: '12px', margin: '0 0 12px', fontFamily: "'DM Mono',monospace" }}>
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+        <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 10px' }}>Genre Backfill</p>
+        <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: '0 0 12px', fontFamily: "'DM Mono',monospace" }}>
           Fetches genre data from TMDB for all films that have a TMDB ID but no genre set.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -634,7 +643,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
               padding: '9px 16px', borderRadius: '8px',
               border: '1px solid rgba(99,102,241,0.3)',
               background: 'rgba(99,102,241,0.08)',
-              color: backfillStatus === 'running' ? '#4b5563' : '#a5b4fc',
+              color: backfillStatus === 'running' ? 'var(--text-faint)' : '#a5b4fc',
               fontSize: '12px', fontFamily: "'DM Mono',monospace",
               cursor: backfillStatus === 'running' ? 'not-allowed' : 'pointer',
               opacity: backfillStatus === 'running' ? 0.6 : 1,
@@ -654,11 +663,11 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
         <div key={monthYear} style={{ marginBottom: '28px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
             <Label>{monthYear}</Label>
-            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+            <div style={{ flex: 1, height: '1px', background: 'rgba(var(--fg-rgb), 0.06)' }} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {grouped[monthYear].map(movie => (
-              <div key={movie.id} style={{ background: 'rgba(255,255,255,0.03)', border: editingId === movie.id ? '1px solid rgba(185,28,28,0.4)' : '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
+              <div key={movie.id} style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: editingId === movie.id ? '1px solid rgba(185,28,28,0.4)' : '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', overflow: 'hidden' }}>
                 {/* Film row */}
                 <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {movie.poster_url && (
@@ -670,13 +679,13 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                     />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: 'white', fontWeight: 500, fontSize: '14px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{movie.title}</p>
+                    <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '14px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{movie.title}</p>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px', alignItems: 'center' }}>
-                      <span style={{ color: '#6b7280', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>
+                      <span style={{ color: 'var(--text-dim)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>
                         {pickerName(movie)}
                       </span>
-                      <span style={{ color: '#374151' }}>·</span>
-                      <span style={{ color: '#9ca3af', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>
+                      <span style={{ color: 'var(--hairline)' }}>·</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>
                         {avgScore(movie)}
                       </span>
                     </div>
@@ -684,7 +693,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                       {movie.scores_revealed && <Badge color="green">Scores</Badge>}
                       {movie.picker_revealed && <Badge color="green">Picker</Badge>}
                       {movie.scoring_deadline && (
-                        <span style={{ fontSize: '10px', color: '#6b7280', fontFamily: "'DM Mono',monospace" }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: "'DM Mono',monospace" }}>
                           {formatDeadline(movie.scoring_deadline)}
                         </span>
                       )}
@@ -693,9 +702,9 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                   <button
                     onClick={() => editingId === movie.id ? setEditingId(null) : startEdit(movie)}
                     style={{
-                      flexShrink: 0, padding: '5px 12px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)',
-                      background: editingId === movie.id ? 'rgba(255,255,255,0.08)' : 'transparent',
-                      color: '#9ca3af', fontSize: '12px', cursor: 'pointer', fontFamily: "'DM Mono',monospace"
+                      flexShrink: 0, padding: '5px 12px', borderRadius: '7px', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                      background: editingId === movie.id ? 'rgba(var(--fg-rgb), 0.08)' : 'transparent',
+                      color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', fontFamily: "'DM Mono',monospace"
                     }}
                   >
                     {editingId === movie.id ? 'Cancel' : 'Edit'}
@@ -704,7 +713,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
 
                 {/* Inline edit form */}
                 {editingId === movie.id && (
-                  <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
+                  <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(var(--fg-rgb), 0.06)', background: 'rgba(0,0,0,0.2)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                       {/* ── Film metadata (TMDB-sourced) ── */}
                       <div>
@@ -716,8 +725,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           placeholder="Film title"
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
                           }}
                         />
                       </div>
@@ -732,8 +741,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                             placeholder="e.g. 2012"
                             style={{
                               display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                              color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                              background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                              color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
                             }}
                           />
                         </div>
@@ -746,8 +755,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                             placeholder="e.g. 137"
                             style={{
                               display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                              color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                              background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                              color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
                             }}
                           />
                         </div>
@@ -762,8 +771,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           placeholder="Director name"
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
                           }}
                         />
                       </div>
@@ -777,11 +786,11 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           placeholder="e.g. Drama, Thriller, Crime"
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
                           }}
                         />
-                        <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
+                        <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
                           Stored as an array. Separate multiple genres with commas.
                         </p>
                       </div>
@@ -795,8 +804,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           rows={4}
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box',
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box',
                             resize: 'vertical', lineHeight: 1.5
                           }}
                         />
@@ -811,11 +820,11 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           placeholder="/abc123.jpg"
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
                           }}
                         />
-                        <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
+                        <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
                           TMDB path only (e.g. /abc123.jpg). Displayed via image.tmdb.org.
                         </p>
                       </div>
@@ -829,13 +838,13 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           placeholder="e.g. 1124"
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
                           }}
                         />
                       </div>
 
-                      <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '2px 0' }} />
+                      <div style={{ height: '1px', background: 'rgba(var(--fg-rgb), 0.06)', margin: '2px 0' }} />
 
                       {/* Scoring deadline */}
                       <div>
@@ -846,11 +855,11 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           onChange={e => setEditForm(f => ({ ...f, scoring_deadline: e.target.value }))}
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
                           }}
                         />
-                        <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
+                        <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
                           Stored as UTC. Displayed in your browser's local time.
                         </p>
                       </div>
@@ -866,8 +875,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           placeholder="e.g. 7.25"
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
+                            background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Mono',monospace", boxSizing: 'border-box'
                           }}
                         />
                       </div>
@@ -876,11 +885,11 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <Toggle value={editForm.scores_revealed} onChange={v => setEditForm(f => ({ ...f, scores_revealed: v }))} />
-                          <span style={{ color: '#d1d5db', fontSize: '13px' }}>Scores revealed</span>
+                          <span style={{ color: 'var(--text)', fontSize: '13px' }}>Scores revealed</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <Toggle value={editForm.picker_revealed} onChange={v => setEditForm(f => ({ ...f, picker_revealed: v }))} />
-                          <span style={{ color: '#d1d5db', fontSize: '13px' }}>Picker revealed</span>
+                          <span style={{ color: 'var(--text)', fontSize: '13px' }}>Picker revealed</span>
                         </div>
                       </div>
 
@@ -890,7 +899,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           disabled={saving}
                           style={{
                             padding: '9px 20px', borderRadius: '8px', border: 'none', background: 'var(--accent)',
-                            color: 'white', fontSize: '13px', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
+                            color: 'var(--text-strong)', fontSize: '13px', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
                             opacity: saving ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif"
                           }}
                         >
@@ -903,7 +912,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           style={{
                             padding: '9px 16px', borderRadius: '8px',
                             border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)',
-                            color: (refetchingId === movie.id || !editForm.tmdb_id) ? '#4b5563' : '#a5b4fc',
+                            color: (refetchingId === movie.id || !editForm.tmdb_id) ? 'var(--text-faint)' : '#a5b4fc',
                             fontSize: '12px', fontFamily: "'DM Mono',monospace",
                             cursor: (refetchingId === movie.id || !editForm.tmdb_id) ? 'not-allowed' : 'pointer',
                             opacity: (refetchingId === movie.id || !editForm.tmdb_id) ? 0.6 : 1,
@@ -917,8 +926,8 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           title={!editForm.tmdb_id ? 'Set a TMDB ID first' : 'Re-fetch US streaming providers from TMDB'}
                           style={{
                             padding: '9px 16px', borderRadius: '8px',
-                            border: '1px solid rgba(255,255,255,0.12)', background: 'transparent',
-                            color: (refreshingId === movie.id || !editForm.tmdb_id) ? '#4b5563' : '#9ca3af',
+                            border: '1px solid rgba(var(--fg-rgb), 0.12)', background: 'transparent',
+                            color: (refreshingId === movie.id || !editForm.tmdb_id) ? 'var(--text-faint)' : 'var(--text-muted)',
                             fontSize: '12px', fontFamily: "'DM Mono',monospace",
                             cursor: (refreshingId === movie.id || !editForm.tmdb_id) ? 'not-allowed' : 'pointer',
                             opacity: (refreshingId === movie.id || !editForm.tmdb_id) ? 0.6 : 1,
@@ -927,7 +936,7 @@ function FilmsTab({ movies, ratings, months, users, onRefresh, setError, setSucc
                           {refreshingId === movie.id ? 'Refreshing…' : 'Refresh streaming providers'}
                         </button>
                       </div>
-                      <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '-4px', fontFamily: "'DM Mono',monospace" }}>
+                      <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '-4px', fontFamily: "'DM Mono',monospace" }}>
                         Re-fetch pulls metadata + genres from TMDB into the form (save to apply). Refresh streaming updates cached providers.
                       </p>
                     </div>
@@ -957,8 +966,8 @@ function InviteCard({ onRefresh, setSuccess }) {
 
   const inputStyle = {
     width: '100%', padding: '9px 10px', borderRadius: '8px', boxSizing: 'border-box',
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none',
+    background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+    color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none',
   }
 
   async function handleInvite(e) {
@@ -1001,8 +1010,8 @@ function InviteCard({ onRefresh, setSuccess }) {
   }
 
   return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-      <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Add Member</p>
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+      <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Add Member</p>
 
       {inviteError && (
         <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px' }}>
@@ -1069,7 +1078,7 @@ function InviteCard({ onRefresh, setSuccess }) {
           disabled={inviting}
           style={{
             padding: '9px 20px', borderRadius: '8px', border: 'none',
-            background: 'var(--accent)', color: 'white', fontSize: '13px',
+            background: 'var(--accent)', color: 'var(--text-strong)', fontSize: '13px',
             fontWeight: 500, cursor: inviting ? 'not-allowed' : 'pointer',
             opacity: inviting ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif",
           }}
@@ -1078,7 +1087,7 @@ function InviteCard({ onRefresh, setSuccess }) {
         </button>
       </form>
 
-      <p style={{ color: '#4b5563', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
+      <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
         Adds their account — they can then sign in at movie-club-blond.vercel.app using Google with this email.
       </p>
     </div>
@@ -1092,8 +1101,8 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
 
   const fieldStyle = {
     display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif",
+    background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+    color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif",
     outline: 'none', boxSizing: 'border-box',
   }
 
@@ -1141,7 +1150,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
       <InviteCard onRefresh={onRefresh} setSuccess={setSuccess} />
       {users.map(user => (
         <div key={user.id} style={{
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)',
           borderRadius: '12px', overflow: 'hidden',
           opacity: user.is_active ? 1 : 0.45,
           transition: 'opacity 0.2s',
@@ -1149,20 +1158,20 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
           <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
             {/* Avatar placeholder */}
             <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(185,28,28,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ color: 'white', fontSize: '13px', fontWeight: 600 }}>
+              <span style={{ color: 'var(--text-strong)', fontSize: '13px', fontWeight: 600 }}>
                 {user.name?.split(' ').map(w => w[0]).slice(0, 2).join('') ?? '?'}
               </span>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <p style={{ color: 'white', fontWeight: 500, fontSize: '14px', margin: 0 }}>{user.name}</p>
+                <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '14px', margin: 0 }}>{user.name}</p>
                 {user.role === 'admin' && <Badge color="yellow">admin</Badge>}
                 {!user.is_active && <Badge color="red">inactive</Badge>}
               </div>
-              <p style={{ color: '#6b7280', fontSize: '11px', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'DM Mono',monospace" }}>
+              <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'DM Mono',monospace" }}>
                 {user.email}
               </p>
-              <p style={{ color: '#4b5563', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>
+              <p style={{ color: 'var(--text-faint)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>
                 Joined: {user.joined_at ? new Date(user.joined_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
               </p>
             </div>
@@ -1170,9 +1179,9 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
               <button
                 onClick={() => editingId === user.id ? setEditingId(null) : startEdit(user)}
                 style={{
-                  padding: '5px 10px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)',
-                  background: editingId === user.id ? 'rgba(255,255,255,0.08)' : 'transparent',
-                  color: '#9ca3af', fontSize: '11px', cursor: 'pointer', fontFamily: "'DM Mono',monospace"
+                  padding: '5px 10px', borderRadius: '7px', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                  background: editingId === user.id ? 'rgba(var(--fg-rgb), 0.08)' : 'transparent',
+                  color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', fontFamily: "'DM Mono',monospace"
                 }}
               >
                 {editingId === user.id ? 'Cancel' : 'Edit'}
@@ -1181,8 +1190,8 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
                 onClick={() => toggleActive(user)}
                 disabled={isProtected(user)}
                 style={{
-                  padding: '5px 10px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)',
-                  background: 'transparent', color: isProtected(user) ? '#4b5563' : (user.is_active ? '#f87171' : '#4ade80'),
+                  padding: '5px 10px', borderRadius: '7px', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                  background: 'transparent', color: isProtected(user) ? 'var(--text-faint)' : (user.is_active ? '#f87171' : '#4ade80'),
                   fontSize: '11px', cursor: isProtected(user) ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono',monospace"
                 }}
               >
@@ -1193,7 +1202,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
 
           {/* Inline edit form */}
           {editingId === user.id && (
-            <div style={{ padding: '14px', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
+            <div style={{ padding: '14px', borderTop: '1px solid rgba(var(--fg-rgb), 0.06)', background: 'rgba(0,0,0,0.2)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 130px', minWidth: 0 }}>
@@ -1245,7 +1254,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
                     disabled={saving}
                     style={{
                       padding: '8px 18px', borderRadius: '8px', border: 'none',
-                      background: 'var(--accent)', color: 'white', fontSize: '13px',
+                      background: 'var(--accent)', color: 'var(--text-strong)', fontSize: '13px',
                       fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
                       opacity: saving ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif",
                     }}
@@ -1256,8 +1265,8 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
                     onClick={() => setEditingId(null)}
                     style={{
                       padding: '8px 14px', borderRadius: '8px',
-                      border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
-                      color: '#9ca3af', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                      border: '1px solid rgba(var(--fg-rgb), 0.1)', background: 'transparent',
+                      color: 'var(--text-muted)', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                     }}
                   >
                     Cancel
@@ -1362,20 +1371,20 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
 
   const selectStyle = {
     width: '100%', padding: '9px 10px', borderRadius: '8px', boxSizing: 'border-box',
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none'
+    background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+    color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none'
   }
   const inputStyle = {
     width: '100%', padding: '9px 10px', borderRadius: '8px', boxSizing: 'border-box',
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white', fontSize: '13px', fontFamily: "'DM Mono',monospace", outline: 'none'
+    background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+    color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Mono',monospace", outline: 'none'
   }
 
   return (
     <div>
       {/* Score entry form */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
-        <p style={{ color: 'white', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Backfill Score</p>
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+        <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Backfill Score</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
             <Label>Film</Label>
@@ -1422,7 +1431,7 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
             disabled={submitting || !selectedMovie || !selectedUser || !score}
             style={{
               padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--accent)',
-              color: 'white', fontSize: '13px', fontWeight: 500, cursor: (submitting || !selectedMovie || !selectedUser || !score) ? 'not-allowed' : 'pointer',
+              color: 'var(--text-strong)', fontSize: '13px', fontWeight: 500, cursor: (submitting || !selectedMovie || !selectedUser || !score) ? 'not-allowed' : 'pointer',
               opacity: (submitting || !selectedMovie || !selectedUser || !score) ? 0.6 : 1, alignSelf: 'flex-start'
             }}
           >
@@ -1437,7 +1446,7 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
           <Label>Score Matrix</Label>
           <button
             onClick={() => setShowAllFilms(v => !v)}
-            style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '11px', cursor: 'pointer', fontFamily: "'DM Mono',monospace" }}
+            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: '11px', cursor: 'pointer', fontFamily: "'DM Mono',monospace" }}
           >
             {showAllFilms ? 'Show missing only' : 'Show all films'}
           </button>
@@ -1450,9 +1459,9 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '400px' }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left', padding: '6px 10px', color: '#4b5563', fontSize: '10px', fontFamily: "'DM Mono',monospace", fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>Film</th>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', color: 'var(--text-faint)', fontSize: '10px', fontFamily: "'DM Mono',monospace", fontWeight: 500, borderBottom: '1px solid rgba(var(--fg-rgb), 0.06)' }}>Film</th>
                   {activeUsers.map(u => (
-                    <th key={u.id} style={{ padding: '6px 8px', color: '#4b5563', fontSize: '10px', fontFamily: "'DM Mono',monospace", fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}>
+                    <th key={u.id} style={{ padding: '6px 8px', color: 'var(--text-faint)', fontSize: '10px', fontFamily: "'DM Mono',monospace", fontWeight: 500, borderBottom: '1px solid rgba(var(--fg-rgb), 0.06)', whiteSpace: 'nowrap' }}>
                       {u.name.split(' ')[0]}
                     </th>
                   ))}
@@ -1463,19 +1472,19 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
                   const mo = monthMap[m.month_id]
                   const monthYear = mo?.month_year ?? ''
                   return (
-                    <tr key={m.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
-                      <td style={{ padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <p style={{ color: 'white', fontSize: '12px', margin: 0, maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
-                        <p style={{ color: '#4b5563', fontSize: '10px', margin: '1px 0 0', fontFamily: "'DM Mono',monospace" }}>{monthYear}</p>
+                    <tr key={m.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(var(--fg-rgb), 0.015)' }}>
+                      <td style={{ padding: '7px 10px', borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)' }}>
+                        <p style={{ color: 'var(--text-strong)', fontSize: '12px', margin: 0, maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
+                        <p style={{ color: 'var(--text-faint)', fontSize: '10px', margin: '1px 0 0', fontFamily: "'DM Mono',monospace" }}>{monthYear}</p>
                       </td>
                       {activeUsers.map(u => {
                         const hasScore = ratingSet.has(`${m.id}:${u.id}`)
                         // Zack on pre-April 2026 films → N/A
                         if (isZackPreApril(u, monthYear)) {
                           return (
-                            <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)' }}>
                               <span style={{
-                                color: '#374151',
+                                color: 'var(--hairline)',
                                 fontSize: '11px',
                                 fontFamily: "'DM Mono',monospace",
                                 textDecoration: 'line-through',
@@ -1491,9 +1500,9 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
                         const filmMonth = new Date(y, month - 1, 1)
                         const isExpected = monthYear ? joined <= filmMonth : false
                         return (
-                          <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)' }}>
                             {!isExpected ? (
-                              <span style={{ color: '#374151', fontSize: '12px' }}>–</span>
+                              <span style={{ color: 'var(--hairline)', fontSize: '12px' }}>–</span>
                             ) : hasScore ? (
                               <span style={{ color: '#4ade80', fontSize: '14px' }}>✓</span>
                             ) : (
@@ -1574,38 +1583,38 @@ export default function Admin() {
   // Guard
   if (!isAdmin || !profile?.admin_mode_enabled) {
     return (
-      <div style={{ background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans',sans-serif" }}>
+      <div style={{ background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans',sans-serif" }}>
         <div style={{ textAlign: 'center' }}>
-          <p style={{ color: '#4b5563', fontSize: '13px' }}>Admin access required</p>
+          <p style={{ color: 'var(--text-faint)', fontSize: '13px' }}>Admin access required</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)', minHeight: '100vh', fontFamily: "'DM Sans',sans-serif", paddingBottom: '6rem', width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)', minHeight: '100vh', fontFamily: "'DM Sans',sans-serif", paddingBottom: '6rem', width: '100%', boxSizing: 'border-box' }}>
       <div style={{ padding: '2.5rem 1rem 0', boxSizing: 'border-box', width: '100%' }}>
 
         {/* Header */}
         <div style={{ marginBottom: '24px' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: '#4b5563', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '4px' }}>
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '4px' }}>
             Admin
           </p>
-          <h1 style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '2.6rem', color: 'white', lineHeight: 1, margin: '0 0 4px', letterSpacing: '0.03em' }}>
+          <h1 style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '2.6rem', color: 'var(--text-strong)', lineHeight: 1, margin: '0 0 4px', letterSpacing: '0.03em' }}>
             Dashboard
           </h1>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '4px' }}>
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(var(--fg-rgb), 0.04)', borderRadius: '10px', padding: '4px' }}>
           {TABS.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
                 flex: 1, padding: '8px 4px', borderRadius: '7px', border: 'none',
-                background: activeTab === tab ? 'rgba(255,255,255,0.1)' : 'transparent',
-                color: activeTab === tab ? 'white' : '#6b7280',
+                background: activeTab === tab ? 'rgba(var(--fg-rgb), 0.1)' : 'transparent',
+                color: activeTab === tab ? 'var(--text-strong)' : 'var(--text-dim)',
                 fontSize: '12px', fontWeight: activeTab === tab ? 500 : 400,
                 cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all 0.15s'
               }}

@@ -126,8 +126,8 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
       <div
         style={{
           position: 'relative',
-          background: '#0f1018',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--surface)',
+          borderTop: '1px solid rgba(var(--fg-rgb), 0.08)',
           borderRadius: '20px 20px 0 0',
           padding: '0 1rem 2rem',
           width: '100%',
@@ -142,12 +142,12 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
       >
         {/* Handle */}
         <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '12px', marginBottom: '20px' }}>
-          <div style={{ width: '36px', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.12)' }} />
+          <div style={{ width: '36px', height: '4px', borderRadius: '2px', background: 'rgba(var(--fg-rgb), 0.12)' }} />
         </div>
 
         {/* Film row */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px' }}>
-          <div style={{ flexShrink: 0, width: '44px', height: '62px', borderRadius: '6px', overflow: 'hidden', background: '#1a1b25' }}>
+          <div style={{ flexShrink: 0, width: '44px', height: '62px', borderRadius: '6px', overflow: 'hidden', background: 'var(--surface-2)' }}>
             {movie.poster_url ? (
               <img
                 src={`https://image.tmdb.org/t/p/w92${movie.poster_url}`}
@@ -156,18 +156,18 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '14px' }}>
+                <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '14px' }}>
                   {movie.title.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
                 </span>
               </div>
             )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'white', fontSize: '1.25rem', letterSpacing: '0.03em', margin: 0, lineHeight: 1.1 }}>
+            <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '1.25rem', letterSpacing: '0.03em', margin: 0, lineHeight: 1.1 }}>
               {movie.title}
             </p>
             {movie.year_released && (
-              <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '11px', margin: '2px 0 0' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '11px', margin: '2px 0 0' }}>
                 {movie.year_released}{movie.director ? ` · ${movie.director}` : ''}
               </p>
             )}
@@ -178,13 +178,13 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
         {excitementLocked && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+            background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.07)',
             borderRadius: '10px', padding: '10px 14px', marginBottom: '16px',
           }}>
-            <span style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               Pre-watch excitement
             </span>
-            <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.2rem', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.05em' }}>
+            <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.2rem', color: 'rgba(var(--fg-rgb), 0.35)', letterSpacing: '0.05em' }}>
               {excitementLocked}
             </span>
           </div>
@@ -193,29 +193,29 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
         {/* Final score already submitted — excitement scoring locked */}
         {finalScoreAlreadySubmitted ? (
           <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
-            <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', color: 'white', letterSpacing: '0.03em', margin: '0 0 8px' }}>
+            <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', color: 'var(--text-strong)', letterSpacing: '0.03em', margin: '0 0 8px' }}>
               Score Locked
             </p>
-            <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#6b7280', fontSize: '14px', margin: '0 0 20px', lineHeight: 1.5 }}>
+            <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)', fontSize: '14px', margin: '0 0 20px', lineHeight: 1.5 }}>
               Your final score has already been submitted.{' '}
               Pre-watch excitement scoring is no longer available.
             </p>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
               {excitementLocked && (
                 <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>
                     Excitement
                   </p>
-                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', color: 'rgba(var(--fg-rgb), 0.4)', margin: 0 }}>
                     {excitementLocked}
                   </p>
                 </div>
               )}
               {excitementLocked && (
-                <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '18px' }}>→</span>
+                <span style={{ color: 'rgba(var(--fg-rgb), 0.2)', fontSize: '18px' }}>→</span>
               )}
               <div style={{ textAlign: 'center' }}>
-                <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>
                   Final Score
                 </p>
                 <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', color: 'var(--accent)', margin: 0 }}>
@@ -227,8 +227,8 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               onClick={handleClose}
               style={{
                 width: '100%', padding: '13px',
-                borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(255,255,255,0.06)', color: 'white',
+                borderRadius: '12px', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                background: 'rgba(var(--fg-rgb), 0.06)', color: 'var(--text-strong)',
                 fontFamily: "'DM Sans',sans-serif", fontWeight: 500,
                 fontSize: '14px', cursor: 'pointer',
               }}
@@ -238,10 +238,10 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
           </div>
         ) : confirmBold ? (
           <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
-            <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.6rem', color: 'white', letterSpacing: '0.03em', margin: '0 0 6px' }}>
+            <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.6rem', color: 'var(--text-strong)', letterSpacing: '0.03em', margin: '0 0 6px' }}>
               Are you sure?
             </p>
-            <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: '14px', margin: '0 0 24px', lineHeight: 1.5 }}>
+            <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)', fontSize: '14px', margin: '0 0 24px', lineHeight: 1.5 }}>
               That's a {parseFloat(scoreInput) >= 9 ? 'very high' : 'very low'} score.{' '}
               <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '1.1rem', verticalAlign: 'middle' }}>
                 {parseFloat(scoreInput).toFixed(2)}
@@ -252,8 +252,8 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                 onClick={() => setConfirmBold(false)}
                 style={{
                   flex: 1, padding: '13px', borderRadius: '12px',
-                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'white', fontFamily: "'DM Sans',sans-serif", fontWeight: 500,
+                  background: 'rgba(var(--fg-rgb), 0.06)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                  color: 'var(--text-strong)', fontFamily: "'DM Sans',sans-serif", fontWeight: 500,
                   fontSize: '14px', cursor: 'pointer',
                 }}
               >
@@ -265,7 +265,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                 style={{
                   flex: 1, padding: '13px', borderRadius: '12px',
                   background: 'var(--accent)', border: 'none',
-                  color: 'white', fontFamily: "'DM Sans',sans-serif", fontWeight: 600,
+                  color: 'var(--text-strong)', fontFamily: "'DM Sans',sans-serif", fontWeight: 600,
                   fontSize: '14px', cursor: saving ? 'not-allowed' : 'pointer',
                   opacity: saving ? 0.7 : 1,
                 }}
@@ -277,7 +277,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
         ) : (
           <>
             {/* Score label */}
-            <p style={{ fontFamily: "'DM Mono',monospace", color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '8px' }}>
+            <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-dim)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '8px' }}>
               {isExcitementMode ? 'Pre-watch excitement' : 'Your score'}
             </p>
 
@@ -295,15 +295,15 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                 placeholder="0.00 – 10.00"
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  background: 'rgba(255,255,255,0.04)', border: `1px solid ${error ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
+                  background: 'rgba(var(--fg-rgb), 0.04)', border: `1px solid ${error ? '#ef4444' : 'rgba(var(--fg-rgb), 0.1)'}`,
                   borderRadius: '12px', padding: '14px 16px',
                   fontFamily: "'Bebas Neue',sans-serif", fontSize: '2rem', letterSpacing: '0.05em',
-                  color: 'white', outline: 'none',
+                  color: 'var(--text-strong)', outline: 'none',
                   transition: 'border-color 0.15s ease',
                   WebkitAppearance: 'none', MozAppearance: 'textfield',
                 }}
                 onFocus={e => { if (!error) e.target.style.borderColor = 'var(--accent)' }}
-                onBlur={e => { if (!error) e.target.style.borderColor = 'rgba(255,255,255,0.1)' }}
+                onBlur={e => { if (!error) e.target.style.borderColor = 'rgba(var(--fg-rgb), 0.1)' }}
               />
             </div>
 
@@ -326,7 +326,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                   onClick={() => setRecommendOutside(v => !v)}
                   style={{
                     width: '20px', height: '20px', flexShrink: 0,
-                    borderRadius: '6px', border: `2px solid ${recommendOutside ? 'var(--accent)' : 'rgba(255,255,255,0.15)'}`,
+                    borderRadius: '6px', border: `2px solid ${recommendOutside ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.15)'}`,
                     background: recommendOutside ? 'var(--accent)' : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     transition: 'all 0.15s ease',
@@ -338,7 +338,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                     </svg>
                   )}
                 </div>
-                <span style={{ fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: '13px', userSelect: 'none' }}>
+                <span style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)', fontSize: '13px', userSelect: 'none' }}>
                   I'd recommend this outside the club
                 </span>
               </label>
@@ -351,7 +351,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               style={{
                 width: '100%', padding: '15px',
                 borderRadius: '14px', border: 'none',
-                background: 'var(--accent)', color: 'white',
+                background: 'var(--accent)', color: 'var(--text-strong)',
                 fontFamily: "'DM Sans',sans-serif", fontWeight: 600,
                 fontSize: '15px', cursor: saving ? 'not-allowed' : 'pointer',
                 opacity: saving ? 0.7 : 1,

@@ -37,8 +37,8 @@ export default function AuthCallback() {
   }, [navigate])
 
   return (
-    <div style={{ minHeight: '100vh', background: '#030712', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ fontFamily: "'DM Sans', sans-serif", color: '#9ca3af', fontSize: '15px' }}>Signing you in…</p>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ fontFamily: "'DM Sans', sans-serif", color: 'var(--text-muted)', fontSize: '15px' }}>Signing you in…</p>
     </div>
   )
 }

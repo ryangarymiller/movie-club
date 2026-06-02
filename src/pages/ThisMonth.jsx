@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
+import MonthReveal from '../components/MonthReveal'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ function Skeleton({ style = {}, className = '' }) {
   return (
     <div
       className={`animate-pulse ${className}`}
-      style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', ...style }}
+      style={{ background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: '8px', ...style }}
     />
   )
 }
@@ -147,11 +148,11 @@ function GuessThePicker({ movie, profile, allUsers }) {
           gap: '4px',
           padding: '4px 10px',
           borderRadius: '999px',
-          border: '1px solid rgba(255,255,255,0.1)',
-          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(var(--fg-rgb), 0.1)',
+          background: 'rgba(var(--fg-rgb), 0.04)',
           fontFamily: "'DM Mono',monospace",
           fontSize: '10px',
-          color: '#9ca3af',
+          color: 'var(--text-muted)',
           letterSpacing: '0.04em',
         }}>
           Guess: {guessedUser?.name ?? '?'}
@@ -161,9 +162,9 @@ function GuessThePicker({ movie, profile, allUsers }) {
           style={{
             padding: '4px 9px',
             borderRadius: '999px',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(var(--fg-rgb), 0.1)',
             background: 'transparent',
-            color: '#6b7280',
+            color: 'var(--text-dim)',
             fontFamily: "'DM Mono',monospace",
             fontSize: '10px',
             cursor: 'pointer',
@@ -189,9 +190,9 @@ function GuessThePicker({ movie, profile, allUsers }) {
             gap: '4px',
             padding: '4px 10px',
             borderRadius: '999px',
-            border: '1px solid rgba(255,255,255,0.1)',
-            background: 'rgba(255,255,255,0.03)',
-            color: '#6b7280',
+            border: '1px solid rgba(var(--fg-rgb), 0.1)',
+            background: 'rgba(var(--fg-rgb), 0.03)',
+            color: 'var(--text-dim)',
             fontFamily: "'DM Mono',monospace",
             fontSize: '10px',
             letterSpacing: '0.04em',
@@ -204,9 +205,9 @@ function GuessThePicker({ movie, profile, allUsers }) {
       {open && (
         <div style={{
           borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: '1px solid rgba(var(--fg-rgb), 0.08)',
           overflow: 'hidden',
-          background: 'rgba(255,255,255,0.03)',
+          background: 'rgba(var(--fg-rgb), 0.03)',
         }}>
           {otherUsers.map((u, i) => (
             <button
@@ -218,8 +219,8 @@ function GuessThePicker({ movie, profile, allUsers }) {
                 padding: '8px 12px',
                 background: 'transparent',
                 border: 'none',
-                borderBottom: i < otherUsers.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                color: 'rgba(255,255,255,0.75)',
+                borderBottom: i < otherUsers.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
+                color: 'rgba(var(--fg-rgb), 0.75)',
                 fontFamily: "'DM Sans',sans-serif",
                 fontSize: '13px',
                 cursor: 'pointer',
@@ -235,8 +236,8 @@ function GuessThePicker({ movie, profile, allUsers }) {
               padding: '7px',
               background: 'transparent',
               border: 'none',
-              borderTop: '1px solid rgba(255,255,255,0.05)',
-              color: '#4b5563',
+              borderTop: '1px solid rgba(var(--fg-rgb), 0.05)',
+              color: 'var(--text-faint)',
               fontFamily: "'DM Mono',monospace",
               fontSize: '10px',
               cursor: 'pointer',
@@ -264,8 +265,8 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
       : `${Number(rating.score).toFixed(2)}`
 
   const ctaStyle = status === 'done'
-    ? { background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }
-    : { background: 'var(--accent)', border: 'none', color: 'white' }
+    ? { background: 'transparent', border: '1px solid rgba(var(--fg-rgb), 0.12)', color: 'rgba(var(--fg-rgb), 0.5)' }
+    : { background: 'var(--accent)', border: 'none', color: 'var(--text-strong)' }
 
   const labelAbove = status === 'excitement'
     ? 'Submit excitement score'
@@ -273,15 +274,15 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
       ? 'Submit final score'
       : 'Scored'
 
-  const labelColor = status === 'done' ? '#4b5563' : '#9ca3af'
+  const labelColor = status === 'done' ? 'var(--text-faint)' : 'var(--text-muted)'
 
   return (
     <div style={{
       padding: '12px',
       borderRadius: '14px',
-      background: 'rgba(255,255,255,0.025)',
-      border: '1px solid rgba(255,255,255,0.07)',
-      borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(var(--fg-rgb), 0.025)',
+      border: '1px solid rgba(var(--fg-rgb), 0.07)',
+      borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(var(--fg-rgb), 0.07)',
       width: '100%', boxSizing: 'border-box',
     }}>
       {/* Row: poster + info + CTA */}
@@ -290,7 +291,7 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
         <div style={{
           flexShrink: 0, width: '48px', height: '68px',
           borderRadius: '7px', overflow: 'hidden',
-          background: '#1a1b25',
+          background: 'var(--surface-2)',
         }}>
           {movie.poster_url ? (
             <img
@@ -301,7 +302,7 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
             />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '13px' }}>
+              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '13px' }}>
                 {initials(movie.title)}
               </span>
             </div>
@@ -318,7 +319,7 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
             {labelAbove}
           </p>
           <p style={{
-            fontFamily: "'DM Sans',sans-serif", color: 'white',
+            fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
             fontWeight: 500, fontSize: '14px',
             margin: '0 0 2px', lineHeight: 1.3,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -326,7 +327,7 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
             {movie.title}
           </p>
           <p style={{
-            fontFamily: "'DM Mono',monospace", color: '#374151',
+            fontFamily: "'DM Mono',monospace", color: 'var(--hairline)',
             fontSize: '11px', margin: 0,
           }}>
             {movie.year_released ?? ''}
@@ -382,7 +383,7 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile, a
     return (
       <div style={{
         textAlign: 'center', padding: '48px 0',
-        fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px',
+        fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
       }}>
         No picks yet for {monthLabel}.
       </div>
@@ -426,7 +427,7 @@ function DeadlinesTab({ movies, loading }) {
     return (
       <div style={{
         textAlign: 'center', padding: '48px 0',
-        fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px',
+        fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
       }}>
         No deadlines to show.
       </div>
@@ -450,21 +451,21 @@ function DeadlinesTab({ movies, loading }) {
           <div key={m.id} style={{
             padding: '14px',
             borderRadius: '14px',
-            background: 'rgba(255,255,255,0.025)',
-            border: `1px solid ${cd?.past ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.07)'}`,
+            background: 'rgba(var(--fg-rgb), 0.025)',
+            border: `1px solid ${cd?.past ? 'rgba(var(--fg-rgb), 0.05)' : 'rgba(var(--fg-rgb), 0.07)'}`,
             width: '100%', boxSizing: 'border-box',
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{
-                  fontFamily: "'DM Sans',sans-serif", color: 'white',
+                  fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
                   fontWeight: 500, fontSize: '14px', margin: '0 0 4px',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {m.title}
                 </p>
                 <p style={{
-                  fontFamily: "'DM Mono',monospace", color: '#4b5563',
+                  fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
                   fontSize: '11px', margin: 0, lineHeight: 1.4,
                 }}>
                   {formatDeadline(m.scoring_deadline)}
@@ -495,8 +496,8 @@ function DeadlinesTab({ movies, loading }) {
                     letterSpacing: '0.05em',
                     padding: '4px 8px',
                     borderRadius: '6px',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: '#6b7280',
+                    background: 'rgba(var(--fg-rgb), 0.05)',
+                    color: 'var(--text-dim)',
                     whiteSpace: 'nowrap',
                     marginTop: '2px',
                   }}>
@@ -710,7 +711,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
     return (
       <div>
         <p style={{
-          fontFamily: "'DM Mono',monospace", color: '#4b5563',
+          fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
           fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
           margin: '0 0 14px',
         }}>
@@ -721,13 +722,13 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
           display: 'flex', gap: '14px',
           padding: '14px',
           borderRadius: '14px',
-          background: 'rgba(255,255,255,0.025)',
-          border: '1px solid rgba(255,255,255,0.07)',
+          background: 'rgba(var(--fg-rgb), 0.025)',
+          border: '1px solid rgba(var(--fg-rgb), 0.07)',
           boxSizing: 'border-box',
         }}>
           <div style={{
             flexShrink: 0, width: '56px', height: '80px',
-            borderRadius: '7px', overflow: 'hidden', background: '#1a1b25',
+            borderRadius: '7px', overflow: 'hidden', background: 'var(--surface-2)',
           }}>
             {existingPick.poster_url ? (
               <img
@@ -738,7 +739,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
               />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '13px' }}>
+                <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '13px' }}>
                   {initials(existingPick.title)}
                 </span>
               </div>
@@ -747,7 +748,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{
-              fontFamily: "'DM Sans',sans-serif", color: 'white',
+              fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
               fontWeight: 600, fontSize: '15px',
               margin: '0 0 4px', lineHeight: 1.3,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -755,7 +756,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
               {existingPick.title}
             </p>
             <p style={{
-              fontFamily: "'DM Mono',monospace", color: '#4b5563',
+              fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
               fontSize: '11px', margin: '0 0 6px',
             }}>
               {meta.year ?? ''}
@@ -764,7 +765,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
             </p>
             {meta.justification && (
               <p style={{
-                fontFamily: "'DM Sans',sans-serif", color: '#6b7280',
+                fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)',
                 fontSize: '12px', margin: 0, lineHeight: 1.4,
                 display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
@@ -782,9 +783,9 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
             width: '100%',
             padding: '10px',
             borderRadius: '10px',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(var(--fg-rgb), 0.1)',
             background: 'transparent',
-            color: '#6b7280',
+            color: 'var(--text-dim)',
             fontFamily: "'DM Sans',sans-serif",
             fontSize: '13px',
             cursor: 'pointer',
@@ -816,7 +817,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
             Are you sure?
           </p>
           <p style={{
-            fontFamily: "'DM Sans',sans-serif", color: '#6b7280',
+            fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)',
             fontSize: '12px', margin: 0, lineHeight: 1.5,
           }}>
             Changing your pick will replace your current selection. You can only pick once per month.
@@ -828,9 +829,9 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
             style={{
               flex: 1, padding: '10px',
               borderRadius: '10px',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: '1px solid rgba(var(--fg-rgb), 0.1)',
               background: 'transparent',
-              color: '#6b7280',
+              color: 'var(--text-dim)',
               fontFamily: "'DM Sans',sans-serif",
               fontSize: '13px', cursor: 'pointer',
             }}
@@ -863,7 +864,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
     return (
       <div>
         <p style={{
-          fontFamily: "'DM Mono',monospace", color: '#4b5563',
+          fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
           fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
           margin: '0 0 14px',
         }}>
@@ -872,15 +873,15 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
 
         <div style={{
           borderRadius: '14px',
-          background: 'rgba(255,255,255,0.025)',
-          border: '1px solid rgba(255,255,255,0.07)',
+          background: 'rgba(var(--fg-rgb), 0.025)',
+          border: '1px solid rgba(var(--fg-rgb), 0.07)',
           overflow: 'hidden',
           marginBottom: '12px',
         }}>
           <div style={{ display: 'flex', gap: '14px', padding: '14px' }}>
             <div style={{
               flexShrink: 0, width: '64px', height: '92px',
-              borderRadius: '7px', overflow: 'hidden', background: '#1a1b25',
+              borderRadius: '7px', overflow: 'hidden', background: 'var(--surface-2)',
             }}>
               {selected.poster_path ? (
                 <img
@@ -891,7 +892,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
                 />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '13px' }}>
+                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '13px' }}>
                     {initials(selected.title)}
                   </span>
                 </div>
@@ -900,14 +901,14 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
 
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{
-                fontFamily: "'DM Sans',sans-serif", color: 'white',
+                fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
                 fontWeight: 600, fontSize: '16px',
                 margin: '0 0 5px', lineHeight: 1.25,
               }}>
                 {selected.title}
               </p>
               <p style={{
-                fontFamily: "'DM Mono',monospace", color: '#4b5563',
+                fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
                 fontSize: '11px', margin: '0 0 6px',
               }}>
                 {[selected.year, selected.director, selected.runtime_minutes ? `${selected.runtime_minutes}m` : null]
@@ -915,7 +916,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
               </p>
               {selected.genre && (
                 <p style={{
-                  fontFamily: "'DM Mono',monospace", color: '#374151',
+                  fontFamily: "'DM Mono',monospace", color: 'var(--hairline)',
                   fontSize: '10px', margin: 0,
                 }}>
                   {selected.genre}
@@ -927,11 +928,11 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
           {selected.plot_summary && (
             <div style={{
               padding: '0 14px 14px',
-              borderTop: '1px solid rgba(255,255,255,0.04)',
+              borderTop: '1px solid rgba(var(--fg-rgb), 0.04)',
               paddingTop: '12px',
             }}>
               <p style={{
-                fontFamily: "'DM Sans',sans-serif", color: '#6b7280',
+                fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)',
                 fontSize: '13px', lineHeight: 1.55, margin: 0,
               }}>
                 {selected.plot_summary}
@@ -966,9 +967,9 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
             width: '100%', boxSizing: 'border-box',
             padding: '12px 14px',
             borderRadius: '10px',
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(255,255,255,0.03)',
-            color: 'white',
+            border: '1px solid rgba(var(--fg-rgb), 0.08)',
+            background: 'rgba(var(--fg-rgb), 0.03)',
+            color: 'var(--text-strong)',
             fontFamily: "'DM Sans',sans-serif",
             fontSize: '13px',
             lineHeight: 1.5,
@@ -993,9 +994,9 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
             style={{
               flex: 1, padding: '11px',
               borderRadius: '10px',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: '1px solid rgba(var(--fg-rgb), 0.1)',
               background: 'transparent',
-              color: '#6b7280',
+              color: 'var(--text-dim)',
               fontFamily: "'DM Sans',sans-serif",
               fontSize: '13px', cursor: 'pointer',
             }}
@@ -1009,8 +1010,8 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
               flex: 2, padding: '11px',
               borderRadius: '10px',
               border: 'none',
-              background: saving ? 'rgba(255,255,255,0.06)' : 'var(--accent)',
-              color: saving ? '#4b5563' : 'white',
+              background: saving ? 'rgba(var(--fg-rgb), 0.06)' : 'var(--accent)',
+              color: saving ? 'var(--text-faint)' : 'var(--text-strong)',
               fontFamily: "'DM Sans',sans-serif",
               fontWeight: 600,
               fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer',
@@ -1028,7 +1029,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
   return (
     <div>
       <p style={{
-        fontFamily: "'DM Mono',monospace", color: '#4b5563',
+        fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
         fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
         margin: '0 0 14px',
       }}>
@@ -1045,9 +1046,9 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
             width: '100%', boxSizing: 'border-box',
             padding: '12px 14px',
             borderRadius: '10px',
-            border: '1px solid rgba(255,255,255,0.1)',
-            background: 'rgba(255,255,255,0.04)',
-            color: 'white',
+            border: '1px solid rgba(var(--fg-rgb), 0.1)',
+            background: 'rgba(var(--fg-rgb), 0.04)',
+            color: 'var(--text-strong)',
             fontFamily: "'DM Sans',sans-serif",
             fontSize: '14px',
             outline: 'none',
@@ -1057,8 +1058,8 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
           <div style={{
             position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
             width: '14px', height: '14px',
-            border: '2px solid rgba(255,255,255,0.1)',
-            borderTop: '2px solid rgba(255,255,255,0.4)',
+            border: '2px solid rgba(var(--fg-rgb), 0.1)',
+            borderTop: '2px solid rgba(var(--fg-rgb), 0.4)',
             borderRadius: '50%',
             animation: 'spin 0.7s linear infinite',
           }} />
@@ -1074,9 +1075,9 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
       {!detailLoading && searchResults.length > 0 && (
         <div style={{
           borderRadius: '12px',
-          border: '1px solid rgba(255,255,255,0.07)',
+          border: '1px solid rgba(var(--fg-rgb), 0.07)',
           overflow: 'hidden',
-          background: 'rgba(255,255,255,0.02)',
+          background: 'rgba(var(--fg-rgb), 0.02)',
         }}>
           {searchResults.map((r, i) => (
             <button
@@ -1088,14 +1089,14 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
                 padding: '10px 12px',
                 background: 'transparent',
                 border: 'none',
-                borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                borderBottom: i < searchResults.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
                 cursor: 'pointer',
                 textAlign: 'left',
               }}
             >
               <div style={{
                 flexShrink: 0, width: '36px', height: '52px',
-                borderRadius: '5px', overflow: 'hidden', background: '#1a1b25',
+                borderRadius: '5px', overflow: 'hidden', background: 'var(--surface-2)',
               }}>
                 {r.poster_path ? (
                   <img
@@ -1106,7 +1107,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
                   />
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '10px' }}>
+                    <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '10px' }}>
                       {initials(r.title)}
                     </span>
                   </div>
@@ -1114,7 +1115,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{
-                  fontFamily: "'DM Sans',sans-serif", color: 'white',
+                  fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
                   fontWeight: 500, fontSize: '14px',
                   margin: '0 0 2px',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1122,7 +1123,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
                   {r.title}
                 </p>
                 <p style={{
-                  fontFamily: "'DM Mono',monospace", color: '#4b5563',
+                  fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
                   fontSize: '11px', margin: 0,
                 }}>
                   {r.release_date ? r.release_date.slice(0, 4) : 'Unknown year'}
@@ -1135,7 +1136,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved, onCancel }) {
 
       {!detailLoading && !searching && query.trim().length > 1 && searchResults.length === 0 && (
         <p style={{
-          fontFamily: "'DM Sans',sans-serif", color: '#374151',
+          fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)',
           fontSize: '13px', textAlign: 'center', padding: '24px 0',
         }}>
           No films found for "{query}"
@@ -1160,8 +1161,8 @@ function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div style={{
-        background: '#0e0f16',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--surface-3)',
+        border: '1px solid rgba(var(--fg-rgb), 0.08)',
         borderRadius: '20px 20px 0 0',
         width: '100%',
         maxWidth: '600px',
@@ -1173,25 +1174,25 @@ function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
         {/* Drag handle */}
         <div style={{
           width: '36px', height: '4px', borderRadius: '2px',
-          background: 'rgba(255,255,255,0.15)',
+          background: 'rgba(var(--fg-rgb), 0.15)',
           margin: '0 auto 20px',
         }} />
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <h2 style={{
             fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.8rem',
-            color: 'white', margin: 0, letterSpacing: '0.03em',
+            color: 'var(--text-strong)', margin: 0, letterSpacing: '0.03em',
           }}>
             Pick Your Film
           </h2>
           <button
             onClick={onClose}
             style={{
-              background: 'rgba(255,255,255,0.07)',
+              background: 'rgba(var(--fg-rgb), 0.07)',
               border: 'none',
               borderRadius: '50%',
               width: '30px', height: '30px',
-              color: '#9ca3af',
+              color: 'var(--text-muted)',
               fontSize: '16px',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1209,7 +1210,7 @@ function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
             onCancel={onClose}
           />
         ) : (
-          <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px' }}>
+          <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px' }}>
             No upcoming month has been configured yet.
           </p>
         )}
@@ -1246,10 +1247,11 @@ function PicksTab({ profile }) {
       // Load all picks for next month joined with user info
       const { data: picksData } = await supabase
         .from('upcoming_picks')
-        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, users(name)')
+        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, users(name, email)')
         .eq('month_target', month.month_year)
         .order('created_at', { ascending: true })
-      setPicks(picksData ?? [])
+      // Test account must be invisible in all UI — filter by email.
+      setPicks((picksData ?? []).filter(p => p.users?.email !== 'i.am.ryan.the.miller@gmail.com'))
     } else {
       setPicks([])
     }
@@ -1277,7 +1279,7 @@ function PicksTab({ profile }) {
           borderRadius: '12px',
           border: '1px solid rgba(var(--accent-rgb, 99,102,241),0.4)',
           background: 'rgba(var(--accent-rgb, 99,102,241),0.08)',
-          color: 'white',
+          color: 'var(--text-strong)',
           fontFamily: "'DM Sans',sans-serif",
           fontWeight: 600,
           fontSize: '14px',
@@ -1288,7 +1290,7 @@ function PicksTab({ profile }) {
         }}
       >
         <span style={{ flex: 1 }}>Pick your next movie</span>
-        <span style={{ color: '#6b7280', fontSize: '16px' }}>→</span>
+        <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
       </button>
 
       {/* Picks list */}
@@ -1299,21 +1301,21 @@ function PicksTab({ profile }) {
       ) : !nextMonth ? (
         <div style={{
           textAlign: 'center', padding: '32px 0',
-          fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px',
+          fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
         }}>
           No upcoming month configured yet.
         </div>
       ) : picks.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '32px 0',
-          fontFamily: "'DM Sans',sans-serif", color: '#374151', fontSize: '14px',
+          fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
         }}>
           No picks submitted yet for {nextMonthLabel}.
         </div>
       ) : (
         <>
           <p style={{
-            fontFamily: "'DM Mono',monospace", color: '#374151',
+            fontFamily: "'DM Mono',monospace", color: 'var(--hairline)',
             fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
             margin: '0 0 12px',
           }}>
@@ -1329,15 +1331,15 @@ function PicksTab({ profile }) {
                   display: 'flex', gap: '12px',
                   padding: '12px',
                   borderRadius: '14px',
-                  background: 'rgba(255,255,255,0.025)',
-                  border: '1px solid rgba(255,255,255,0.07)',
-                  borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(255,255,255,0.07)',
+                  background: 'rgba(var(--fg-rgb), 0.025)',
+                  border: '1px solid rgba(var(--fg-rgb), 0.07)',
+                  borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(var(--fg-rgb), 0.07)',
                   boxSizing: 'border-box',
                 }}>
                   {/* Poster */}
                   <div style={{
                     flexShrink: 0, width: '44px', height: '62px',
-                    borderRadius: '6px', overflow: 'hidden', background: '#1a1b25',
+                    borderRadius: '6px', overflow: 'hidden', background: 'var(--surface-2)',
                   }}>
                     {pick.poster_url ? (
                       <img
@@ -1348,7 +1350,7 @@ function PicksTab({ profile }) {
                       />
                     ) : (
                       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(255,255,255,0.15)', fontSize: '11px' }}>
+                        <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '11px' }}>
                           {initials(pick.title)}
                         </span>
                       </div>
@@ -1358,7 +1360,7 @@ function PicksTab({ profile }) {
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{
-                      fontFamily: "'DM Sans',sans-serif", color: 'white',
+                      fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
                       fontWeight: 500, fontSize: '14px',
                       margin: '0 0 2px', lineHeight: 1.3,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1366,7 +1368,7 @@ function PicksTab({ profile }) {
                       {pick.title}
                     </p>
                     <p style={{
-                      fontFamily: "'DM Mono',monospace", color: '#4b5563',
+                      fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
                       fontSize: '11px', margin: '0 0 4px',
                     }}>
                       {[meta.year, meta.director].filter(Boolean).join(' · ')}
@@ -1375,7 +1377,7 @@ function PicksTab({ profile }) {
                       fontFamily: "'DM Mono',monospace",
                       fontSize: '10px',
                       margin: 0,
-                      color: pickerColor ?? '#6b7280',
+                      color: pickerColor ?? 'var(--text-dim)',
                     }}>
                       {pickerName}
                     </p>
@@ -1414,6 +1416,7 @@ export default function ThisMonth() {
   const [movies, setMovies] = useState([])
   const [ratingsMap, setRatingsMap] = useState({}) // movie_id → rating row
   const [activeMonth, setActiveMonth] = useState(null)
+  const [revealMonth, setRevealMonth] = useState(null) // latest fully-revealed month (for the Reveal tab)
   const [users, setUsers] = useState([])
 
   // Score modal state
@@ -1424,16 +1427,20 @@ export default function ThisMonth() {
     if (!profile) return
     setLoading(true)
 
-    const [{ data: month }, { data: ratings }, { data: usersData }] = await Promise.all([
+    const [{ data: month }, { data: revealed }, { data: ratings }, { data: usersData }] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
+      supabase.from('months').select('id, month_year').eq('status', 'revealed')
+        .order('month_year', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('ratings')
         .select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
         .eq('user_id', profile.id),
-      supabase.from('users').select('id, name'),
+      supabase.from('users').select('id, name, email'),
     ])
 
     setActiveMonth(month)
-    setUsers(usersData ?? [])
+    setRevealMonth(revealed ?? null)
+    // Test account must be invisible in all UI — filter by email.
+    setUsers((usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com'))
 
     if (month) {
       const { data: movieData } = await supabase
@@ -1491,9 +1498,16 @@ export default function ThisMonth() {
     ? new Date(`${activeMonth.month_year}-02`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : 'This Month'
 
+  const revealMonthLabel = revealMonth?.month_year
+    ? new Date(`${revealMonth.month_year}-02`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : ''
+
+  // Reveal tab is active only once a month's end-of-month reveal has happened.
+  const tabs = revealMonth ? [...TABS, 'Reveal'] : TABS
+
   return (
     <div style={{
-      background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)',
+      background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
       fontFamily: "'DM Sans',sans-serif",
       minHeight: '100vh',
       paddingBottom: '6rem',
@@ -1506,7 +1520,7 @@ export default function ThisMonth() {
         {/* Header */}
         <div style={{ marginBottom: '24px', animation: 'fadeUp 0.45s ease both' }}>
           <p style={{
-            fontFamily: "'DM Mono',monospace", color: '#374151',
+            fontFamily: "'DM Mono',monospace", color: 'var(--hairline)',
             fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.18em',
             margin: '0 0 4px',
           }}>
@@ -1514,7 +1528,7 @@ export default function ThisMonth() {
           </p>
           <h1 style={{
             fontFamily: "'Bebas Neue',sans-serif", fontSize: '2.6rem',
-            color: 'white', lineHeight: 1, margin: 0, letterSpacing: '0.03em',
+            color: 'var(--text-strong)', lineHeight: 1, margin: 0, letterSpacing: '0.03em',
           }}>
             This Month
           </h1>
@@ -1523,20 +1537,20 @@ export default function ThisMonth() {
         {/* Tab Bar */}
         <div style={{
           display: 'flex', gap: '4px',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.07)',
+          background: 'rgba(var(--fg-rgb), 0.04)',
+          border: '1px solid rgba(var(--fg-rgb), 0.07)',
           borderRadius: '12px', padding: '4px',
           marginBottom: '24px',
         }}>
-          {TABS.map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
                 flex: 1, padding: '8px 0',
                 borderRadius: '9px', border: 'none',
-                background: activeTab === tab ? 'rgba(255,255,255,0.09)' : 'transparent',
-                color: activeTab === tab ? 'white' : '#4b5563',
+                background: activeTab === tab ? 'rgba(var(--fg-rgb), 0.09)' : 'transparent',
+                color: activeTab === tab ? 'var(--text-strong)' : 'var(--text-faint)',
                 fontFamily: "'DM Sans',sans-serif",
                 fontWeight: activeTab === tab ? 600 : 400,
                 fontSize: '13px', cursor: 'pointer',
@@ -1566,6 +1580,14 @@ export default function ThisMonth() {
           )}
           {activeTab === 'Picks' && (
             <PicksTab profile={profile} />
+          )}
+          {activeTab === 'Reveal' && revealMonth && (
+            <MonthReveal
+              monthId={revealMonth.id}
+              monthLabel={revealMonthLabel}
+              users={users}
+              currentUserId={profile?.id}
+            />
           )}
         </div>
       </div>

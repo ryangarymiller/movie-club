@@ -124,6 +124,7 @@ export default function Home() {
   const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
   const [activeMovies, setActiveMovies] = useState([])
+  const [activeMonthYear, setActiveMonthYear] = useState(null)
   const [allMovies, setAllMovies] = useState([])
   const [myRatings, setMyRatings] = useState([])
   const [users, setUsers] = useState([])
@@ -138,16 +139,18 @@ export default function Home() {
   const load = useCallback(async () => {
     if (!profile) return
     const [{ data: activeMonth }, { data: movies }, { data: ratings }, { data: usersData }] = await Promise.all([
-      supabase.from('months').select('id').eq('status', 'active').maybeSingle(),
+      supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed'),
       supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
-      supabase.from('users').select('id, name'),
+      supabase.from('users').select('id, name, email'),
     ])
     const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
     setActiveMovies(active)
+    setActiveMonthYear(activeMonth?.month_year ?? null)
     setAllMovies(movies ?? [])
     setMyRatings(ratings ?? [])
-    setUsers(usersData ?? [])
+    // Test account must be invisible in all UI — filter by email.
+    setUsers((usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com'))
     setLoading(false)
   }, [profile])
 
@@ -172,27 +175,27 @@ export default function Home() {
   const topFilm = [...allMovies].filter(m => m.historical_avg_score).sort((a, b) => b.historical_avg_score - a.historical_avg_score)[0]
 
   return (
-    <div style={{ background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)', fontFamily: "'DM Sans',sans-serif", minHeight: '100vh', paddingBottom: '6rem', width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)', fontFamily: "'DM Sans',sans-serif", minHeight: '100vh', paddingBottom: '6rem', width: '100%', boxSizing: 'border-box' }}>
 
       {/* Single padded container — everything inside */}
       <div style={{ padding: '2.5rem 1rem 0', boxSizing: 'border-box', width: '100%' }}>
 
         {/* Header */}
         <div className="mb-8" style={{ animation: 'fadeUp 0.5s ease both' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: '#4b5563', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '4px' }}>
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '4px' }}>
             {formatDate()}
           </p>
-          <h1 style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '3rem', color: 'white', lineHeight: 1, margin: '0 0 4px', letterSpacing: '0.03em' }}>
+          <h1 style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '3rem', color: 'var(--text-strong)', lineHeight: 1, margin: '0 0 4px', letterSpacing: '0.03em' }}>
             Movie Club
           </h1>
-          <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
-            Welcome back, <span style={{ color: 'white', fontWeight: 500 }}>{firstName}</span>
+          <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: 0 }}>
+            Welcome back, <span style={{ color: 'var(--text-strong)', fontWeight: 500 }}>{firstName}</span>
           </p>
         </div>
 
         {/* Your Turn */}
         <section className="mb-8" style={{ animation: 'fadeUp 0.5s 0.1s ease both' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: '#4b5563', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
             Your Turn
           </p>
           {loading ? (
@@ -221,8 +224,10 @@ export default function Home() {
 
         {/* This Month's Films */}
         <section className="mb-8" style={{ animation: 'fadeUp 0.5s 0.2s ease both' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: '#4b5563', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
-            May 2026
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
+            {activeMonthYear
+              ? new Date(activeMonthYear + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+              : 'This Month'}
           </p>
           {loading ? (
             <div className="flex gap-3 overflow-hidden">
@@ -246,7 +251,7 @@ export default function Home() {
 
         {/* Stats */}
         <section style={{ animation: 'fadeUp 0.5s 0.3s ease both' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: '#4b5563', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
             Club Stats
           </p>
           {loading ? (

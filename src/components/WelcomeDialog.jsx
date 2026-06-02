@@ -39,8 +39,8 @@ export default function WelcomeDialog() {
     >
       <div
         style={{
-          background: '#0d0e16',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--surface)',
+          border: '1px solid rgba(var(--fg-rgb), 0.08)',
           borderRadius: '20px',
           padding: '2rem',
           width: '100%',
@@ -57,7 +57,7 @@ export default function WelcomeDialog() {
           style={{
             fontFamily: "'Bebas Neue', sans-serif",
             fontSize: '2rem',
-            color: '#ffffff',
+            color: 'var(--text-strong)',
             margin: '0 0 0.5rem 0',
             textAlign: 'center',
             letterSpacing: '0.04em',
@@ -72,7 +72,7 @@ export default function WelcomeDialog() {
           style={{
             fontFamily: "'DM Sans', sans-serif",
             fontSize: '14px',
-            color: '#9ca3af',
+            color: 'var(--text-muted)',
             margin: '0 0 1.5rem 0',
             textAlign: 'center',
             lineHeight: 1.5,
@@ -95,7 +95,7 @@ export default function WelcomeDialog() {
               style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '11px',
-                color: '#4b5563',
+                color: 'var(--text-faint)',
                 margin: '4px 0',
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -115,7 +115,7 @@ export default function WelcomeDialog() {
           disabled={loading}
           style={{
             background: 'var(--accent)',
-            color: 'white',
+            color: 'var(--text-strong)',
             border: 'none',
             borderRadius: '10px',
             padding: '14px',

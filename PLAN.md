@@ -6,6 +6,14 @@
 
 ---
 
+## Session 7 — Audit + Phase 2 start
+**Data fixes (DB):** Ryan Bey role → admin; Ryan Bey's 5 pick attributions backfilled (all were NULL — same root cause); May 2026 status → revealed.
+**Phase 1 bug fixes (code):** score format X.XX (3 spots); Home dynamic month heading; test-account filtered from film overlay + Home + This Month (scores/predictions/picker-name); History month off-by-one (UTC parse → local noon, 4 spots); authoritative `historical_avg_score` now wins over incomplete individual scores in Stats + History + overlay (fixes Eternal Sunshine 8.6); picker→member labels; History 5-film grid spacing; **light/dark theme now functional** via CSS-variable token system (dark preserved byte-for-byte).
+**Audit (25-agent fan-out, adversarially verified):** Phase 1 verified solid. Remaining open Phase-1 bug: **Stats film/member names not clickable** (claimed done, not wired). Spec decisions pending: extra Films "History" tab; CLAUDE.md-vs-spec award-list drift. Tech-debt: leftover debug*.test.jsx, eslint missing vitest globals.
+**Phase 2 started:** social tables + RLS created.
+
+---
+
 ## Legend
 - ✅ Done
 - 🔄 In progress
@@ -130,18 +138,26 @@
 
 ---
 
-## Phase 2 — Social
-- [ ] Reviews (primary review per user per film, shown on film page)
-- [ ] Threaded comments with replies
-- [ ] @mention support (@FirstLast format)
-- [ ] Emoji reactions on comments
-- [ ] 15-minute comment edit window; no member delete (admin only)
-- [ ] Comment/review visibility gated on watch+score status (rolling access)
-- [ ] Guess the picker — submission and reveal
-- [ ] Score predictions — picker submits for their own film; reveal at end of month
-- [ ] Full anonymity & reveal system (per-film scores_revealed + end-of-month picker_revealed)
-- [ ] Score change request flow (member request → admin approval → notification)
-- [ ] Veto voting system (3+/5 triggers resubmission)
+## Phase 2 — Social  *(session 7 — major build)*
+- [x] **DB foundation**: reviews, comments, reactions, veto_votes tables + RLS — rolling visibility reuses `auth_user_has_scored`; comments delete = admin-only
+- [x] Reviews (primary review per user per film) — table created; overlay UI functional
+- [x] Threaded comments with replies — `CommentThread.jsx`, integrated in film overlay Discussion section
+- [x] @mention support (@FirstLast format) — autocomplete + highlight in CommentThread
+- [x] Emoji reactions on comments — 👍❤️😂🔥👀 toggle, aggregated counts
+- [x] 15-minute comment edit window; no member delete (admin only) — UI + RLS
+- [x] Comment/review visibility gated on watch+score status (rolling access) — RLS + `canParticipate` gate
+- [x] Guess the picker — `GuessThePicker.jsx` (overlay, active window) + results in Reveal tab
+- [x] Score predictions picker-only — UI gate (`isPicker`) + RLS policy (picker-only insert/update); reveal in predictions section & Reveal tab
+- [x] Score change request flow — `ScoreChangeRequest.jsx`: member request button (film overlay) + admin approve/deny panel (Admin dashboard)
+- [x] Veto voting (3+/5) — `VetoControl.jsx`, film overlay (current pre-reveal films)
+- [x] This Month — Reveal sub-tab — `MonthReveal.jsx`: picker + justification + guess results + prediction results (shows latest revealed month)
+- [~] Reveal system: per-film + per-month admin triggers already exist; auto-scheduling of reveals is Phase 4
+- [ ] **Verify in-browser** — components are agent-built + build/test-green but not yet click-tested live
+
+### Carried from audit
+- [x] **Stats: film/member names clickable** — films open FilmDetailOverlay (Overview/Me/Members); member names → /profile/:id. (Recharts axis labels in Club/H2H still static — low value.)
+- [ ] Tech-debt: remove debug*.test.jsx; add vitest globals to eslint config
+- [ ] Decisions: Films "History" tab (keep+document?); CLAUDE.md-vs-spec award list drift
 
 ## Phase 3 — Themes & Personalisation
 - [ ] Full light mode

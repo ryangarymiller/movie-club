@@ -2,6 +2,10 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
+import CommentThread from '../components/CommentThread'
+import GuessThePicker from '../components/GuessThePicker'
+import VetoControl from '../components/VetoControl'
+import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -28,7 +32,9 @@ export function sortMonthsDescending(months) {
 }
 
 function formatMonthYear(monthYear) {
-  const d = new Date(monthYear + '-01')
+  // Parse at local noon, not UTC midnight — a bare 'YYYY-MM-01' is parsed as UTC,
+  // which in ET/PT rolls back to the previous day → previous month label.
+  const d = new Date(monthYear + '-01T12:00:00')
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
@@ -78,7 +84,7 @@ function Skeleton({ style, className = '' }) {
   return (
     <div
       className={`animate-pulse rounded ${className}`}
-      style={{ background: 'rgba(255,255,255,0.05)', ...style }}
+      style={{ background: 'rgba(var(--fg-rgb), 0.05)', ...style }}
     />
   )
 }
@@ -94,9 +100,9 @@ function SubTab({ label, active, onClick }) {
         textTransform: 'uppercase',
         padding: '6px 14px',
         borderRadius: '999px',
-        border: active ? 'none' : '1px solid rgba(255,255,255,0.1)',
+        border: active ? 'none' : '1px solid rgba(var(--fg-rgb), 0.1)',
         background: active ? 'var(--accent)' : 'transparent',
-        color: active ? '#fff' : 'rgba(255,255,255,0.4)',
+        color: active ? 'var(--text-strong)' : 'rgba(var(--fg-rgb), 0.4)',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         whiteSpace: 'nowrap',
@@ -117,9 +123,9 @@ function SortButton({ label, active, onClick }) {
         letterSpacing: '0.08em',
         padding: '5px 12px',
         borderRadius: '999px',
-        border: active ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.1)',
+        border: active ? '1px solid var(--accent)' : '1px solid rgba(var(--fg-rgb), 0.1)',
         background: active ? 'rgba(var(--accent-rgb,185,28,28),0.15)' : 'transparent',
-        color: active ? 'var(--accent-light, #fca5a5)' : 'rgba(255,255,255,0.35)',
+        color: active ? 'var(--accent-light, #fca5a5)' : 'rgba(var(--fg-rgb), 0.35)',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         whiteSpace: 'nowrap',
@@ -151,7 +157,7 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
           borderRadius: '8px',
           overflow: 'hidden',
           aspectRatio: '2/3',
-          background: '#111218',
+          background: 'var(--surface)',
           boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
           transition: 'transform 0.18s ease, box-shadow 0.18s ease',
           transform: hovered ? 'translateY(-3px) scale(1.02)' : 'none',
@@ -167,7 +173,7 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
           />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '2rem', color: 'rgba(255,255,255,0.12)' }}>
+            <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '2rem', color: 'rgba(var(--fg-rgb), 0.12)' }}>
               {initials(movie.title)}
             </span>
           </div>
@@ -186,10 +192,10 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
             padding: '10px 8px',
           }}
         >
-          <p style={{ color: '#fff', fontSize: '11px', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, lineHeight: 1.3, margin: 0 }}>
+          <p style={{ color: 'var(--text-strong)', fontSize: '11px', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, lineHeight: 1.3, margin: 0 }}>
             {movie.title}
             {movie.year_released ? (
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 400 }}> {movie.year_released}</span>
+              <span style={{ color: 'rgba(var(--fg-rgb), 0.5)', fontWeight: 400 }}> {movie.year_released}</span>
             ) : null}
           </p>
         </div>
@@ -204,10 +210,10 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
               padding: '2px 6px',
               borderRadius: '999px',
               background: 'var(--accent)',
-              color: '#fff',
+              color: 'var(--text-strong)',
               display: 'block',
             }}>
-              {Number(score).toFixed(1)}
+              {Number(score).toFixed(2)}
             </span>
           ) : (
             <span style={{
@@ -215,8 +221,8 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
               padding: '2px 6px',
               borderRadius: '999px',
               background: 'rgba(0,0,0,0.65)',
-              color: 'rgba(255,255,255,0.35)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'rgba(var(--fg-rgb), 0.35)',
+              border: '1px solid rgba(var(--fg-rgb), 0.1)',
               display: 'block',
               fontFamily: "'DM Mono', monospace",
             }}>?</span>
@@ -263,16 +269,16 @@ function PickerLegend({ movies, userById }) {
   if (entries.length === 0) return null
 
   return (
-    <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+    <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid rgba(var(--fg-rgb), 0.05)' }}>
       <p style={{
         fontFamily: "'DM Mono', monospace",
         fontSize: '10px',
         letterSpacing: '0.14em',
         textTransform: 'uppercase',
-        color: 'rgba(255,255,255,0.2)',
+        color: 'rgba(var(--fg-rgb), 0.2)',
         margin: '0 0 10px',
       }}>
-        Pickers
+        Members
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 16px' }}>
         {entries.map(({ name, color }) => (
@@ -287,7 +293,7 @@ function PickerLegend({ movies, userById }) {
             <span style={{
               fontFamily: "'DM Mono', monospace",
               fontSize: '10px',
-              color: 'rgba(255,255,255,0.4)',
+              color: 'rgba(var(--fg-rgb), 0.4)',
               letterSpacing: '0.04em',
             }}>
               {name}
@@ -349,7 +355,7 @@ function MemberScoreRow({ rating, user }) {
       alignItems: 'center',
       gap: '12px',
       padding: '10px 0',
-      borderBottom: '1px solid rgba(255,255,255,0.04)',
+      borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)',
     }}>
       {/* Avatar */}
       <div style={{
@@ -362,24 +368,24 @@ function MemberScoreRow({ rating, user }) {
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: '#fff' }}>
+        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
           {initials(name)}
         </span>
       </div>
 
       {/* Name */}
-      <span style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans', sans-serif", fontSize: '14px', color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans', sans-serif", fontSize: '14px', color: 'rgba(var(--fg-rgb), 0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {name}
       </span>
 
       {/* Pre-watch excitement */}
       {excitement != null && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px', marginRight: '4px' }}>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.06em' }}>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(var(--fg-rgb), 0.25)', letterSpacing: '0.06em' }}>
             HYPED
           </span>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>
-            {Number(excitement).toFixed(1)}
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(var(--fg-rgb), 0.35)' }}>
+            {Number(excitement).toFixed(2)}
           </span>
         </div>
       )}
@@ -389,8 +395,8 @@ function MemberScoreRow({ rating, user }) {
         flexShrink: 0,
         padding: '4px 10px',
         borderRadius: '8px',
-        background: score != null ? 'rgba(255,255,255,0.06)' : 'transparent',
-        border: score != null ? '1px solid rgba(255,255,255,0.08)' : 'none',
+        background: score != null ? 'rgba(var(--fg-rgb), 0.06)' : 'transparent',
+        border: score != null ? '1px solid rgba(var(--fg-rgb), 0.08)' : 'none',
         minWidth: '48px',
         textAlign: 'center',
       }}>
@@ -404,7 +410,7 @@ function MemberScoreRow({ rating, user }) {
             {Number(score).toFixed(2)}
           </span>
         ) : (
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: 'rgba(255,255,255,0.2)' }}>—</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: 'rgba(var(--fg-rgb), 0.2)' }}>—</span>
         )}
       </div>
     </div>
@@ -418,7 +424,7 @@ function SectionLabel({ children }) {
       fontSize: '9px',
       letterSpacing: '0.18em',
       textTransform: 'uppercase',
-      color: 'rgba(255,255,255,0.25)',
+      color: 'rgba(var(--fg-rgb), 0.25)',
       margin: '0 0 10px',
     }}>
       {children}
@@ -427,7 +433,7 @@ function SectionLabel({ children }) {
 }
 
 function Divider() {
-  return <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '24px 0' }} />
+  return <div style={{ height: '1px', background: 'rgba(var(--fg-rgb), 0.06)', margin: '24px 0' }} />
 }
 
 function PlotSummary({ text }) {
@@ -442,7 +448,7 @@ function PlotSummary({ text }) {
           fontFamily: "'DM Sans', sans-serif",
           fontSize: '14px',
           lineHeight: 1.7,
-          color: 'rgba(255,255,255,0.6)',
+          color: 'rgba(var(--fg-rgb), 0.6)',
           margin: '0 0 6px',
           display: '-webkit-box',
           WebkitLineClamp: expanded ? 'unset' : 3,
@@ -485,7 +491,7 @@ function StreamingSection({ providers }) {
     return (
       <div>
         <SectionLabel>Where to Watch</SectionLabel>
-        <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+        <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(var(--fg-rgb), 0.25)', margin: 0 }}>
           No streaming info available
         </p>
       </div>
@@ -496,7 +502,7 @@ function StreamingSection({ providers }) {
     if (!items || items.length === 0) return null
     return (
       <div style={{ marginBottom: '12px' }}>
-        <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.2)', margin: '0 0 8px', textTransform: 'uppercase' }}>
+        <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', color: 'rgba(var(--fg-rgb), 0.2)', margin: '0 0 8px', textTransform: 'uppercase' }}>
           {label}
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -514,11 +520,11 @@ function StreamingSection({ providers }) {
                 <span style={{
                   fontFamily: "'DM Sans', sans-serif",
                   fontSize: '11px',
-                  color: 'rgba(255,255,255,0.55)',
+                  color: 'rgba(var(--fg-rgb), 0.55)',
                   padding: '3px 8px',
                   borderRadius: '6px',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'rgba(var(--fg-rgb), 0.06)',
+                  border: '1px solid rgba(var(--fg-rgb), 0.08)',
                 }}>
                   {p.provider_name}
                 </span>
@@ -548,7 +554,7 @@ export function predictionDelta(predicted, actual) {
 }
 
 export function deltaColor(delta) {
-  if (delta == null) return 'rgba(255,255,255,0.4)'
+  if (delta == null) return 'rgba(var(--fg-rgb), 0.4)'
   if (delta <= 1.0) return '#86efac'   // green
   if (delta <= 2.0) return '#fbbf24'   // yellow
   return '#f87171'                     // red
@@ -568,7 +574,7 @@ export function avgAccuracy(predictions, ratings) {
 
 // ─── PredictionsSection ───────────────────────────────────────────────────────
 
-function PredictionsSection({ movie, profile, users, ratings, predictions, onSaved }) {
+function PredictionsSection({ movie, profile, users, ratings, predictions, isPicker, onSaved }) {
   const otherUsers = users.filter(u => u.id !== profile?.id)
   const [inputMap, setInputMap] = useState({}) // target_user_id → string value
   const [saving, setSaving] = useState(false)
@@ -594,15 +600,18 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
     const ratingByUser = {}
     for (const r of ratings) ratingByUser[r.user_id] = r.score
 
-    const myPredictions = predictions.filter(p => p.predicting_user_id === profile.id)
-    if (!myPredictions.length) return null
+    // Predictions are picker-only, so every row here belongs to this film's picker.
+    // Show them to everyone after the scores reveal (the predictor stays anonymous
+    // until the end-of-month picker reveal).
+    if (!predictions.length) return null
 
-    const acc = avgAccuracy(myPredictions, ratings)
+    const acc = avgAccuracy(predictions, ratings)
+    const accLabel = isPicker ? 'Your avg accuracy' : "Picker's avg accuracy"
 
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '12px' }}>
-          <SectionLabel>Predictions</SectionLabel>
+          <SectionLabel>{isPicker ? 'Your Predictions' : "Picker's Predictions"}</SectionLabel>
           {acc != null && (
             <span style={{
               fontFamily: "'DM Mono', monospace",
@@ -610,11 +619,11 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
               color: deltaColor(acc),
               letterSpacing: '0.06em',
             }}>
-              Your avg accuracy: ±{acc.toFixed(2)}
+              {accLabel}: ±{acc.toFixed(2)}
             </span>
           )}
         </div>
-        {myPredictions.map(p => {
+        {predictions.map(p => {
           const targetUser = users.find(u => u.id === p.target_user_id)
           const actual = ratingByUser[p.target_user_id]
           const delta = predictionDelta(p.predicted_score, actual)
@@ -626,7 +635,7 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
                 alignItems: 'center',
                 gap: '10px',
                 padding: '9px 0',
-                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)',
               }}
             >
               <span style={{
@@ -634,20 +643,20 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
                 minWidth: 0,
                 fontFamily: "'DM Sans', sans-serif",
                 fontSize: '13px',
-                color: 'rgba(255,255,255,0.7)',
+                color: 'rgba(var(--fg-rgb), 0.7)',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {targetUser?.name ?? 'Unknown'}
               </span>
-              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(var(--fg-rgb), 0.3)' }}>
                 {p.predicted_score != null ? Number(p.predicted_score).toFixed(2) : '—'}
               </span>
-              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.2)', margin: '0 2px' }}>→</span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(var(--fg-rgb), 0.2)', margin: '0 2px' }}>→</span>
               <span style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '13px',
                 fontWeight: 600,
-                color: actual != null ? scoreColor(Number(actual)) : 'rgba(255,255,255,0.2)',
+                color: actual != null ? scoreColor(Number(actual)) : 'rgba(var(--fg-rgb), 0.2)',
               }}>
                 {actual != null ? Number(actual).toFixed(2) : '—'}
               </span>
@@ -704,17 +713,37 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
     }
   }
 
+  // Predictions are picker-only: only the film's picker predicts the other members'
+  // scores for their own pick. Non-pickers just see a note until the reveal.
+  if (!isPicker) {
+    return (
+      <div>
+        <SectionLabel>Predictions</SectionLabel>
+        <p style={{
+          fontFamily: "'DM Mono', monospace",
+          fontSize: '11px',
+          color: 'rgba(var(--fg-rgb), 0.25)',
+          letterSpacing: '0.06em',
+          margin: 0,
+          lineHeight: 1.6,
+        }}>
+          The picker is predicting everyone's scores for this film — revealed when scores are.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div>
       <SectionLabel>Predictions</SectionLabel>
       <p style={{
         fontFamily: "'DM Sans', sans-serif",
         fontSize: '12px',
-        color: 'rgba(255,255,255,0.3)',
+        color: 'rgba(var(--fg-rgb), 0.3)',
         margin: '0 0 14px',
         lineHeight: 1.5,
       }}>
-        Predict each member's score. Revealed when scores are shown.
+        Predict each member's score for your pick. Revealed when scores are shown.
       </p>
       {otherUsers.map(u => {
         // Fix 4: lock prediction once the target user has submitted their score
@@ -728,7 +757,7 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
               alignItems: 'center',
               gap: '12px',
               padding: '8px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)',
               opacity: isLocked ? 0.55 : 1,
             }}
           >
@@ -737,12 +766,12 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
               minWidth: 0,
               fontFamily: "'DM Sans', sans-serif",
               fontSize: '13px',
-              color: 'rgba(255,255,255,0.7)',
+              color: 'rgba(var(--fg-rgb), 0.7)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {u.name}
               {isLocked && (
-                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.3)', marginLeft: '6px', letterSpacing: '0.08em' }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(var(--fg-rgb), 0.3)', marginLeft: '6px', letterSpacing: '0.08em' }}>
                   SCORED
                 </span>
               )}
@@ -760,9 +789,9 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
                 width: '72px',
                 padding: '5px 8px',
                 borderRadius: '7px',
-                border: isLocked ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.1)',
-                background: isLocked ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
-                color: isLocked ? 'rgba(255,255,255,0.3)' : 'white',
+                border: isLocked ? '1px solid rgba(var(--fg-rgb), 0.06)' : '1px solid rgba(var(--fg-rgb), 0.1)',
+                background: isLocked ? 'rgba(var(--fg-rgb), 0.02)' : 'rgba(var(--fg-rgb), 0.04)',
+                color: isLocked ? 'rgba(var(--fg-rgb), 0.3)' : 'var(--text-strong)',
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '13px',
                 textAlign: 'right',
@@ -784,8 +813,8 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
         disabled={saving}
         style={{
           marginTop: '14px',
-          background: saving ? 'rgba(255,255,255,0.06)' : 'var(--accent)',
-          color: saving ? '#4b5563' : '#fff',
+          background: saving ? 'rgba(var(--fg-rgb), 0.06)' : 'var(--accent)',
+          color: saving ? 'var(--text-faint)' : 'var(--text-strong)',
           fontFamily: "'DM Sans', sans-serif",
           fontWeight: 600,
           fontSize: '13px',
@@ -817,9 +846,25 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const [reviewError, setReviewError] = useState('')
   const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [predictions, setPredictions] = useState([])
+  const [isPicker, setIsPicker] = useState(false) // is the current user the picker of THIS film?
   const [awardData, setAwardData] = useState(null) // { movies, ratings, users, months, seasons }
   const [filmAwardsState, setFilmAwardsState] = useState(null) // null = not yet loaded
   const scrollRef = useRef(null)
+
+  // Determine whether the viewer picked this film. Querying with the picked_by_user_id
+  // filter only ever returns the viewer's own pick, so it never leaks other pickers.
+  useEffect(() => {
+    if (!movie || !profile) { setIsPicker(false); return }
+    let cancelled = false
+    supabase
+      .from('movies')
+      .select('id')
+      .eq('id', movie.id)
+      .eq('picked_by_user_id', profile.id)
+      .maybeSingle()
+      .then(({ data }) => { if (!cancelled) setIsPicker(!!data) })
+    return () => { cancelled = true }
+  }, [movie, profile])
 
   // Trigger animation
   useEffect(() => {
@@ -848,7 +893,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
         .single(),
       supabase
         .from('ratings')
-        .select('user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
+        .select('id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
         .eq('movie_id', movieId),
       supabase
         .from('users')
@@ -925,11 +970,16 @@ export function FilmDetailOverlay({ movie, onClose }) {
       }
     }
 
+    // Exclude the test account from every list shown in the overlay (scores,
+    // prediction targets, reviews). Spec: filter by email in all queries/displays.
+    const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+    const testId = (usersData ?? []).find(u => u.email === TEST_EMAIL)?.id ?? null
+
     setFullMovie(resolvedMovie)
-    setRatings(ratingsData ?? [])
-    setUsers(usersData ?? [])
-    setReviews(reviewsData ?? [])
-    setPredictions(predictionsData ?? [])
+    setRatings((ratingsData ?? []).filter(r => r.user_id !== testId))
+    setUsers((usersData ?? []).filter(u => u.email !== TEST_EMAIL))
+    setReviews((reviewsData ?? []).filter(r => r.user_id !== testId))
+    setPredictions((predictionsData ?? []).filter(p => p.predicting_user_id !== testId && p.target_user_id !== testId))
     setDetailLoading(false)
   }, [])
 
@@ -1092,9 +1142,16 @@ export function FilmDetailOverlay({ movie, onClose }) {
 
   // Compute group average from visibleRatings that have a score
   const scoredRatings = visibleRatings.filter(r => r.score != null)
-  const groupAvg = scoredRatings.length
+  const computedAvg = scoredRatings.length
     ? scoredRatings.reduce((s, r) => s + Number(r.score), 0) / scoredRatings.length
     : null
+  // For revealed historical films, prefer the authoritative imported average (from the
+  // Movie Club Google Sheet, stored in historical_avg_score) — the individual rows are an
+  // incomplete backfill. Only used post-reveal so it never leaks before the deadline; live
+  // films (no historical avg) fall back to the computed average of visible scores.
+  const groupAvg = (m.scores_revealed && m.historical_avg_score != null)
+    ? Number(m.historical_avg_score)
+    : computedAvg
 
   // Recommend count — exclude test user
   const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
@@ -1151,7 +1208,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           zIndex: 100,
           overflowY: 'auto',
           overflowX: 'hidden',
-          background: 'linear-gradient(180deg,#07080d 0%,#0a0b10 60%,#09090f 100%)',
+          background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
           WebkitOverflowScrolling: 'touch',
@@ -1169,9 +1226,9 @@ export function FilmDetailOverlay({ movie, onClose }) {
             width: '36px',
             height: '36px',
             borderRadius: '50%',
-            background: 'rgba(255,255,255,0.08)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: 'rgba(255,255,255,0.7)',
+            background: 'rgba(var(--fg-rgb), 0.08)',
+            border: '1px solid rgba(var(--fg-rgb), 0.12)',
+            color: 'rgba(var(--fg-rgb), 0.7)',
             fontSize: '20px',
             lineHeight: 1,
             display: 'flex',
@@ -1203,7 +1260,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
               aspectRatio: '2/3',
               borderRadius: '10px',
               overflow: 'hidden',
-              background: '#1a1b24',
+              background: 'var(--surface-2)',
               boxShadow: vault
                 ? '0 0 0 2px #d97706, 0 0 20px rgba(217,119,6,0.4), 0 8px 32px rgba(0,0,0,0.7)'
                 : '0 8px 32px rgba(0,0,0,0.65)',
@@ -1217,7 +1274,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '1.6rem', color: 'rgba(255,255,255,0.15)' }}>
+                  <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '1.6rem', color: 'rgba(var(--fg-rgb), 0.15)' }}>
                     {initials(m.title)}
                   </span>
                 </div>
@@ -1229,7 +1286,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
               <h1 style={{
                 fontFamily: "'Bebas Neue', sans-serif",
                 fontSize: 'clamp(1.8rem, 7vw, 2.6rem)',
-                color: '#fff',
+                color: 'var(--text-strong)',
                 lineHeight: 1.0,
                 letterSpacing: '0.03em',
                 margin: '0 0 8px',
@@ -1242,12 +1299,12 @@ export function FilmDetailOverlay({ movie, onClose }) {
               <p style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '12px',
-                color: 'rgba(255,255,255,0.35)',
+                color: 'rgba(var(--fg-rgb), 0.35)',
                 margin: '0 0 10px',
                 lineHeight: 1.4,
               }}>
                 {[m.year_released, runtime].filter(Boolean).join(' · ')}
-                {monthLabel ? <><br /><span style={{ color: 'rgba(255,255,255,0.2)' }}>{monthLabel}</span></> : null}
+                {monthLabel ? <><br /><span style={{ color: 'rgba(var(--fg-rgb), 0.2)' }}>{monthLabel}</span></> : null}
               </p>
 
               {/* Director */}
@@ -1255,10 +1312,10 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 <p style={{
                   fontFamily: "'DM Sans', sans-serif",
                   fontSize: '13px',
-                  color: 'rgba(255,255,255,0.55)',
+                  color: 'rgba(var(--fg-rgb), 0.55)',
                   margin: '0 0 10px',
                 }}>
-                  dir. <span style={{ color: 'rgba(255,255,255,0.8)' }}>{m.director}</span>
+                  dir. <span style={{ color: 'rgba(var(--fg-rgb), 0.8)' }}>{m.director}</span>
                 </p>
               )}
 
@@ -1271,9 +1328,9 @@ export function FilmDetailOverlay({ movie, onClose }) {
                       fontSize: '11px',
                       padding: '3px 10px',
                       borderRadius: '999px',
-                      background: 'rgba(255,255,255,0.06)',
-                      color: 'rgba(255,255,255,0.5)',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'rgba(var(--fg-rgb), 0.06)',
+                      color: 'rgba(var(--fg-rgb), 0.5)',
+                      border: '1px solid rgba(var(--fg-rgb), 0.08)',
                     }}>
                       {g}
                     </span>
@@ -1296,8 +1353,8 @@ export function FilmDetailOverlay({ movie, onClose }) {
             <>
               <Divider />
               <div style={{
-                background: 'rgba(255,255,255,0.025)',
-                border: '1px solid rgba(255,255,255,0.07)',
+                background: 'rgba(var(--fg-rgb), 0.025)',
+                border: '1px solid rgba(var(--fg-rgb), 0.07)',
                 borderRadius: '14px',
                 padding: '16px',
               }}>
@@ -1306,7 +1363,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   fontSize: '10px',
                   letterSpacing: '0.15em',
                   textTransform: 'uppercase',
-                  color: 'rgba(255,255,255,0.25)',
+                  color: 'rgba(var(--fg-rgb), 0.25)',
                   margin: '0 0 8px',
                 }}>
                   Your Score
@@ -1314,7 +1371,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 <p style={{
                   fontFamily: "'DM Sans', sans-serif",
                   fontSize: '14px',
-                  color: '#6b7280',
+                  color: 'var(--text-dim)',
                   margin: '0 0 12px',
                 }}>
                   You haven't scored this film yet.
@@ -1323,7 +1380,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   onClick={() => setShowScoreModal(true)}
                   style={{
                     background: 'var(--accent)',
-                    color: '#fff',
+                    color: 'var(--text-strong)',
                     fontFamily: "'DM Sans', sans-serif",
                     fontWeight: 600,
                     fontSize: '14px',
@@ -1354,10 +1411,12 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   }}>
                     {groupAvg.toFixed(2)}
                   </span>
-                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.2)' }}>/10</span>
-                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.2)', marginLeft: '4px' }}>
-                    avg ({scoredRatings.length})
-                  </span>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(var(--fg-rgb), 0.2)' }}>/10</span>
+                  {!(m.scores_revealed && m.historical_avg_score != null) && (
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(var(--fg-rgb), 0.2)', marginLeft: '4px' }}>
+                      avg ({scoredRatings.length})
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -1366,7 +1425,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
               <p style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '10px',
-                color: 'rgba(255,255,255,0.3)',
+                color: 'rgba(var(--fg-rgb), 0.3)',
                 letterSpacing: '0.05em',
                 margin: '0 0 16px',
               }}>
@@ -1394,19 +1453,19 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   <div style={{
                     padding: '18px',
                     borderRadius: '12px',
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(var(--fg-rgb), 0.03)',
+                    border: '1px solid rgba(var(--fg-rgb), 0.06)',
                     textAlign: 'center',
                     marginTop: myRating ? '12px' : 0,
                   }}>
-                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
+                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(var(--fg-rgb), 0.25)', letterSpacing: '0.08em', margin: 0 }}>
                       {scoresMessage}
                     </p>
                   </div>
                 ) : (
                   <>
                     {visibleRatings.length === 0 ? (
-                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(var(--fg-rgb), 0.25)', margin: 0 }}>
                         No scores submitted yet.
                       </p>
                     ) : (
@@ -1426,6 +1485,17 @@ export function FilmDetailOverlay({ movie, onClose }) {
             )}
           </div>
 
+          {/* ── REQUEST SCORE CHANGE (member's own locked score) ── */}
+          {profile && myRating?.score != null && (
+            <div style={{ marginTop: '14px' }}>
+              <ScoreChangeRequestButton
+                rating={{ id: myRating.id, score: myRating.score, movie_id: m.id }}
+                currentUserId={profile.id}
+                movieTitle={m.title}
+              />
+            </div>
+          )}
+
           {/* ── AWARDS ── */}
           {filmAwards.length > 0 && (
             <>
@@ -1442,8 +1512,8 @@ export function FilmDetailOverlay({ movie, onClose }) {
                         gap: '10px',
                         padding: '10px 12px',
                         borderRadius: '10px',
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.06)',
+                        background: 'rgba(var(--fg-rgb), 0.03)',
+                        border: '1px solid rgba(var(--fg-rgb), 0.06)',
                       }}
                     >
                       <span style={{ fontSize: '18px', flexShrink: 0 }}>{a.emoji}</span>
@@ -1451,7 +1521,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                         <p style={{
                           fontFamily: "'DM Sans', sans-serif",
                           fontSize: '14px',
-                          color: '#fff',
+                          color: 'var(--text-strong)',
                           margin: 0,
                           lineHeight: 1.2,
                         }}>
@@ -1462,7 +1532,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                             fontFamily: "'DM Mono', monospace",
                             fontSize: '10px',
                             letterSpacing: '0.08em',
-                            color: 'rgba(255,255,255,0.3)',
+                            color: 'rgba(var(--fg-rgb), 0.3)',
                             margin: '3px 0 0',
                           }}>
                             {a.period}{a.metric ? ` · ${a.metric}` : ''}
@@ -1484,6 +1554,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
             users={users}
             ratings={ratings}
             predictions={predictions}
+            isPicker={isPicker}
             onSaved={() => fetchDetails(movie.id, movie)}
           />
 
@@ -1504,13 +1575,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: '#fff' }}>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
                       {initials(pickerName)}
                     </span>
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '15px', fontWeight: 600, color: '#fff', margin: '0 0 6px' }}>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '15px', fontWeight: 600, color: 'var(--text-strong)', margin: '0 0 6px' }}>
                     {pickerName ?? 'Unknown'}
                   </p>
                   {m.pick_justification && (
@@ -1518,7 +1589,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                       fontFamily: "'DM Sans', sans-serif",
                       fontSize: '13px',
                       lineHeight: 1.65,
-                      color: 'rgba(255,255,255,0.5)',
+                      color: 'rgba(var(--fg-rgb), 0.5)',
                       margin: 0,
                       fontStyle: 'italic',
                     }}>
@@ -1528,11 +1599,44 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 </div>
               </div>
             ) : (
-              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
+              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(var(--fg-rgb), 0.25)', letterSpacing: '0.08em', margin: 0 }}>
                 Picker revealed at end of month
               </p>
             )}
           </div>
+
+          {/* ── GUESS THE PICKER (active guessing window; you can't guess your own pick) ── */}
+          {profile && !isPicker && !m.picker_revealed && (
+            <>
+              <Divider />
+              <SectionLabel>Guess the Picker</SectionLabel>
+              <div style={{ marginTop: '4px' }}>
+                <GuessThePicker
+                  movieId={m.id}
+                  currentUserId={profile.id}
+                  users={users}
+                  pickerRevealed={m.picker_revealed}
+                  pickedByUserId={m.picked_by_user_id ?? null}
+                />
+              </div>
+            </>
+          )}
+
+          {/* ── VETO (current pick, before scores are in) ── */}
+          {profile && !m.scores_revealed && !m.picker_revealed && (
+            <>
+              <Divider />
+              <SectionLabel>Veto</SectionLabel>
+              <div style={{ marginTop: '4px' }}>
+                <VetoControl
+                  movieId={m.id}
+                  currentUserId={profile.id}
+                  totalActiveMembers={users.length}
+                  threshold={3}
+                />
+              </div>
+            </>
+          )}
 
           {/* ── STREAMING ── */}
           <Divider />
@@ -1559,7 +1663,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                     minWidth: 0,
                     height: '6px',
                     borderRadius: '999px',
-                    background: 'rgba(255,255,255,0.08)',
+                    background: 'rgba(var(--fg-rgb), 0.08)',
                     overflow: 'hidden',
                   }}>
                     <div style={{
@@ -1573,7 +1677,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   <span style={{
                     fontFamily: "'DM Mono', monospace",
                     fontSize: '12px',
-                    color: 'rgba(255,255,255,0.55)',
+                    color: 'rgba(var(--fg-rgb), 0.55)',
                     flexShrink: 0,
                   }}>
                     {recommendYes}/{recommendTotal} would recommend
@@ -1604,8 +1708,8 @@ export function FilmDetailOverlay({ movie, onClose }) {
                         <div
                           key={review.id}
                           style={{
-                            background: 'rgba(255,255,255,0.03)',
-                            border: '1px solid rgba(255,255,255,0.07)',
+                            background: 'rgba(var(--fg-rgb), 0.03)',
+                            border: '1px solid rgba(var(--fg-rgb), 0.07)',
                             borderRadius: '12px',
                             padding: '14px',
                           }}
@@ -1622,16 +1726,16 @@ export function FilmDetailOverlay({ movie, onClose }) {
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: '#fff' }}>
+                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
                                 {initials(reviewerName)}
                               </span>
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.85)', margin: 0 }}>
+                              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', fontWeight: 600, color: 'rgba(var(--fg-rgb), 0.85)', margin: 0 }}>
                                 {reviewerName}
                               </p>
                               {dateStr && (
-                                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(255,255,255,0.25)', margin: '2px 0 0', letterSpacing: '0.04em' }}>
+                                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(var(--fg-rgb), 0.25)', margin: '2px 0 0', letterSpacing: '0.04em' }}>
                                   {dateStr}
                                 </p>
                               )}
@@ -1640,14 +1744,14 @@ export function FilmDetailOverlay({ movie, onClose }) {
                               <button
                                 onClick={() => { setEditingReview(true); setEditText(review.body); setReviewError('') }}
                                 style={{
-                                  background: 'rgba(255,255,255,0.06)',
-                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  background: 'rgba(var(--fg-rgb), 0.06)',
+                                  border: '1px solid rgba(var(--fg-rgb), 0.1)',
                                   borderRadius: '6px',
                                   padding: '4px 10px',
                                   fontFamily: "'DM Mono', monospace",
                                   fontSize: '10px',
                                   letterSpacing: '0.08em',
-                                  color: 'rgba(255,255,255,0.5)',
+                                  color: 'rgba(var(--fg-rgb), 0.5)',
                                   cursor: 'pointer',
                                   flexShrink: 0,
                                 }}
@@ -1666,11 +1770,11 @@ export function FilmDetailOverlay({ movie, onClose }) {
                                 placeholder="What did you think?"
                                 style={{
                                   width: '100%',
-                                  background: 'rgba(255,255,255,0.04)',
-                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  background: 'rgba(var(--fg-rgb), 0.04)',
+                                  border: '1px solid rgba(var(--fg-rgb), 0.1)',
                                   borderRadius: '8px',
                                   padding: '10px',
-                                  color: 'white',
+                                  color: 'var(--text-strong)',
                                   fontFamily: "'DM Sans', sans-serif",
                                   fontSize: '14px',
                                   minHeight: '80px',
@@ -1690,7 +1794,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                                   disabled={reviewSubmitting}
                                   style={{
                                     background: 'var(--accent)',
-                                    color: '#fff',
+                                    color: 'var(--text-strong)',
                                     fontFamily: "'DM Sans', sans-serif",
                                     fontWeight: 600,
                                     fontSize: '14px',
@@ -1707,13 +1811,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
                                   onClick={() => { setEditingReview(false); setEditText(''); setReviewError('') }}
                                   disabled={reviewSubmitting}
                                   style={{
-                                    background: 'rgba(255,255,255,0.06)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    background: 'rgba(var(--fg-rgb), 0.06)',
+                                    border: '1px solid rgba(var(--fg-rgb), 0.1)',
                                     borderRadius: '8px',
                                     padding: '8px 16px',
                                     fontFamily: "'DM Sans', sans-serif",
                                     fontSize: '14px',
-                                    color: 'rgba(255,255,255,0.5)',
+                                    color: 'rgba(var(--fg-rgb), 0.5)',
                                     cursor: 'pointer',
                                   }}
                                 >
@@ -1726,7 +1830,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                               fontFamily: "'DM Sans', sans-serif",
                               fontSize: '14px',
                               lineHeight: 1.7,
-                              color: 'rgba(255,255,255,0.65)',
+                              color: 'rgba(var(--fg-rgb), 0.65)',
                               margin: 0,
                               whiteSpace: 'pre-wrap',
                             }}>
@@ -1741,7 +1845,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
 
                 {/* Fix 2: prompt to score first if user has no score yet */}
                 {!myReview && myRating?.score == null && (
-                  <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
+                  <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(var(--fg-rgb), 0.25)', letterSpacing: '0.08em', margin: 0 }}>
                     Submit your score first to leave a review.
                   </p>
                 )}
@@ -1755,11 +1859,11 @@ export function FilmDetailOverlay({ movie, onClose }) {
                       placeholder="What did you think?"
                       style={{
                         width: '100%',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'rgba(var(--fg-rgb), 0.04)',
+                        border: '1px solid rgba(var(--fg-rgb), 0.1)',
                         borderRadius: '8px',
                         padding: '10px',
-                        color: 'white',
+                        color: 'var(--text-strong)',
                         fontFamily: "'DM Sans', sans-serif",
                         fontSize: '14px',
                         minHeight: '80px',
@@ -1779,7 +1883,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                       style={{
                         marginTop: '10px',
                         background: 'var(--accent)',
-                        color: '#fff',
+                        color: 'var(--text-strong)',
                         fontFamily: "'DM Sans', sans-serif",
                         fontWeight: 600,
                         fontSize: '14px',
@@ -1794,6 +1898,23 @@ export function FilmDetailOverlay({ movie, onClose }) {
                     </button>
                   </div>
                 )}
+              </div>
+            </>
+          )}
+
+          {/* ── DISCUSSION (threaded comments + reactions + @mentions) ── */}
+          {profile && (
+            <>
+              <Divider />
+              <SectionLabel>Discussion</SectionLabel>
+              <div style={{ marginTop: '4px' }}>
+                <CommentThread
+                  movieId={m.id}
+                  currentUserId={profile.id}
+                  isAdmin={isAdmin}
+                  users={users}
+                  canParticipate={myRating?.score != null}
+                />
               </div>
             </>
           )}
@@ -1823,7 +1944,7 @@ const SORT_OPTIONS = [
   { key: 'recent', label: 'Recent' },
   { key: 'high', label: 'Highest Rated' },
   { key: 'low', label: 'Lowest Rated' },
-  { key: 'picker', label: 'By Picker', requiresReveal: true },
+  { key: 'picker', label: 'By Member', requiresReveal: true },
 ]
 
 function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
@@ -1875,9 +1996,9 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
     letterSpacing: '0.06em',
     padding: '5px 10px',
     borderRadius: '8px',
-    border: '1px solid rgba(255,255,255,0.1)',
-    background: '#0e0f16',
-    color: 'rgba(255,255,255,0.55)',
+    border: '1px solid rgba(var(--fg-rgb), 0.1)',
+    background: 'var(--surface-3)',
+    color: 'rgba(var(--fg-rgb), 0.55)',
     cursor: 'pointer',
     outline: 'none',
     appearance: 'none',
@@ -1891,9 +2012,9 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
     letterSpacing: '0.06em',
     padding: '5px 8px',
     borderRadius: '8px',
-    border: '1px solid rgba(255,255,255,0.1)',
-    background: '#0e0f16',
-    color: 'rgba(255,255,255,0.55)',
+    border: '1px solid rgba(var(--fg-rgb), 0.1)',
+    background: 'var(--surface-3)',
+    color: 'rgba(var(--fg-rgb), 0.55)',
     outline: 'none',
     width: '52px',
     flexShrink: 0,
@@ -1938,7 +2059,7 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
               onChange={e => setFilterMinScore(e.target.value)}
               style={scoreInputStyle}
             />
-            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.2)' }}>–</span>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(var(--fg-rgb), 0.2)' }}>–</span>
             <input
               type="number"
               min="0"
@@ -1960,9 +2081,9 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
                 letterSpacing: '0.08em',
                 padding: '4px 10px',
                 borderRadius: '999px',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid rgba(var(--fg-rgb), 0.1)',
                 background: 'transparent',
-                color: 'rgba(255,255,255,0.3)',
+                color: 'rgba(var(--fg-rgb), 0.3)',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
               }}
@@ -2012,7 +2133,7 @@ function VaultTab({ movies, loading, onSelect, userById }) {
         <p style={{
           fontFamily: "'DM Mono', monospace",
           fontSize: '10px',
-          color: 'rgba(255,255,255,0.25)',
+          color: 'rgba(var(--fg-rgb), 0.25)',
           letterSpacing: '0.08em',
           marginTop: '8px',
         }}>
@@ -2024,7 +2145,7 @@ function VaultTab({ movies, loading, onSelect, userById }) {
         <div style={{
           textAlign: 'center',
           padding: '48px 24px',
-          color: 'rgba(255,255,255,0.25)',
+          color: 'rgba(var(--fg-rgb), 0.25)',
           fontFamily: "'DM Sans', sans-serif",
           fontSize: '14px',
         }}>
@@ -2078,7 +2199,7 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
 
   if (bySeason.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(255,255,255,0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
+      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(var(--fg-rgb), 0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
         No films yet.
       </div>
     )
@@ -2093,7 +2214,7 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
             <h3 style={{
               fontFamily: "'Bebas Neue', sans-serif",
               fontSize: '1.4rem',
-              color: '#fff',
+              color: 'var(--text-strong)',
               letterSpacing: '0.05em',
               margin: 0,
             }}>
@@ -2102,7 +2223,7 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
             <span style={{
               fontFamily: "'DM Mono', monospace",
               fontSize: '10px',
-              color: 'rgba(255,255,255,0.3)',
+              color: 'rgba(var(--fg-rgb), 0.3)',
               letterSpacing: '0.08em',
             }}>
               {sMovies.length} film{sMovies.length !== 1 ? 's' : ''}
@@ -2132,8 +2253,10 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
 function HistoryFilmCard({ movie, userById, onSelect }) {
   const [hovered, setHovered] = useState(false)
 
-  // Compute avg score from ratings if present, else fall back to historical_avg_score
-  const computedScore = movie._avgScore ?? movie.historical_avg_score
+  // historical_avg_score is the authoritative complete average for historical films;
+  // individual ratings are an incomplete backfill, so prefer it. Fall back to the
+  // computed average only for films with no historical avg (live/current films).
+  const computedScore = movie.historical_avg_score ?? movie._avgScore
   const scored = computedScore != null
 
   const pickerName = movie.picker_revealed && movie.picked_by_user_id
@@ -2158,7 +2281,7 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
         borderRadius: '8px',
         overflow: 'hidden',
         aspectRatio: '2/3',
-        background: '#111218',
+        background: 'var(--surface)',
         boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
         transition: 'transform 0.18s ease',
         transform: hovered ? 'translateY(-3px) scale(1.02)' : 'none',
@@ -2173,7 +2296,7 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
           />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '2rem', color: 'rgba(255,255,255,0.12)' }}>
+            <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '2rem', color: 'rgba(var(--fg-rgb), 0.12)' }}>
               {initials(movie.title)}
             </span>
           </div>
@@ -2193,7 +2316,7 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
               border: `1px solid ${badgeColor}`,
               display: 'block',
             }}>
-              {Number(computedScore).toFixed(1)}
+              {Number(computedScore).toFixed(2)}
             </span>
           </div>
         )}
@@ -2204,7 +2327,7 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
         fontFamily: "'Bebas Neue', sans-serif",
         fontSize: '0.9rem',
         letterSpacing: '0.04em',
-        color: '#fff',
+        color: 'var(--text-strong)',
         margin: '6px 0 2px',
         lineHeight: 1.2,
         overflow: 'hidden',
@@ -2219,7 +2342,7 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
         <p style={{
           fontFamily: "'DM Mono', monospace",
           fontSize: '9px',
-          color: 'rgba(255,255,255,0.3)',
+          color: 'rgba(var(--fg-rgb), 0.3)',
           margin: 0,
           letterSpacing: '0.04em',
           overflow: 'hidden',
@@ -2314,7 +2437,7 @@ function HistoryTab({ userById, onSelect }) {
           ))}
         </div>
       ) : months.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(255,255,255,0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(var(--fg-rgb), 0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
           No revealed months yet.
         </div>
       ) : (
@@ -2337,9 +2460,9 @@ function HistoryTab({ userById, onSelect }) {
                   letterSpacing: '0.08em',
                   padding: '6px 14px',
                   borderRadius: '999px',
-                  border: selectedMonthId === m.id ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                  border: selectedMonthId === m.id ? 'none' : '1px solid rgba(var(--fg-rgb), 0.1)',
                   background: selectedMonthId === m.id ? 'var(--accent)' : 'transparent',
-                  color: selectedMonthId === m.id ? '#fff' : 'rgba(255,255,255,0.4)',
+                  color: selectedMonthId === m.id ? 'var(--text-strong)' : 'rgba(var(--fg-rgb), 0.4)',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                   whiteSpace: 'nowrap',
@@ -2353,16 +2476,19 @@ function HistoryTab({ userById, onSelect }) {
 
           {/* Film grid for selected month */}
           {selectedMovies.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(255,255,255,0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
+            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(var(--fg-rgb), 0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
               No films for this month.
             </div>
           ) : (
             <div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '14px',
-              }}>
+              <div
+                className="history-grid"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: '14px',
+                }}
+              >
                 {selectedMovies.map(m => (
                   <HistoryFilmCard
                     key={m.id}
@@ -2426,7 +2552,7 @@ export default function Films() {
         // Format a human-readable month label e.g. "Feb 2026 · Season 1"
         let monthLabel = null
         if (monthInfo.monthYear) {
-          const d = new Date(monthInfo.monthYear + '-01')
+          const d = new Date(monthInfo.monthYear + '-01T12:00:00')
           monthLabel = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
           if (season) monthLabel += ` · ${season.name}`
         }
@@ -2461,7 +2587,7 @@ export default function Films() {
   return (
     <div
       style={{
-        background: '#07080d',
+        background: 'var(--bg)',
         minHeight: '100vh',
         fontFamily: "'DM Sans', sans-serif",
         paddingBottom: '6rem',
@@ -2479,7 +2605,7 @@ export default function Films() {
             fontFamily: "'DM Mono', monospace",
             fontSize: '10px',
             letterSpacing: '0.2em',
-            color: '#4b5563',
+            color: 'var(--text-faint)',
             textTransform: 'uppercase',
             marginBottom: '4px',
           }}>
@@ -2488,7 +2614,7 @@ export default function Films() {
           <h1 style={{
             fontFamily: "'Bebas Neue', sans-serif",
             fontSize: '2.8rem',
-            color: '#fff',
+            color: 'var(--text-strong)',
             lineHeight: 1,
             letterSpacing: '0.03em',
             margin: 0,
@@ -2540,6 +2666,7 @@ export default function Films() {
       <style>{`
         @media (min-width: 480px) { .films-grid { grid-template-columns: repeat(4, 1fr) !important; } }
         @media (min-width: 768px) { .films-grid { grid-template-columns: repeat(5, 1fr) !important; } }
+        @media (min-width: 560px) { .history-grid { grid-template-columns: repeat(3, 1fr) !important; } }
         div::-webkit-scrollbar { display: none; }
       `}</style>
     </div>

@@ -1,13 +1,53 @@
 @import "tailwindcss";
 
-:root {
+/*
+ * Theme tokens. Dark is the default and its token values equal the original
+ * hardcoded colors, so dark mode is unchanged. Light mode flips the same tokens.
+ * --fg-rgb is the base for every rgba(var(--fg-rgb), a) — white on dark, near-black
+ * on light — which preserves every alpha gradation across the app in one switch.
+ */
+:root, [data-theme="dark"] {
   --accent: #b91c1c;
   --accent-light: #fca5a5;
   --accent-dark: #7f1d1d;
   --accent-muted: #fef2f2;
+
+  --fg-rgb: 255, 255, 255;
+  --bg: #07080d;
+  --bg-2: #0a0b10;
+  --bg-3: #09090f;
+  --surface: #111218;
+  --surface-2: #1a1b25;
+  --surface-3: #0e0f16;
+  --text-strong: #ffffff;
+  --text: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-dim: #6b7280;
+  --text-faint: #4b5563;
+  --hairline: #374151;
+  color-scheme: dark;
 }
 
-/* Accent color variants */
+[data-theme="light"] {
+  --accent-muted: #fef2f2;
+
+  --fg-rgb: 17, 24, 39;
+  --bg: #f3f4f6;
+  --bg-2: #e9eaee;
+  --bg-3: #eef0f3;
+  --surface: #ffffff;
+  --surface-2: #f3f4f6;
+  --surface-3: #fafafb;
+  --text-strong: #0b0d12;
+  --text: #1f2937;
+  --text-muted: #4b5563;
+  --text-dim: #6b7280;
+  --text-faint: #9ca3af;
+  --hairline: #d9dce1;
+  color-scheme: light;
+}
+
+/* Accent color variants (mode-independent) */
 [data-accent="crimson"]   { --accent: #b91c1c; --accent-light: #fca5a5; --accent-dark: #7f1d1d; }
 [data-accent="ember"]     { --accent: #c2410c; --accent-light: #fdba74; --accent-dark: #7c2d12; }
 [data-accent="amber"]     { --accent: #b45309; --accent-light: #fcd34d; --accent-dark: #78350f; }
@@ -23,9 +63,36 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   width: 100%;
+  background: var(--bg);
+  color: var(--text);
 }
 
 #root {
   overflow-x: hidden;
   width: 100%;
 }
+
+/*
+ * Light-mode overrides for the Tailwind color utilities a few screens use
+ * (Home, AppLayout, Login). Dark mode keeps Tailwind's defaults; these only
+ * apply under [data-theme="light"]. !important guards against utility ordering.
+ */
+[data-theme="light"] .text-white            { color: var(--text-strong) !important; }
+[data-theme="light"] .text-white\/60        { color: rgba(var(--fg-rgb), 0.6) !important; }
+[data-theme="light"] .text-white\/40        { color: rgba(var(--fg-rgb), 0.4) !important; }
+[data-theme="light"] .text-white\/20        { color: rgba(var(--fg-rgb), 0.2) !important; }
+[data-theme="light"] .text-gray-400         { color: var(--text-muted) !important; }
+[data-theme="light"] .text-gray-500         { color: var(--text-dim) !important; }
+[data-theme="light"] .text-gray-600         { color: var(--text-faint) !important; }
+[data-theme="light"] .text-gray-900         { color: var(--text-strong) !important; }
+[data-theme="light"] .bg-gray-950,
+[data-theme="light"] .bg-gray-900,
+[data-theme="light"] .bg-gray-800           { background-color: var(--surface) !important; }
+[data-theme="light"] .bg-gray-800\/50       { background-color: var(--surface-2) !important; }
+[data-theme="light"] .bg-gray-100           { background-color: var(--surface-2) !important; }
+[data-theme="light"] .bg-white              { background-color: var(--surface) !important; }
+[data-theme="light"] .bg-white\/5           { background-color: rgba(var(--fg-rgb), 0.05) !important; }
+[data-theme="light"] .bg-white\/\[0\.03\]   { background-color: rgba(var(--fg-rgb), 0.03) !important; }
+[data-theme="light"] .border-white\/10      { border-color: rgba(var(--fg-rgb), 0.1) !important; }
+[data-theme="light"] .border-white\/20      { border-color: rgba(var(--fg-rgb), 0.2) !important; }
+[data-theme="light"] .border-gray-800       { border-color: var(--hairline) !important; }
