@@ -234,12 +234,14 @@ async function triggerAwardsWrite() {
       { data: users },
       { data: months },
       { data: seasons },
+      { data: guesses },
     ] = await Promise.all([
       supabase.from('movies').select('*').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
       supabase.from('users').select('id, name, email, role, joined_at, is_active'),
       supabase.from('months').select('id, season_id, month_year, status').order('month_year'),
       supabase.from('seasons').select('*').order('start_date'),
+      supabase.from('picker_guesses').select('movie_id, guessing_user_id, guessed_user_id'),
     ])
     const { count, error } = await writeAwardsToDb(supabase, {
       movies: movies ?? [],
@@ -247,6 +249,7 @@ async function triggerAwardsWrite() {
       users: users ?? [],
       months: months ?? [],
       seasons: seasons ?? [],
+      guesses: guesses ?? [],
     })
     if (error) {
       console.error('[awards] write failed', error)

@@ -65,6 +65,7 @@ const SEASON_DEFS = [
   { key: 'season_contrarian',  label: 'The Contrarian',         emoji: '🦅', target: 'user', field: 'contrarianWinner' },
   { key: 'season_oracle',      label: 'The Oracle',             emoji: '🎯', target: 'user', field: 'oracleWinner' },
   { key: 'season_consistent_picker', label: 'Most Consistent Picker', emoji: '🎚️', target: 'user', field: 'mostConsistentPicker' },
+  { key: 'season_easy_crowd', label: 'Easy Crowd', emoji: '🍻', target: 'user', field: 'easyCrowd' },
 ]
 
 // Annual: from computeAnnualAwards()
@@ -78,6 +79,8 @@ const ANNUAL_DEFS = [
   { key: 'annual_oracle',      label: 'The Oracle of the Year',    emoji: '🎯', target: 'user', field: 'oracleOfYear' },
   { key: 'annual_most_consistent', label: 'Most Consistent',       emoji: '🎚️', target: 'user', field: 'mostConsistent' },
   { key: 'annual_wildcard',    label: 'The Wildcard',              emoji: '🎭', target: 'user', field: 'wildcard' },
+  { key: 'annual_master_of_disguise', label: 'Master of Disguise', emoji: '🥸', target: 'user', field: 'masterOfDisguise' },
+  { key: 'annual_most_evolved', label: 'Most Evolved',            emoji: '🦋', target: 'user', field: 'mostEvolved' },
 ]
 
 // All-Time: from computeAllTimeAwards()
@@ -91,6 +94,7 @@ const ALLTIME_DEFS = [
   { key: 'biggest_softie',    label: 'Biggest Softie Ever',      emoji: '🥰', target: 'user', field: 'mostGenerous' },
   { key: 'wildcard_alltime',  label: 'The Wildcard',             emoji: '🎭', target: 'user', field: 'biggestContrarian' },
   { key: 'oracle_alltime',    label: 'The Oracle (All-Time)',    emoji: '🎯', target: 'user', field: 'oracleAllTime' },
+  { key: 'master_of_disguise_alltime', label: 'Master of Disguise', emoji: '🥸', target: 'user', field: 'masterOfDisguise' },
 ]
 
 // ─── Data filtering ───────────────────────────────────────────────────────────
@@ -108,6 +112,7 @@ function sanitize(data) {
     users,
     months: data.months ?? [],
     seasons: data.seasons ?? [],
+    guesses: data.guesses ?? [],
   }
 }
 
@@ -124,7 +129,7 @@ function pickerByMovie(movies) {
 
 function computeAllAwardRecords(rawData) {
   const data = sanitize(rawData)
-  const { movies, ratings, users, months, seasons } = data
+  const { movies, ratings, users, months, seasons, guesses } = data
   const records = []
   const pickerMap = pickerByMovie(movies)
   const monthYearById = {}
@@ -185,12 +190,14 @@ function computeAllAwardRecords(rawData) {
   years.forEach(year => {
     const yearMovies = movies.filter(m => (monthYearById[m.month_id] ?? '').startsWith(year))
     if (!yearMovies.some(m => m.scores_revealed)) return
-    const result = computeAnnualAwards(yearMovies, ratings, users, year)
+    const monthYearByMovie = {}
+    yearMovies.forEach(m => { monthYearByMovie[m.id] = monthYearById[m.month_id] })
+    const result = computeAnnualAwards(yearMovies, ratings, users, year, guesses, monthYearByMovie)
     pushFrom(ANNUAL_DEFS, result, 'annual', year, year)
   })
 
   // ── All-Time ──
-  const allTime = computeAllTimeAwards(movies, ratings, users)
+  const allTime = computeAllTimeAwards(movies, ratings, users, guesses)
   pushFrom(ALLTIME_DEFS, allTime, 'alltime', 'All-Time', null)
 
   return records
@@ -208,7 +215,7 @@ let _cache = null
 function getRecords(data) {
   const sig = [
     data.movies?.length, data.ratings?.length, data.users?.length,
-    data.months?.length, data.seasons?.length,
+    data.months?.length, data.seasons?.length, data.guesses?.length,
     data.movies?.[0]?.id, data.ratings?.[0]?.id,
   ].join('|')
   if (_cache && _cache.sig === sig) return _cache.records

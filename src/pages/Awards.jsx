@@ -553,6 +553,23 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     }
   })
 
+  // 8b. Easy Crowd — easiest to please: fewest "low" scores given (≤ 4.0), tie-break by
+  //     highest average. Distinct from Most Generous (which is pure highest average).
+  let easyCrowd = null
+  let easyCrowdLowCount = Infinity
+  let easyCrowdAvg = -Infinity
+  eligibleUserIds.forEach(uid => {
+    const scores = userRatingsThisSeason[uid].filter(r => r.score != null).map(r => Number(r.score))
+    if (scores.length < 2) return
+    const lowCount = scores.filter(s => s <= 4).length
+    const a = avg(scores)
+    if (lowCount < easyCrowdLowCount || (lowCount === easyCrowdLowCount && a > easyCrowdAvg)) {
+      easyCrowdLowCount = lowCount
+      easyCrowdAvg = a
+      easyCrowd = userMap[uid]
+    }
+  })
+
   // 9. The Contrarian — highest avg |personal_score - film_avg|
   let contrarianWinner = null
   let contrarianHighest = -Infinity
@@ -599,6 +616,7 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     mostDivisiveFilm, mostUnanimousFilm,
     harshestCritic, harshestCriticAvg,
     mostGenerous, mostGenerousAvg,
+    easyCrowd, easyCrowdLowCount, easyCrowdAvg,
     contrarianWinner, contrarianHighest,
     oracleWinner, oracleBestDelta,
     movieAvgScore,
@@ -608,7 +626,7 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
 
 // ─── Annual Awards computation ────────────────────────────────────────────────
 
-export function computeAnnualAwards(movies, allRatings, users, year) {
+export function computeAnnualAwards(movies, allRatings, users, year, guesses = [], monthYearByMovie = {}) {
   // All revealed movies from this calendar year
   // We need months to know which movies belong to which year — instead we use the
   // month_year embedded context. Since movies don't directly carry year, we filter
@@ -728,6 +746,56 @@ export function computeAnnualAwards(movies, allRatings, users, year) {
     if (a > wildcardHighest) { wildcardHighest = a; wildcard = u }
   })
 
+  // 6d. Most Evolved — biggest swing in a member's average between the year's first and
+  //     second half. Dormant until the year spans ≥ 8 distinct months (auto-activates with data).
+  let mostEvolved = null
+  let mostEvolvedDelta = -Infinity
+  {
+    const monthsPresent = new Set()
+    revealedMovies.forEach(m => { const my = monthYearByMovie[m.id]; if (my) monthsPresent.add(my) })
+    const sortedMonths = [...monthsPresent].sort()
+    if (sortedMonths.length >= 8) {
+      const firstHalf = new Set(sortedMonths.slice(0, Math.floor(sortedMonths.length / 2)))
+      const half = {} // uid -> { early:[], late:[] }
+      relevantRatings.forEach(r => {
+        if (r.score == null) return
+        const my = monthYearByMovie[r.movie_id]
+        if (!my) return
+        if (!half[r.user_id]) half[r.user_id] = { early: [], late: [] }
+        ;(firstHalf.has(my) ? half[r.user_id].early : half[r.user_id].late).push(Number(r.score))
+      })
+      users.forEach(u => {
+        const h = half[u.id]
+        if (!h || h.early.length < 2 || h.late.length < 2) return
+        const delta = Math.abs(avg(h.late) - avg(h.early))
+        if (delta > mostEvolvedDelta) { mostEvolvedDelta = delta; mostEvolved = u }
+      })
+    }
+  }
+
+  // 6e. Master of Disguise — picker whose films were correctly guessed least often (best at
+  //     hiding their picks). Uses picker_guesses; requires ≥ 3 guesses on their films.
+  let masterOfDisguise = null
+  let masterOfDisguiseRate = Infinity
+  {
+    const movieById = {}
+    revealedMovies.forEach(m => { movieById[m.id] = m })
+    const byPicker = {} // uid -> { correct, total }
+    guesses.forEach(g => {
+      const m = movieById[g.movie_id]
+      if (!m || !m.picker_revealed || !m.picked_by_user_id) return
+      const pid = m.picked_by_user_id
+      if (!byPicker[pid]) byPicker[pid] = { correct: 0, total: 0 }
+      byPicker[pid].total += 1
+      if (g.guessed_user_id === pid) byPicker[pid].correct += 1
+    })
+    Object.entries(byPicker).forEach(([pid, t]) => {
+      if (t.total < 3) return
+      const rate = t.correct / t.total
+      if (rate < masterOfDisguiseRate) { masterOfDisguiseRate = rate; masterOfDisguise = userMap[pid] ?? null }
+    })
+  }
+
   // 7. Most Divisive Film — highest stddev (min 3 scores)
   const threePlus = revealedMovies.filter(m => scoresByMovie[m.id].length >= 3)
   const mostDivisiveFilm = threePlus.length
@@ -771,6 +839,8 @@ export function computeAnnualAwards(movies, allRatings, users, year) {
     mostGenerous, mostGenerousAvg,
     mostConsistent, mostConsistentSd,
     wildcard, wildcardHighest,
+    mostEvolved, mostEvolvedDelta,
+    masterOfDisguise, masterOfDisguiseRate,
     mostDivisiveFilm,
     oracleOfYear, oracleBestDelta,
     movieAvgScore,
@@ -952,7 +1022,7 @@ export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
   }
 }
 
-export function computeAllTimeAwards(movies, allRatings, users) {
+export function computeAllTimeAwards(movies, allRatings, users, guesses = []) {
   const revealedMovies = movies.filter(m => m.scores_revealed)
   if (!revealedMovies.length) return null
 
@@ -1030,6 +1100,29 @@ export function computeAllTimeAwards(movies, allRatings, users) {
       topPickerStr = `${above.length}/${pickedFilms.length} picks above 7.0`
     }
   })
+
+  // 5b. Master of Disguise — picker correctly guessed least often across all their films
+  //     (best at hiding their picks). Uses picker_guesses; requires ≥ 3 guesses on their films.
+  let masterOfDisguise = null
+  let masterOfDisguiseRate = Infinity
+  {
+    const movieById = {}
+    revealedMovies.forEach(m => { movieById[m.id] = m })
+    const byPicker = {}
+    guesses.forEach(g => {
+      const m = movieById[g.movie_id]
+      if (!m || !m.picker_revealed || !m.picked_by_user_id) return
+      const pid = m.picked_by_user_id
+      if (!byPicker[pid]) byPicker[pid] = { correct: 0, total: 0 }
+      byPicker[pid].total += 1
+      if (g.guessed_user_id === pid) byPicker[pid].correct += 1
+    })
+    Object.entries(byPicker).forEach(([pid, t]) => {
+      if (t.total < 3) return
+      const rate = t.correct / t.total
+      if (rate < masterOfDisguiseRate) { masterOfDisguiseRate = rate; masterOfDisguise = userMap[pid] ?? null }
+    })
+  }
 
   // 6–8: Per-user stats (all time, respecting Zack eligibility)
   // We need to figure out which month each movie belongs to — we have month_id on movies
@@ -1124,6 +1217,7 @@ export function computeAllTimeAwards(movies, allRatings, users) {
     harshestCritic, harshestAvg,
     mostGenerous, mostGenerousAvg,
     biggestContrarian, biggestContrarianDev,
+    masterOfDisguise, masterOfDisguiseRate,
     oracleAllTime, oracleAllTimeDelta,
     movieAvgScore,
     scoresByMovie,
@@ -1353,11 +1447,11 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
 
 // ─── All-Time Tab ─────────────────────────────────────────────────────────────
 
-function AllTimeTab({ movies, allRatings, users, loading, onFilm, onMember }) {
+function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, onMember }) {
   const awards = useMemo(() => {
     if (loading || !movies.length) return null
-    return computeAllTimeAwards(movies, allRatings, users)
-  }, [movies, allRatings, users, loading])
+    return computeAllTimeAwards(movies, allRatings, users, guesses)
+  }, [movies, allRatings, users, guesses, loading])
 
   if (loading) {
     return (
@@ -1487,6 +1581,17 @@ function AllTimeTab({ movies, allRatings, users, loading, onFilm, onMember }) {
         noData={!awards.biggestContrarian}
         winnerClickable
         onWinnerClick={() => onMember?.(awards.biggestContrarian)}
+      />
+
+      {/* 8b. Master of Disguise */}
+      <AwardCard
+        emoji="🥸"
+        label="Master of Disguise"
+        winner={awards.masterOfDisguise?.name}
+        metric={awards.masterOfDisguise ? `guessed right ${Math.round(awards.masterOfDisguiseRate * 100)}% of the time` : null}
+        noData={!awards.masterOfDisguise}
+        winnerClickable
+        onWinnerClick={() => onMember?.(awards.masterOfDisguise)}
       />
 
       {/* 9. The Oracle (all-time) */}
@@ -1792,6 +1897,17 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             winnerClickable
             onWinnerClick={() => onMember?.(awards.mostConsistentPicker)}
           />
+
+          {/* 12. Easy Crowd */}
+          <AwardCard
+            emoji="🍻"
+            label="Easy Crowd"
+            winner={awards.easyCrowd?.name}
+            metric={awards.easyCrowd ? `${awards.easyCrowdLowCount} low score${awards.easyCrowdLowCount !== 1 ? 's' : ''} · avg ${fmt(awards.easyCrowdAvg)}` : null}
+            noData={!awards.easyCrowd}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.easyCrowd)}
+          />
         </div>
       )}
     </div>
@@ -1800,7 +1916,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
 
 // ─── Annual Tab ────────────────────────────────────────────────────────────────
 
-function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMember }) {
+function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, onFilm, onMember }) {
   // Group movies by year via their month's month_year
   const monthYearById = useMemo(() => {
     const map = {}
@@ -1836,8 +1952,10 @@ function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMembe
 
   const awards = useMemo(() => {
     if (loading || !yearMovies.length) return null
-    return computeAnnualAwards(yearMovies, allRatings, users, selectedYear)
-  }, [yearMovies, allRatings, users, selectedYear, loading])
+    const monthYearByMovie = {}
+    yearMovies.forEach(m => { monthYearByMovie[m.id] = monthYearById[m.month_id] })
+    return computeAnnualAwards(yearMovies, allRatings, users, selectedYear, guesses, monthYearByMovie)
+  }, [yearMovies, allRatings, users, selectedYear, loading, guesses, monthYearById])
 
   if (loading) {
     return (
@@ -2049,6 +2167,28 @@ function AnnualTab({ movies, allRatings, users, months, loading, onFilm, onMembe
           winnerClickable
           onWinnerClick={() => onMember?.(awards.wildcard)}
         />
+
+        {/* 11. Master of Disguise */}
+        <AwardCard
+          emoji="🥸"
+          label="Master of Disguise"
+          winner={awards.masterOfDisguise?.name}
+          metric={awards.masterOfDisguise ? `guessed right ${Math.round(awards.masterOfDisguiseRate * 100)}% of the time` : null}
+          noData={!awards.masterOfDisguise}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.masterOfDisguise)}
+        />
+
+        {/* 12. Most Evolved (activates once the year spans ≥ 8 months) */}
+        <AwardCard
+          emoji="🦋"
+          label="Most Evolved"
+          winner={awards.mostEvolved?.name}
+          metric={awards.mostEvolved ? `avg shift: ±${fmt(awards.mostEvolvedDelta)}` : null}
+          noData={!awards.mostEvolved}
+          winnerClickable
+          onWinnerClick={() => onMember?.(awards.mostEvolved)}
+        />
       </div>
     </div>
   )
@@ -2075,6 +2215,7 @@ export default function Awards() {
   const [movies, setMovies] = useState([])
   const [allRatings, setAllRatings] = useState([])
   const [users, setUsers] = useState([])
+  const [guesses, setGuesses] = useState([]) // picker_guesses (for Master of Disguise)
 
   useEffect(() => {
     async function fetchAll() {
@@ -2085,12 +2226,14 @@ export default function Awards() {
         { data: moviesData },
         { data: ratingsData },
         { data: usersData },
+        { data: guessesData },
       ] = await Promise.all([
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: false }),
         supabase.from('months').select('id, season_id, month_year, status').order('month_year', { ascending: true }),
         supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, director, genre, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id').eq('scores_revealed', true),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
         supabase.from('users').select('id, name, email, role, joined_at, is_active').eq('is_active', true),
+        supabase.from('picker_guesses').select('movie_id, guessing_user_id, guessed_user_id'),
       ])
 
       setSeasons(seasonsData ?? [])
@@ -2098,6 +2241,7 @@ export default function Awards() {
       setMovies(moviesData ?? [])
       setAllRatings(ratingsData ?? [])
       setUsers(usersData ?? [])
+      setGuesses(guessesData ?? [])
       setLoading(false)
     }
 
@@ -2207,6 +2351,7 @@ export default function Awards() {
               allRatings={allRatings}
               users={users}
               months={months}
+              guesses={guesses}
               loading={loading}
               onFilm={onFilm}
               onMember={onMember}
@@ -2217,6 +2362,7 @@ export default function Awards() {
               movies={movies}
               allRatings={allRatings}
               users={users}
+              guesses={guesses}
               loading={loading}
               onFilm={onFilm}
               onMember={onMember}

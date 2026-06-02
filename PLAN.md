@@ -155,14 +155,15 @@
 - [ ] **Verify in-browser** — components are agent-built + build/test-green but not yet click-tested live
 
 ### Phase 2 polish (session 7 cont.)
-- [x] New awards implemented: Most Consistent Picker (Season), Most Consistent + The Wildcard (Annual)
+- [x] New awards implemented: Most Consistent Picker + Easy Crowd (Season); Most Consistent + The Wildcard + Master of Disguise + Most Evolved (Annual); Master of Disguise (All-Time)
 - [x] Home "Recent Activity" feed (scores/reviews/comments)
 - [x] Stats static-components bug fixed (Whisker/MemberPill hoisted)
 - [x] Comment/review posting gated server-side on having scored (RLS) — `20260602130000_comments_reviews_require_scored.sql`
 - [x] Test suite fully clean (234 pass, 0 unhandled errors)
-- [ ] Master of Disguise award — needs picker_guesses threaded through the award pipeline (compute fns + lib + Admin write). Bounded; deferred as a focused change.
-- [ ] Easy Crowd award — definition ambiguous; needs owner's definition
-- [ ] Most Evolved award — needs multi-period trend (first vs second half); data still sparse
+- [x] Master of Disguise (Annual + All-Time) — picker_guesses threaded through compute fns + lib + Admin write; least-correctly-guessed picker
+- [x] Easy Crowd (Season) — fewest low scores (≤4.0), tie-break avg; defined this session
+- [x] Most Evolved (Annual) — biggest first-half/second-half avg swing; implemented but **dormant until the year spans ≥8 months** (per owner's "trigger after more data")
+- Only **Auteur Award** remains ⏳ (needs the Phase 6 ranked-choice vote)
 - [ ] Guess/predictions in Picks tab — **blocked by data model**: picker_guesses & score_predictions FK to `movies.id`, but the Picks tab shows next-month `upcoming_picks` (no movie row yet). Functional placement is the film overlay (works). Needs a schema change (key to upcoming_picks) to do literally.
 
 ### Carried from audit — resolved
