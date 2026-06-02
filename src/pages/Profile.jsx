@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -216,8 +217,34 @@ function formatMemberSince(dateStr) {
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
 export default function Profile() {
+  const { userId } = useParams()
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, toggleMode } = useTheme()
+
+  // If viewing another member's profile, load their data
+  const isOwnProfile = !userId || userId === profile?.id
+  const [viewedUser, setViewedUser] = useState(null)
+  const [viewedUserLoading, setViewedUserLoading] = useState(false)
+
+  useEffect(() => {
+    if (isOwnProfile) {
+      setViewedUser(null)
+      return
+    }
+    setViewedUserLoading(true)
+    supabase
+      .from('users')
+      .select('id, name, email, user_color, joined_at, role, is_active')
+      .eq('id', userId)
+      .single()
+      .then(({ data }) => {
+        setViewedUser(data ?? null)
+        setViewedUserLoading(false)
+      })
+  }, [userId, isOwnProfile])
+
+  // The profile data to display: either viewed user (read-only) or own profile
+  const displayProfile = isOwnProfile ? profile : viewedUser
 
   const [statsLoading, setStatsLoading] = useState(true)
   const [stats, setStats] = useState(null)          // { count, avg, highest, lowest }
@@ -229,13 +256,15 @@ export default function Profile() {
 
   // ── Fetch stats + recent scores ──────────────────────────────────────────────
   useEffect(() => {
-    if (!profile) return
+    if (!displayProfile) return
+    setStatsLoading(true)
+    setRecentLoading(true)
 
     async function load() {
       const { data: ratings } = await supabase
         .from('ratings')
         .select('id, movie_id, score, pre_watch_excitement, submitted_at')
-        .eq('user_id', profile.id)
+        .eq('user_id', displayProfile.id)
         .not('score', 'is', null)
         .order('submitted_at', { ascending: false })
 
@@ -287,11 +316,11 @@ export default function Profile() {
     }
 
     load()
-  }, [profile])
+  }, [displayProfile])
 
   // ── Load awards this user has won (computed at runtime — no awards table) ──────
   useEffect(() => {
-    if (!profile) return
+    if (!displayProfile) return
     let cancelled = false
     async function loadAwards() {
       const [
@@ -315,11 +344,11 @@ export default function Profile() {
         months: monthsData ?? [],
         seasons: seasonsData ?? [],
       }
-      setUserAwards(getAwardsForUser(profile.id, data))
+      setUserAwards(getAwardsForUser(displayProfile.id, data))
     }
     loadAwards()
     return () => { cancelled = true }
-  }, [profile])
+  }, [displayProfile])
 
   // ── Sign out ─────────────────────────────────────────────────────────────────
   async function handleSignOut() {
@@ -340,8 +369,8 @@ export default function Profile() {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  const initials = getInitials(profile?.name)
-  const memberSince = formatMemberSince(profile?.joined_at)
+  const initials = getInitials(displayProfile?.name)
+  const memberSince = formatMemberSince(displayProfile?.joined_at)
 
   return (
     <div
@@ -366,7 +395,7 @@ export default function Profile() {
                 height: 64,
                 borderRadius: '50%',
                 background: 'rgba(255,255,255,0.06)',
-                border: `2px solid ${profile?.user_color ?? 'var(--accent)'}`,
+                border: `2px solid ${displayProfile?.user_color ?? 'var(--accent)'}`,
                 display: 'grid',
                 placeItems: 'center',
                 flexShrink: 0,
@@ -377,7 +406,7 @@ export default function Profile() {
                 style={{
                   fontFamily: "'Bebas Neue', sans-serif",
                   fontSize: '1.5rem',
-                  color: profile?.user_color ?? 'var(--accent)',
+                  color: displayProfile?.user_color ?? 'var(--accent)',
                   letterSpacing: '0.05em',
                   paddingLeft: '0.05em',
                   lineHeight: 1,
@@ -401,7 +430,7 @@ export default function Profile() {
                     letterSpacing: '0.04em',
                   }}
                 >
-                  {profile?.name ?? '—'}
+                  {displayProfile?.name ?? '—'}
                 </h1>
                 {isAdmin && (
                   <span
@@ -435,7 +464,7 @@ export default function Profile() {
         </section>
 
         {/* ── Section 1b: Your Color ── */}
-        <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.04s ease both' }}>
+        {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.04s ease both' }}>
           <span style={SECTION_LABEL}>Your Color</span>
 
           <div style={{ ...CARD, padding: '16px' }}>
@@ -445,7 +474,7 @@ export default function Profile() {
               gap: '10px',
             }}>
               {USER_COLORS.map(color => {
-                const active = profile?.user_color === color
+                const active = displayProfile?.user_color === color
                 return (
                   <button
                     key={color}
@@ -483,11 +512,11 @@ export default function Profile() {
               This color appears next to your picks
             </p>
           </div>
-        </section>
+        </section>}
 
         {/* ── Section 2: Personal Stats Snapshot ── */}
         <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.08s ease both' }}>
-          <span style={SECTION_LABEL}>Your Stats</span>
+          <span style={SECTION_LABEL}>{isOwnProfile ? 'Your Stats' : `${displayProfile?.name?.split(' ')[0] ?? 'Their'}'s Stats`}</span>
 
           {statsLoading ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -587,7 +616,7 @@ export default function Profile() {
         )}
 
         {/* ── Section 4: Appearance Settings ── */}
-        <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.24s ease both' }}>
+        {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.24s ease both' }}>
           <span style={SECTION_LABEL}>Appearance</span>
 
           <div style={{ ...CARD, padding: '16px' }}>
@@ -687,10 +716,10 @@ export default function Profile() {
               {ACCENT_SWATCHES.find(s => s.name === accent)?.label ?? ''}
             </p>
           </div>
-        </section>
+        </section>}
 
         {/* ── Section 5: Admin ── */}
-        {isAdmin && (
+        {isOwnProfile && isAdmin && (
           <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.30s ease both' }}>
             <span style={SECTION_LABEL}>Admin</span>
 
@@ -762,7 +791,7 @@ export default function Profile() {
         )}
 
         {/* ── Section 6: Sign Out ── */}
-        <section style={{ animation: 'fadeUp 0.45s 0.32s ease both', paddingBottom: '1rem' }}>
+        {isOwnProfile && <section style={{ animation: 'fadeUp 0.45s 0.32s ease both', paddingBottom: '1rem' }}>
           <button
             onClick={handleSignOut}
             disabled={signingOut}
@@ -783,7 +812,7 @@ export default function Profile() {
           >
             {signingOut ? 'Signing out…' : 'Sign Out'}
           </button>
-        </section>
+        </section>}
 
       </div>
 

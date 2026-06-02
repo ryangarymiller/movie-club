@@ -76,7 +76,7 @@
 | Admin — Streaming refresh | ✅ | Per-film refresh button (TMDB) |
 | WelcomeDialog | ✅ | |
 | ScoreModal | ✅ | Excitement locked when final score exists |
-| Streaming providers fetch (TMDB → Claude fallback) | ⚠️ | Code done; Edge Function needs deploy (keys on device) |
+| Streaming providers fetch (TMDB → Claude fallback) | ⚠️ | Deployed; needs ANTHROPIC_API_KEY secret set in Supabase dashboard |
 
 ---
 
@@ -119,49 +119,72 @@
 - [x] Stats — Head to Head tab (full)
 
 ### Session 5 (recovery) — still open
-- [ ] **Deploy** the streaming-fallback Edge Function (`supabase functions deploy streaming-fallback` + set `ANTHROPIC_API_KEY` secret)
-- [ ] **Per-member profile route** in App.jsx (`/profile/:userId`) so clickable member names open the right profile
-- [ ] Fix 10 pre-existing test failures ("Maximum update depth" loop in Admin InviteCard + stale supabase mocks) — predates recovery
+- [x] **Deploy** streaming-fallback Edge Function — deployed; **⚠️ set ANTHROPIC_API_KEY secret in Supabase dashboard to activate**
+- [x] PRIVATE.md: Chris Deschenes email updated to 54sirhc@gmail.com
+- [~] **Per-member profile route** (`/profile/:userId`) — agent in progress
+- [~] Fix 10 pre-existing test failures — agent in progress
 - [ ] Recharts stubs needing data: genre/cast (genre not stored on movies), guess-the-picker accuracy, director/actor connection web
 
 ---
 
-## Phase 2 — Social (next after Phase 1 complete)
-- Film reviews (in progress)
-- Threaded comments
-- @mentions
-- Emoji reactions
-- Guess the picker
-- Score predictions
-- Animated reveal moment
-- Score change requests
+## Phase 2 — Social
+- [ ] Reviews (primary review per user per film, shown on film page)
+- [ ] Threaded comments with replies
+- [ ] @mention support (@FirstLast format)
+- [ ] Emoji reactions on comments
+- [ ] 15-minute comment edit window; no member delete (admin only)
+- [ ] Comment/review visibility gated on watch+score status (rolling access)
+- [ ] Guess the picker — submission and reveal
+- [ ] Score predictions — picker submits for their own film; reveal at end of month
+- [ ] Full anonymity & reveal system (per-film scores_revealed + end-of-month picker_revealed)
+- [ ] Score change request flow (member request → admin approval → notification)
+- [ ] Veto voting system (3+/5 triggers resubmission)
 
 ## Phase 3 — Themes & Personalisation
-- Full light mode
-- 20 user colors
-- Avatar library
-- Full Settings page
+- [ ] Full light mode
+- [ ] 7 accent colors via CSS variables (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet)
+- [ ] 20 user colors with ring display and one-per-member enforcement
+- [ ] Avatar library (all 18 packs — see spec for full asset list)
+- [ ] Settings page: all options (theme, accent, user color, avatar, notifications, quiet hours, sort default, last online, timezone, tour replay, admin mode toggle)
+- [ ] Last online tracking and visibility toggle
 
 ## Phase 4 — Notifications & Scheduling
-- Email via Resend
-- Push via Web Push API
-- Deadline reminders
-- Reveal notifications
+- [ ] Email notifications via Resend (server-side Edge Function)
+- [ ] Web push notifications (iOS "Add to Home Screen" prompt)
+- [ ] Per-film watch/scoring deadlines and grace period logic
+- [ ] Grace period auto-trigger and admin manual override
+- [ ] Watch schedule with suggested dates and reminders
+- [ ] Quiet hours (12am–8am local, toggleable per user, timing admin-adjustable globally)
+- [ ] All notification types (see spec §11 for full list)
 
 ## Phase 5 — Stats & Visualizations
-- All remaining chart types
-- Full Members / Club / Head-to-Head tabs
+- [ ] Recharts stubs needing data: genre/cast (genre not on movies table), guess-the-picker accuracy, director/actor connection web
+- [ ] Director/actor connection web — interactive force-directed graph with 6 Degrees of Separation mode
+- [ ] Genre blindspot tracker (requires genre field on movies)
+- [ ] Taste compatibility heatmap (member × member score correlation)
+- [ ] Winning streak tracker
 
 ## Phase 6 — Awards & Recaps
-- Automated award calculation
-- Auteur vote UI
-- AI recap (Claude API)
-- The Vault auto-management
-- Seasonal readjustment window
+- [ ] Automated award calculation written to DB on reveal (monthly, seasonal, annual, all-time)
+- [ ] Auteur Award — ranked choice (instant runoff) vote + notification flow
+- [ ] AI monthly recap (Claude API via Edge Function, admin editable before publish)
+- [ ] AI best review detection (Claude API)
+- [ ] The Vault — auto-add/remove based on configurable threshold (default 8.5)
+- [ ] Season readjustment window — auto-open, score-derived rankings, tie flagging, Auteur vote unlock
 
-## Phase 7 — Polish
-- Guest mode
-- Export
-- Milestones
-- Veto voting
-- Watchlist / draft queue
+## Phase 7 — Polish & Extras
+- [ ] Guest mode (first name + last initial only, post-reveal data only, no login required)
+- [ ] Export — CSV (full data) + PDF (season/year-end formatted report) — admin only
+- [ ] Milestones & anniversaries timeline (10th film, 25th film, 1-year, etc.)
+- [ ] Watchlist (private, TMDB integration)
+- [ ] Draft Queue (private, drag-and-drop ranked, TMDB integration)
+- [ ] Admin avatar pack management (upload packs, add individual avatars, organise)
+- [ ] Home page "Your turn" action cards (what user still needs to do this month)
+- [ ] Home page activity feed (recent scores, comments, awards)
+- [ ] Film tags — user-applied at rating time, aggregated with counts on film page
+- [ ] "Would recommend outside club" field on ratings, shown as % on film page
+- [ ] Admin Schedule tab — set deadlines, watch schedule, reveal dates, grace period
+- [ ] Admin Readjustment tab — manage readjustment window
+- [ ] Admin Assets tab — avatar pack management
+- [ ] Admin Export tab — CSV + PDF export
+- [ ] Streaming providers: genre field needed for genre/cast Recharts stubs

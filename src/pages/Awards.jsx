@@ -1985,7 +1985,7 @@ export default function Awards() {
   // Clicking a film title/poster opens the shared film overlay.
   const onFilm = (movie) => { if (movie?.id) setSelectedMovie(movie) }
   // Clicking a member name navigates to the profile page.
-  const onMember = (user) => { if (user?.id) navigate('/profile') }
+  const onMember = (user) => { if (user?.id) navigate(`/profile/${user.id}`) }
 
   const [loading, setLoading] = useState(true)
   const [seasons, setSeasons] = useState([])

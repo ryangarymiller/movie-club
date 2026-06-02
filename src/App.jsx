@@ -60,7 +60,8 @@ function AppRoutes() {
         <Route path="films/*" element={<Films />} />
         <Route path="stats/*" element={<Stats />} />
         <Route path="awards/*" element={<Awards />} />
-        <Route path="profile/*" element={<Profile />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="profile/:userId" element={<Profile />} />
         <Route path="admin/*" element={<Admin />} />
       </Route>
     </Routes>

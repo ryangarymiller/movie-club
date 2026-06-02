@@ -1243,7 +1243,7 @@ export default function Admin() {
     if (isAdmin && profile?.admin_mode_enabled) {
       fetchAll()
     }
-  }, [isAdmin, profile, fetchAll])
+  }, [isAdmin, profile?.id, profile?.admin_mode_enabled, fetchAll])
 
   // Auto-clear success after 3s
   useEffect(() => {
