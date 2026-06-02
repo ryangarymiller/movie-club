@@ -10,7 +10,8 @@ A private web app for a 5-person movie club. Each month every member picks one f
 
 **Club founding date:** January 5, 2026  
 **Member details:** See `PRIVATE.md` (not public)  
-**Zack joined:** April 2026 — exclude him from Jan–Mar stats entirely
+**Zack joined:** April 2026 — exclude him from Jan–Mar stats entirely  
+**Test account:** `i.am.ryan.the.miller@gmail.com` (Ryan Miller Test) — can sign in but must be invisible in all UI: stats, members lists, scores, awards, etc. Filter it out by email in all queries/displays.
 
 ---
 
@@ -100,6 +101,8 @@ This is the most architecturally significant system — it affects RLS policies,
 ### Rolling score visibility (before deadline)
 Before a film's scoring deadline: you can only see scores and discussions for members who have both watched AND submitted — and only if you've also watched and submitted. RLS enforces this.
 
+**Exception:** A user can always see their own score for a film regardless of `scores_revealed` status.
+
 ### RLS enforcement
 - `movies.picked_by_user_id` and `pick_justification` must be excluded from non-admin queries until `picker_revealed = true`
 - Individual scores visibility is gated on `scores_revealed` per film AND the rolling watch-and-submitted check
@@ -112,11 +115,13 @@ Before a film's scoring deadline: you can only see scores and discussions for me
 
 - Range: 0.01–10.00 (two decimal places, always displayed as X.XX)
 - Pre-watch excitement score submitted **before** final score; permanently locked once final score is submitted
+- **If a user has already submitted their final score, the excitement score input must be locked/hidden**
 - Final score confirmation dialogue triggers above 8.99 or below 2.01 (admin-adjustable thresholds)
 - Scores locked on submission; changes outside the seasonal readjustment window require admin approval via `score_change_requests` table
 - During seasonal readjustment window: score changes allowed freely
 - Missing scores after deadline = absent (not zero); group averages calculated from available scores only
 - Late scores trigger stat recalculation + notifications to all members
+- **Back-calculation:** If exactly one member's score is missing for a film and `historical_avg_score` is set, back-calculate the missing score as `(historical_avg * expected_count) - sum(known_scores)`. Store as a real rating entry attributed to that user. Only apply if result is within 0.01–10.00.
 
 ---
 
@@ -148,7 +153,7 @@ veto_votes     — id, movie_id, voting_user_id (3+/5 triggers picker resubmissi
 watchlist      — private per user
 draft_queue    — private per user, drag-and-drop ranked
 film_tags      — id, movie_id, user_id, tag (aggregated at query time with counts)
-auteur_votes   — id, season_id, voter_user_id, rankings (json array, ranked choice)
+auteur_votes   — id, season_id, voter_id, rankings (json array, ranked choice)
 season_rankings — id, season_id, user_id, movie_id, rank, locked_score (locked at end of window)
 score_change_requests — id, rating_id, user_id, requested_score, status (pending|approved|denied)
 month_absences — id, month_id, user_id (excludes member from picker stats that month)
@@ -163,8 +168,11 @@ awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltim
 - Use Read Access Token (Bearer auth) for all calls
 - Film search must handle disambiguation (multiple results for same title) in the pick submission UI
 - Use `/movie/{id}/watch/providers` for US streaming availability; cache result in `movies.streaming_providers`
-- If TMDB returns no providers or fails: fall back to a server-side Claude API call (web search + parse)
-- If both fail: display "No streaming availability found"
+- **Streaming provider fetch order:**
+  1. Try TMDB `/movie/{id}/watch/providers` (US region)
+  2. If TMDB returns no providers or errors: fall back to server-side Claude API call (web search)
+  3. If both fail: display "No streaming availability found"
+- Streaming providers should be fetched and cached when a film is first added, and refreshable from Admin
 
 ---
 
@@ -175,16 +183,30 @@ awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltim
 **Tabs:** Home · This Month · Films · Stats · Awards · Profile · Admin *(admin only)*
 
 ### This Month sub-tabs
-Films · Deadlines · Upcoming · Reveal *(active only after end-of-month reveal)*
+Films · Deadlines · Picks · Reveal *(active only after end-of-month reveal)*
+
+- **Films tab:** Shows current month's films with scoring status
+- **Deadlines tab:** Countdown timers per film
+- **Picks tab:** Shows all 5 members' upcoming picks for the *next* month (hidden until reveal). A "Pick your next movie" CTA button triggers the TMDB search → disambiguation → justification → confirm submission flow. No search/filter bar on the picks display (max 5 entries).
+- If current month has no films yet: show "No picks yet for [Month]" state
 
 ### Films sub-tabs
 All Films · The Vault · By Season
 
+**Film ordering within each month:** follows the watch-order established in the group chat (earliest deadline first). Films are ordered by their DB insertion order (id ASC within a month).
+
 ### Stats sub-tabs
 Overview · Me · Members · Club · Head to Head
 
+- Clicking a film anywhere in Stats navigates to that film's page
+- Clicking a member name anywhere in Stats navigates to their profile page
+- Member names are clickable throughout the app (scores, stats, reviews, etc.)
+
 ### Awards sub-tabs
 Monthly · Season · Annual · All-Time
+
+- Awards are also shown on individual film pages (awards that film won)
+- Awards are also shown on user profile pages (awards that user has won, including awards for films they picked)
 
 ---
 
@@ -192,7 +214,24 @@ Monthly · Season · Annual · All-Time
 
 14 combinations: Light/Dark × 7 accent colors (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet). Implemented via CSS variables. Each member independently sets their own theme.
 
-User colors: 20 distinct options, one per member enforced (taken colors shown with strikethrough). Displayed as a colored ring around the member's avatar.
+Light/dark mode toggle must be accessible from the Profile page.
+
+User colors: 20 distinct options, one per member enforced (taken colors shown with strikethrough). Displayed as a colored ring around the member's avatar and as the color of the initials text when no avatar is set.
+
+**Vault films:** Gold star indicator only — no gold border (would clash with user color border on picks).
+
+---
+
+## Stats & Visualizations
+
+Charts use a library (Recharts preferred). Specific chart types needed:
+- **Score distribution:** Histogram of all scores (0–10 buckets)
+- **Score over time:** Line chart by month (x-axis = month name, not UUID)
+- **Member comparison:** Bar chart comparing member averages
+- **Excitement vs final:** Scatter or paired bar per film
+- **Head to head:** Score delta matrix between two selected members
+
+*(Owner to add more specific chart requests here)*
 
 ---
 
@@ -200,7 +239,29 @@ User colors: 20 distinct options, one per member enforced (taken colors shown wi
 
 Import source: Google Sheet "Movie Club" (accessible via Google Drive MCP) + chat log at `/data/data/com.termux/files/home/storage/downloads/movie_club_chat.txt` for individual scores.
 
-All historical films (Jan–May 2026) import with `scores_revealed = true` and `picker_revealed = true`. May 2026 has only 4 picks — verify with admin whether Zack's pick is missing.
+All historical films (Jan–May 2026) import with `scores_revealed = true` and `picker_revealed = true`. May 2026 has only 4 picks — Zack did not pick in May.
+
+**Film ordering within months** (from group chat, earliest deadline = first):
+- Jan: The Master → Rebel Ridge → Princess Mononoke → Primer
+- Feb: Kingdom of Heaven → Where the Wild Things Are → Smashing Machine → City of God
+- Mar: Contact → Frailty → Oldboy → Spirited Away
+- Apr: Three Billboards → Birdman → Heat → Eternal Sunshine → Arlington Road
+- May: American Gangster → Cherry → Being John Malkovich → Adaptation
+
+---
+
+## Admin Capabilities
+
+- Trigger `scores_revealed` and `picker_revealed` by **individual film** or by **entire month**
+- Edit all film metadata including TMDB-sourced fields (title, poster, plot, year, director, runtime, etc.)
+- Refresh streaming providers for any film
+- Manual score entry for any user/film
+- Member management (email, joined_at, activate/deactivate)
+- "Films with missing scores" matrix:
+  - Expected count based on members active at that time (pre-Zack = 4, post-Zack = 5)
+  - Test accounts excluded from counts
+  - Cells marked N/A (crossed out) when a member wasn't in the club for that film's month
+- Trigger by month: bulk-reveal scores or pickers for all films in a month
 
 ---
 
@@ -227,3 +288,5 @@ Opens automatically at the start of each new season for the previous season (def
 **All-Time:** Continuously updated — Picker GOAT, Master of Disguise, The Wildcard, Coldest Critic, Biggest Softie, Most Divisive Film Ever, Greatest Film Ever Shown
 
 The Vault: films averaging ≥ 8.5 (configurable). Auto-removes if average drops below threshold after score updates.
+
+**Awards display:** Shown on film pages (awards that film won) and on profile pages (all awards a user has won, including awards for films they picked).
