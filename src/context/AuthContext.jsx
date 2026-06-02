@@ -25,25 +25,29 @@ export function AuthProvider({ children }) {
   }, [])
 
   async function fetchProfile(userId, email) {
-    // Try by auth ID first
-    let { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle()
-
-    // Fallback: look up by email (handles manually-created rows with wrong IDs)
-    if (!data && email) {
-      const { data: byEmail } = await supabase
+    try {
+      let { data } = await supabase
         .from('users')
         .select('*')
-        .eq('email', email)
+        .eq('id', userId)
         .maybeSingle()
-      data = byEmail ?? null
-    }
 
-    setProfile(data)
-    setProfileLoaded(true)
+      if (!data && email) {
+        const { data: byEmail } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', email)
+          .maybeSingle()
+        data = byEmail ?? null
+      }
+
+      setProfile(data)
+    } catch (err) {
+      console.error('[AuthContext] fetchProfile error:', err)
+      setProfile(null)
+    } finally {
+      setProfileLoaded(true)
+    }
   }
 
   const isAdmin = profile?.role === 'admin'

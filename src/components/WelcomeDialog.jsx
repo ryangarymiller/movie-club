@@ -20,7 +20,7 @@ export default function WelcomeDialog() {
       .from('users')
       .update({ has_completed_onboarding: true })
       .eq('id', profile.id)
-    await fetchProfile(profile.id)
+    await fetchProfile(profile.id, profile.email)
     setLoading(false)
   }
 
