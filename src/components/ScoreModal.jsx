@@ -26,8 +26,11 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   const [visible, setVisible] = useState(false)
   const inputRef = useRef(null)
 
-  const isExcitementMode = !existingRating?.pre_watch_excitement
-  const isFinalMode = existingRating?.pre_watch_excitement && !existingRating?.score
+  // If the final score is already submitted, excitement scoring is no longer available.
+  // Skip excitement step and go straight to final score (or locked) mode.
+  const finalScoreAlreadySubmitted = existingRating?.score != null
+  const isExcitementMode = !finalScoreAlreadySubmitted && !existingRating?.pre_watch_excitement
+  const isFinalMode = !finalScoreAlreadySubmitted && existingRating?.pre_watch_excitement && !existingRating?.score
 
   // Animate in
   useEffect(() => {
@@ -180,8 +183,53 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
           </div>
         )}
 
-        {/* Bold score confirmation */}
-        {confirmBold ? (
+        {/* Final score already submitted — excitement scoring locked */}
+        {finalScoreAlreadySubmitted ? (
+          <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
+            <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', color: 'white', letterSpacing: '0.03em', margin: '0 0 8px' }}>
+              Score Locked
+            </p>
+            <p style={{ fontFamily: "'DM Sans',sans-serif", color: '#6b7280', fontSize: '14px', margin: '0 0 20px', lineHeight: 1.5 }}>
+              Your final score has already been submitted.{' '}
+              Pre-watch excitement scoring is no longer available.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+              {excitementLocked && (
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>
+                    Excitement
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+                    {excitementLocked}
+                  </p>
+                </div>
+              )}
+              {excitementLocked && (
+                <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '18px' }}>→</span>
+              )}
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", color: '#4b5563', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>
+                  Final Score
+                </p>
+                <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', color: 'var(--accent)', margin: 0 }}>
+                  {Number(existingRating.score).toFixed(2)}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleClose}
+              style={{
+                width: '100%', padding: '13px',
+                borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.06)', color: 'white',
+                fontFamily: "'DM Sans',sans-serif", fontWeight: 500,
+                fontSize: '14px', cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        ) : confirmBold ? (
           <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
             <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.6rem', color: 'white', letterSpacing: '0.03em', margin: '0 0 6px' }}>
               Are you sure?

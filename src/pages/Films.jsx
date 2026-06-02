@@ -151,9 +151,7 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
           overflow: 'hidden',
           aspectRatio: '2/3',
           background: '#111218',
-          boxShadow: vault
-            ? '0 0 0 1.5px #d97706, 0 0 18px rgba(217,119,6,0.35), 0 8px 24px rgba(0,0,0,0.7)'
-            : '0 4px 18px rgba(0,0,0,0.6)',
+          boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
           transition: 'transform 0.18s ease, box-shadow 0.18s ease',
           transform: hovered ? 'translateY(-3px) scale(1.02)' : 'none',
           ...(pickerBorderColor ? { borderLeft: `3px solid ${pickerBorderColor}` } : {}),
@@ -226,9 +224,10 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
 
         {/* Vault star badge */}
         {vault && (
-          <div style={{ position: 'absolute', top: '6px', left: '6px' }}>
+          <div style={{ position: 'absolute', top: '6px', right: '6px' }}>
             <span style={{
               fontSize: '13px',
+              color: '#fbbf24',
               background: 'rgba(0,0,0,0.7)',
               borderRadius: '50%',
               width: '22px',
@@ -789,7 +788,7 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
   )
 }
 
-function FilmDetailOverlay({ movie, onClose }) {
+export function FilmDetailOverlay({ movie, onClose }) {
   const { profile, isAdmin } = useAuth()
   const [visible, setVisible] = useState(false)
   const [detailLoading, setDetailLoading] = useState(true)
@@ -848,7 +847,39 @@ function FilmDetailOverlay({ movie, onClose }) {
         .eq('movie_id', movieId),
     ])
 
-    setFullMovie(movieData ?? movieFallback)
+    let resolvedMovie = movieData ?? movieFallback
+
+    // Fix 1: Fetch and cache streaming providers if not yet stored
+    if (resolvedMovie && resolvedMovie.streaming_providers == null && resolvedMovie.tmdb_id) {
+      try {
+        const tmdbToken = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
+        const resp = await fetch(
+          `https://api.themoviedb.org/3/movie/${resolvedMovie.tmdb_id}/watch/providers`,
+          { headers: { Authorization: `Bearer ${tmdbToken}` } }
+        )
+        if (resp.ok) {
+          const tmdbData = await resp.json()
+          const us = tmdbData?.results?.US ?? null
+          const providersData = {
+            flatrate: (us?.flatrate ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
+            rent:     (us?.rent     ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
+            buy:      (us?.buy      ?? []).map(p => ({ provider_name: p.provider_name, logo_path: p.logo_path, provider_id: p.provider_id })),
+          }
+          const hasAny = providersData.flatrate.length > 0 || providersData.rent.length > 0 || providersData.buy.length > 0
+          if (hasAny) {
+            await supabase
+              .from('movies')
+              .update({ streaming_providers: providersData })
+              .eq('id', resolvedMovie.id)
+            resolvedMovie = { ...resolvedMovie, streaming_providers: providersData }
+          }
+        }
+      } catch (_e) {
+        // Silently ignore — StreamingSection will show "No streaming info available"
+      }
+    }
+
+    setFullMovie(resolvedMovie)
     setRatings(ratingsData ?? [])
     setUsers(usersData ?? [])
     setReviews(reviewsData ?? [])
@@ -956,7 +987,11 @@ function FilmDetailOverlay({ movie, onClose }) {
     // Rolling: only show scores of members who have also submitted
     visibleRatings = ratings // all submitted ratings (only submitters have rows)
   } else {
+    // Fix 3: even before scores_revealed, always show the current user's own score row
     scoresMessage = 'Scores revealed after the scoring deadline'
+    if (myRating) {
+      visibleRatings = [myRating]
+    }
   }
 
   // Compute group average from visibleRatings that have a score
@@ -1715,7 +1750,9 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
 
   // Group movies by season
   const bySeason = seasons.map(season => {
-    const seasonMovies = movies.filter(m => m._seasonId === season.id)
+    const seasonMovies = movies
+      .filter(m => m._seasonId === season.id)
+      .sort((a, b) => (a._monthOrder !== b._monthOrder ? a._monthOrder - b._monthOrder : (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)))
     const scored = seasonMovies.filter(m => m.historical_avg_score != null)
     const avg = scored.length
       ? (scored.reduce((s, m) => s + Number(m.historical_avg_score), 0) / scored.length)
@@ -1934,6 +1971,11 @@ function HistoryTab({ userById, onSelect }) {
         const enriched = { ...m, _avgScore: avgScore }
         if (!byMonth[m.month_id]) byMonth[m.month_id] = []
         byMonth[m.month_id].push(enriched)
+      }
+
+      // Sort movies within each month by id ascending
+      for (const mid of Object.keys(byMonth)) {
+        byMonth[mid].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       }
 
       setMonths(monthsData)

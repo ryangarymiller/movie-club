@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
+import { FilmDetailOverlay } from './Films'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -131,6 +132,9 @@ export default function Home() {
   const [modalMovie, setModalMovie] = useState(null)
   const [modalRating, setModalRating] = useState(null)
 
+  // Film detail overlay state
+  const [selectedMovie, setSelectedMovie] = useState(null)
+
   const load = useCallback(async () => {
     if (!profile) return
     const [{ data: activeMonth }, { data: movies }, { data: ratings }, { data: usersData }] = await Promise.all([
@@ -230,7 +234,11 @@ export default function Home() {
                 const pickerName = m.picker_revealed
                   ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
                   : undefined
-                return <PosterCard key={m.id} movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} />
+                return (
+                  <div key={m.id} onClick={() => setSelectedMovie(m)} style={{ cursor: 'pointer' }}>
+                    <PosterCard movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} />
+                  </div>
+                )
               })}
             </div>
           )}
@@ -266,6 +274,12 @@ export default function Home() {
           }}
         />
       )}
+
+      {/* Film Detail Overlay */}
+      <FilmDetailOverlay
+        movie={selectedMovie}
+        onClose={() => setSelectedMovie(null)}
+      />
 
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }

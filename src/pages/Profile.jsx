@@ -216,7 +216,7 @@ function formatMemberSince(dateStr) {
 
 export default function Profile() {
   const { profile, isAdmin, fetchProfile } = useAuth()
-  const { accent, setAccent } = useTheme()
+  const { accent, setAccent, mode, toggleMode } = useTheme()
 
   const [statsLoading, setStatsLoading] = useState(true)
   const [stats, setStats] = useState(null)          // { count, avg, highest, lowest }
@@ -516,6 +516,53 @@ export default function Profile() {
           <span style={SECTION_LABEL}>Appearance</span>
 
           <div style={{ ...CARD, padding: '16px' }}>
+            {/* Dark / Light mode toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <p style={{ ...LABEL_STYLE, margin: 0 }}>
+                Theme
+              </p>
+              <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '10px', padding: '4px' }}>
+                <button
+                  onClick={() => mode !== 'light' && toggleMode()}
+                  aria-pressed={mode === 'light'}
+                  style={{
+                    fontFamily: "'DM Mono', monospace",
+                    fontSize: '11px',
+                    letterSpacing: '0.08em',
+                    padding: '5px 14px',
+                    borderRadius: '7px',
+                    border: 'none',
+                    background: mode === 'light' ? 'rgba(255,255,255,0.15)' : 'transparent',
+                    color: mode === 'light' ? 'white' : 'rgba(255,255,255,0.35)',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, color 0.15s',
+                    fontWeight: mode === 'light' ? 600 : 400,
+                  }}
+                >
+                  Light
+                </button>
+                <button
+                  onClick={() => mode !== 'dark' && toggleMode()}
+                  aria-pressed={mode === 'dark'}
+                  style={{
+                    fontFamily: "'DM Mono', monospace",
+                    fontSize: '11px',
+                    letterSpacing: '0.08em',
+                    padding: '5px 14px',
+                    borderRadius: '7px',
+                    border: 'none',
+                    background: mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'transparent',
+                    color: mode === 'dark' ? 'white' : 'rgba(255,255,255,0.35)',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, color 0.15s',
+                    fontWeight: mode === 'dark' ? 600 : 400,
+                  }}
+                >
+                  Dark
+                </button>
+              </div>
+            </div>
+
             <p
               style={{
                 ...LABEL_STYLE,
