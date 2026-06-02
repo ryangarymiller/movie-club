@@ -332,7 +332,7 @@ export default function Profile() {
                 height: 64,
                 borderRadius: '50%',
                 background: 'rgba(255,255,255,0.06)',
-                border: '2px solid var(--accent)',
+                border: `2px solid ${profile?.user_color ?? 'var(--accent)'}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -343,7 +343,7 @@ export default function Profile() {
                 style={{
                   fontFamily: "'Bebas Neue', sans-serif",
                   fontSize: '1.6rem',
-                  color: 'var(--accent)',
+                  color: profile?.user_color ?? 'var(--accent)',
                   letterSpacing: '0.05em',
                 }}
               >
