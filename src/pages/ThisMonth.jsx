@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
 import MonthReveal from '../components/MonthReveal'
+import { FilmDetailOverlay } from './Films'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1221,12 +1222,42 @@ function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
 
 // ─── Picks Tab ────────────────────────────────────────────────────────────────
 
-function PicksTab({ profile }) {
+function PicksTab({ profile, onOpenFilm }) {
   const [nextMonth, setNextMonth] = useState(null)
   const [monthLoading, setMonthLoading] = useState(true)
   const [picks, setPicks] = useState([])
   const [picksLoading, setPicksLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [myOpenPicks, setMyOpenPicks] = useState([]) // films I picked that still need my score predictions
+
+  // Predictions are picker-only and attach to the movie (which exists once the admin
+  // creates the month). Surface a nudge here routing the picker to the film overlay to predict.
+  useEffect(() => {
+    if (!profile) return
+    let alive = true
+    ;(async () => {
+      try {
+        const { data: mine } = await supabase
+          .from('movies')
+          .select('id, title, poster_url, scores_revealed, picker_revealed')
+          .eq('picked_by_user_id', profile.id)
+          .eq('scores_revealed', false)
+        if (!alive) return
+        if (!mine?.length) { setMyOpenPicks([]); return }
+        const ids = mine.map(m => m.id)
+        const { data: preds } = await supabase
+          .from('score_predictions')
+          .select('movie_id')
+          .eq('predicting_user_id', profile.id)
+          .in('movie_id', ids)
+        const predicted = new Set((preds ?? []).map(p => p.movie_id))
+        if (alive) setMyOpenPicks(mine.filter(m => !predicted.has(m.id)))
+      } catch {
+        if (alive) setMyOpenPicks([])
+      }
+    })()
+    return () => { alive = false }
+  }, [profile])
 
   async function loadNextMonthAndPicks() {
     setMonthLoading(true)
@@ -1267,6 +1298,25 @@ function PicksTab({ profile }) {
 
   return (
     <div>
+      {/* Picker nudge: predict everyone's scores for your own pick (opens the film overlay) */}
+      {onOpenFilm && myOpenPicks.map(film => (
+        <button
+          key={film.id}
+          onClick={() => onOpenFilm(film)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+            padding: '12px 14px', borderRadius: '12px',
+            border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.08)',
+            color: 'var(--text-strong)', fontFamily: "'DM Sans',sans-serif",
+            fontWeight: 600, fontSize: '13px', cursor: 'pointer', marginBottom: '12px', textAlign: 'left',
+          }}
+        >
+          <span style={{ fontSize: '15px' }}>🎬</span>
+          <span style={{ flex: 1 }}>You picked “{film.title}” — predict how everyone will score it</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
+        </button>
+      ))}
+
       {/* CTA button */}
       <button
         onClick={() => setShowModal(true)}
@@ -1422,6 +1472,9 @@ export default function ThisMonth() {
   // Score modal state
   const [modalMovie, setModalMovie] = useState(null)
   const [modalRating, setModalRating] = useState(null)
+
+  // Film detail overlay (opened by the picker-predict nudge in the Picks tab)
+  const [selectedMovie, setSelectedMovie] = useState(null)
 
   const loadData = useCallback(async () => {
     if (!profile) return
@@ -1579,7 +1632,7 @@ export default function ThisMonth() {
             <DeadlinesTab movies={movies} loading={loading} />
           )}
           {activeTab === 'Picks' && (
-            <PicksTab profile={profile} />
+            <PicksTab profile={profile} onOpenFilm={setSelectedMovie} />
           )}
           {activeTab === 'Reveal' && revealMonth && (
             <MonthReveal
@@ -1601,6 +1654,9 @@ export default function ThisMonth() {
           onSaved={loadData}
         />
       )}
+
+      {/* Film overlay — opened by the picker-predict nudge */}
+      <FilmDetailOverlay movie={selectedMovie} onClose={() => setSelectedMovie(null)} />
 
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }

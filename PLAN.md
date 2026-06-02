@@ -164,7 +164,7 @@
 - [x] Easy Crowd (Season) — fewest low scores (≤4.0), tie-break avg; defined this session
 - [x] Most Evolved (Annual) — biggest first-half/second-half avg swing; implemented but **dormant until the year spans ≥8 months** (per owner's "trigger after more data")
 - Only **Auteur Award** remains ⏳ (needs the Phase 6 ranked-choice vote)
-- [ ] Guess/predictions in Picks tab — **blocked by data model**: picker_guesses & score_predictions FK to `movies.id`, but the Picks tab shows next-month `upcoming_picks` (no movie row yet). Functional placement is the film overlay (works). Needs a schema change (key to upcoming_picks) to do literally.
+- [x] Guess/predictions placement (option A+C): functional placement stays the film overlay (predictions picker-only; guess on current films). Added a **Picks-tab nudge** that routes the picker to the overlay to predict their own pick once the movie exists. (Literal "submit in Picks tab" is blocked by the data model — picker_guesses/score_predictions FK to `movies.id`, not `upcoming_picks` — deferred unless a schema change is wanted.)
 
 ### Carried from audit — resolved
 - [x] **Stats: film/member names clickable** — films open FilmDetailOverlay (Overview/Me/Members); member names → /profile/:id. (Recharts axis labels in Club/H2H still static — low value.)
