@@ -333,20 +333,20 @@ export default function Profile() {
                 borderRadius: '50%',
                 background: 'rgba(255,255,255,0.06)',
                 border: `2px solid ${profile?.user_color ?? 'var(--accent)'}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: 'grid',
+                placeItems: 'center',
                 flexShrink: 0,
+                overflow: 'hidden',
               }}
             >
               <span
                 style={{
                   fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: '1.6rem',
+                  fontSize: '1.5rem',
                   color: profile?.user_color ?? 'var(--accent)',
                   letterSpacing: '0.05em',
                   lineHeight: 1,
-                  display: 'block',
+                  marginTop: '4px',
                 }}
               >
                 {initials}
