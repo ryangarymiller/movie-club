@@ -715,51 +715,64 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, onSav
       }}>
         Predict each member's score. Revealed when scores are shown.
       </p>
-      {otherUsers.map(u => (
-        <div
-          key={u.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            padding: '8px 0',
-            borderBottom: '1px solid rgba(255,255,255,0.04)',
-          }}
-        >
-          <span style={{
-            flex: 1,
-            minWidth: 0,
-            fontFamily: "'DM Sans', sans-serif",
-            fontSize: '13px',
-            color: 'rgba(255,255,255,0.7)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {u.name}
-          </span>
-          <input
-            type="number"
-            min="0.01"
-            max="10"
-            step="0.01"
-            placeholder="—"
-            value={inputMap[u.id] ?? ''}
-            onChange={e => setInputMap(prev => ({ ...prev, [u.id]: e.target.value }))}
+      {otherUsers.map(u => {
+        // Fix 4: lock prediction once the target user has submitted their score
+        const targetRating = ratings.find(r => r.user_id === u.id)
+        const isLocked = targetRating?.score != null
+        return (
+          <div
+            key={u.id}
             style={{
-              width: '72px',
-              padding: '5px 8px',
-              borderRadius: '7px',
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.04)',
-              color: 'white',
-              fontFamily: "'DM Mono', monospace",
-              fontSize: '13px',
-              textAlign: 'right',
-              outline: 'none',
-              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '8px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              opacity: isLocked ? 0.55 : 1,
             }}
-          />
-        </div>
-      ))}
+          >
+            <span style={{
+              flex: 1,
+              minWidth: 0,
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: '13px',
+              color: 'rgba(255,255,255,0.7)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {u.name}
+              {isLocked && (
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: 'rgba(255,255,255,0.3)', marginLeft: '6px', letterSpacing: '0.08em' }}>
+                  SCORED
+                </span>
+              )}
+            </span>
+            <input
+              type="number"
+              min="0.01"
+              max="10"
+              step="0.01"
+              placeholder="—"
+              disabled={isLocked}
+              value={inputMap[u.id] ?? ''}
+              onChange={e => !isLocked && setInputMap(prev => ({ ...prev, [u.id]: e.target.value }))}
+              style={{
+                width: '72px',
+                padding: '5px 8px',
+                borderRadius: '7px',
+                border: isLocked ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.1)',
+                background: isLocked ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
+                color: isLocked ? 'rgba(255,255,255,0.3)' : 'white',
+                fontFamily: "'DM Mono', monospace",
+                fontSize: '13px',
+                textAlign: 'right',
+                outline: 'none',
+                flexShrink: 0,
+                cursor: isLocked ? 'not-allowed' : 'auto',
+              }}
+            />
+          </div>
+        )
+      })}
       {saveError && (
         <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#f87171', margin: '10px 0 0' }}>
           {saveError}
@@ -1570,6 +1583,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
                       )
                     })}
                   </div>
+                )}
+
+                {/* Fix 2: prompt to score first if user has no score yet */}
+                {!myReview && myRating?.score == null && (
+                  <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
+                    Submit your score first to leave a review.
+                  </p>
                 )}
 
                 {/* New review form — only if current user has scored AND hasn't written a review */}
