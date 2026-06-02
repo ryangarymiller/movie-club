@@ -1095,7 +1095,13 @@ function MembersTab({ movies, ratings, users, loading }) {
 
 // ─── Club Tab ─────────────────────────────────────────────────────────────────
 
-function ClubTab({ movies, ratings, users, loading }) {
+function formatMonthLabel(monthYear) {
+  if (!monthYear) return monthYear
+  const d = new Date(monthYear + '-01')
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
+
+function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
   const stats = useMemo(() => {
     if (!movies.length) return null
 
@@ -1132,7 +1138,8 @@ function ClubTab({ movies, ratings, users, loading }) {
         allScores.push(...sc)
         if (!sc.length && m.historical_avg_score) allScores.push(Number(m.historical_avg_score))
       }
-      return { month_id: mid, avgScore: avg(allScores), films }
+      const monthYear = monthsById[mid]?.month_year ?? null
+      return { month_id: mid, month_year: monthYear, avgScore: avg(allScores), films }
     }).filter(x => x.avgScore != null)
 
     // Most active scorer
@@ -1241,7 +1248,7 @@ function ClubTab({ movies, ratings, users, loading }) {
                       width: '72px',
                       textAlign: 'right',
                     }}>
-                      {m.month_id}
+                      {m.month_year ? formatMonthLabel(m.month_year) : m.month_id}
                     </span>
                     <div style={{ flex: 1, minWidth: 0, height: '18px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px', overflow: 'hidden' }}>
                       <div style={{
@@ -1762,11 +1769,14 @@ export default function Stats() {
   const { profile } = useAuth()
   const [activeTab, setActiveTab] = useState('Overview')
 
+  const TEST_USER_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+
   // Shared data
   const [movies, setMovies] = useState([])
   const [allRatings, setAllRatings] = useState([])
   const [users, setUsers] = useState([])
   const [myRatings, setMyRatings] = useState([])
+  const [monthsById, setMonthsById] = useState({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -1778,6 +1788,7 @@ export default function Stats() {
         { data: ratingsData },
         { data: usersData },
         { data: myRatingsData },
+        { data: monthsData },
       ] = await Promise.all([
         supabase
           .from('movies_safe')
@@ -1793,12 +1804,23 @@ export default function Stats() {
           .from('ratings')
           .select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
           .eq('user_id', profile.id),
+        supabase
+          .from('months')
+          .select('id, month_year'),
       ])
+
+      // Build month lookup
+      const mById = {}
+      for (const m of (monthsData ?? [])) mById[m.id] = m
+
+      // Exclude test user
+      const filteredUsers = (usersData ?? []).filter(u => u.email !== TEST_USER_EMAIL)
 
       setMovies(moviesData ?? [])
       setAllRatings(ratingsData ?? [])
-      setUsers(usersData ?? [])
+      setUsers(filteredUsers)
       setMyRatings(myRatingsData ?? [])
+      setMonthsById(mById)
       setLoading(false)
     }
     load()
@@ -1904,6 +1926,7 @@ export default function Stats() {
               ratings={allRatings}
               users={users}
               loading={loading}
+              monthsById={monthsById}
             />
           )}
           {activeTab === 'Head to Head' && (

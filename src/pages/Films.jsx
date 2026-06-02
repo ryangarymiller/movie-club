@@ -1263,34 +1263,47 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   <Skeleton key={i} style={{ height: '44px', borderRadius: '8px' }} />
                 ))}
               </div>
-            ) : scoresMessage ? (
-              <div style={{
-                padding: '18px',
-                borderRadius: '12px',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                textAlign: 'center',
-              }}>
-                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
-                  {scoresMessage}
-                </p>
-              </div>
             ) : (
               <div>
-                {visibleRatings.length === 0 ? (
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
-                    No scores submitted yet.
-                  </p>
+                {/* Fix 3: always show own score row first, regardless of reveal state */}
+                {scoresMessage && myRating && (
+                  <MemberScoreRow
+                    rating={myRating}
+                    user={userById[myRating.user_id]}
+                  />
+                )}
+
+                {scoresMessage ? (
+                  <div style={{
+                    padding: '18px',
+                    borderRadius: '12px',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    textAlign: 'center',
+                    marginTop: myRating ? '12px' : 0,
+                  }}>
+                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', margin: 0 }}>
+                      {scoresMessage}
+                    </p>
+                  </div>
                 ) : (
-                  visibleRatings
-                    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
-                    .map(r => (
-                      <MemberScoreRow
-                        key={r.user_id}
-                        rating={r}
-                        user={userById[r.user_id]}
-                      />
-                    ))
+                  <>
+                    {visibleRatings.length === 0 ? (
+                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+                        No scores submitted yet.
+                      </p>
+                    ) : (
+                      visibleRatings
+                        .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+                        .map(r => (
+                          <MemberScoreRow
+                            key={r.user_id}
+                            rating={r}
+                            user={userById[r.user_id]}
+                          />
+                        ))
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1559,8 +1572,8 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   </div>
                 )}
 
-                {/* New review form — only if current user hasn't written one */}
-                {!myReview && (
+                {/* New review form — only if current user has scored AND hasn't written a review */}
+                {!myReview && myRating?.score != null && (
                   <div>
                     <textarea
                       value={reviewText}
