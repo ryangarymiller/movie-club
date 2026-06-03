@@ -50,6 +50,8 @@ const MONTHLY_DEFS = [
   { key: 'most_divisive',    label: 'Most Divisive',      emoji: '🔥', target: 'film', field: 'divisiveMovie' },
   { key: 'most_unanimous',   label: 'Most Unanimous',     emoji: '🤝', target: 'film', field: 'unanimousMovie' },
   { key: 'contrarian',       label: 'The Contrarian',     emoji: '🦅', target: 'user', field: 'contrarianWinner' },
+  { key: 'the_underrated',   label: 'The Underrated',     emoji: '💎', target: 'film', field: 'underratedMovie' },
+  { key: 'the_deep_cut',     label: 'The Deep Cut',       emoji: '🕳️', target: 'film', field: 'deepCutMovie' },
 ]
 
 // Season: from computeSeasonAwards()
@@ -66,6 +68,8 @@ const SEASON_DEFS = [
   { key: 'season_oracle',      label: 'The Oracle',             emoji: '🎯', target: 'user', field: 'oracleWinner' },
   { key: 'season_consistent_picker', label: 'Most Consistent Picker', emoji: '🎚️', target: 'user', field: 'mostConsistentPicker' },
   { key: 'season_easy_crowd', label: 'Easy Crowd', emoji: '🍻', target: 'user', field: 'easyCrowd' },
+  { key: 'season_underrated',  label: 'The Underrated',          emoji: '💎', target: 'film', field: 'underratedMovie' },
+  { key: 'season_deep_cut',    label: 'The Deep Cut',            emoji: '🕳️', target: 'film', field: 'deepCutMovie' },
 ]
 
 // Annual: from computeAnnualAwards()
@@ -81,6 +85,8 @@ const ANNUAL_DEFS = [
   { key: 'annual_wildcard',    label: 'The Wildcard',              emoji: '🎭', target: 'user', field: 'wildcard' },
   { key: 'annual_master_of_disguise', label: 'Master of Disguise', emoji: '🥸', target: 'user', field: 'masterOfDisguise' },
   { key: 'annual_most_evolved', label: 'Most Evolved',            emoji: '🦋', target: 'user', field: 'mostEvolved' },
+  { key: 'annual_underrated',   label: 'The Underrated',          emoji: '💎', target: 'film', field: 'underratedMovie' },
+  { key: 'annual_deep_cut',     label: 'The Deep Cut',            emoji: '🕳️', target: 'film', field: 'deepCutMovie' },
 ]
 
 // All-Time: from computeAllTimeAwards()
@@ -95,6 +101,8 @@ const ALLTIME_DEFS = [
   { key: 'wildcard_alltime',  label: 'The Wildcard',             emoji: '🎭', target: 'user', field: 'biggestContrarian' },
   { key: 'oracle_alltime',    label: 'The Oracle (All-Time)',    emoji: '🎯', target: 'user', field: 'oracleAllTime' },
   { key: 'master_of_disguise_alltime', label: 'Master of Disguise', emoji: '🥸', target: 'user', field: 'masterOfDisguise' },
+  { key: 'alltime_underrated', label: 'The Underrated',           emoji: '💎', target: 'film', field: 'underratedMovie' },
+  { key: 'alltime_deep_cut',  label: 'The Deep Cut',             emoji: '🕳️', target: 'film', field: 'deepCutMovie' },
 ]
 
 // ─── Data filtering ───────────────────────────────────────────────────────────

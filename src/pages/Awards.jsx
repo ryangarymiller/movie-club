@@ -28,6 +28,87 @@ function avg(arr) {
   return arr.reduce((a, b) => a + b, 0) / arr.length
 }
 
+// Normalize a movie's genre field into an array of genre strings.
+// `genre` may be a JSON array, a comma-separated string, or null.
+function genreArray(m) {
+  const g = m?.genre
+  if (Array.isArray(g)) return g.filter(Boolean).map(String)
+  if (typeof g === 'string' && g.trim()) {
+    return g.split(',').map(s => s.trim()).filter(Boolean)
+  }
+  return []
+}
+
+// ─── TMDB-relative film awards (The Underrated · The Deep Cut) ─────────────────
+//
+// Both awards compare scope candidates against a global reference (`refMovies`).
+//   • The Underrated: club rates a film higher than TMDB's audience (max positive gap).
+//   • The Deep Cut: rare genre + low TMDB vote count (obscurity), the most "under the radar" pick.
+//
+// `candidates`   — scope movies (already revealed) to choose a winner from.
+// `refMovies`    — global reference set used for genre-frequency + vote-count normalization.
+// `movieAvgScore`— map of movie_id → club avg score (historical_avg authoritative).
+//
+// Returns { underratedMovie, underratedGap, deepCutMovie, deepCutVoteCount }.
+function computeTmdbAwards(candidates, refMovies, movieAvgScore) {
+  // ── The Underrated ──
+  let underratedMovie = null
+  let underratedGap = -Infinity
+  candidates.forEach(m => {
+    const club = movieAvgScore[m.id]
+    if (club == null || m.tmdb_vote_average == null) return
+    const gap = club - Number(m.tmdb_vote_average)
+    if (gap > 0 && gap > underratedGap) {
+      underratedGap = gap
+      underratedMovie = m
+    }
+  })
+  if (!underratedMovie) underratedGap = null
+
+  // ── The Deep Cut ──
+  // Global genre frequency: freq(g) = (#movies whose genres include g) / (#movies with any genre)
+  const genreCounts = {}
+  let moviesWithGenre = 0
+  refMovies.forEach(m => {
+    const genres = genreArray(m)
+    if (!genres.length) return
+    moviesWithGenre += 1
+    new Set(genres).forEach(g => { genreCounts[g] = (genreCounts[g] ?? 0) + 1 })
+  })
+  const genreFreq = g => (moviesWithGenre ? (genreCounts[g] ?? 0) / moviesWithGenre : 0)
+
+  // Global vote-count log scale
+  const logVotes = refMovies
+    .filter(m => m.tmdb_vote_count != null && Number(m.tmdb_vote_count) > 0)
+    .map(m => Math.log(Number(m.tmdb_vote_count)))
+  const minLV = logVotes.length ? Math.min(...logVotes) : 0
+  const maxLV = logVotes.length ? Math.max(...logVotes) : 0
+  const spanLV = maxLV - minLV
+
+  let deepCutMovie = null
+  let deepCutUniqueness = -Infinity
+  let deepCutVoteCount = null
+  candidates.forEach(m => {
+    const genres = genreArray(m)
+    if (!genres.length || m.tmdb_vote_count == null) return
+    const vc = Number(m.tmdb_vote_count)
+    if (!(vc > 0)) return
+    const genreRarity = avg(genres.map(g => 1 - genreFreq(g))) ?? 0
+    let obscurity
+    if (spanLV === 0) obscurity = 0.5
+    else obscurity = Math.min(1, Math.max(0, (maxLV - Math.log(vc)) / spanLV))
+    const uniqueness = 0.5 * genreRarity + 0.5 * obscurity
+    if (uniqueness > deepCutUniqueness) {
+      deepCutUniqueness = uniqueness
+      deepCutMovie = m
+      deepCutVoteCount = vc
+    }
+  })
+  if (!deepCutMovie) deepCutVoteCount = null
+
+  return { underratedMovie, underratedGap, deepCutMovie, deepCutVoteCount }
+}
+
 // Zack Anjoorian joined April 2026 — exclude from Jan–Mar
 function isZackEligible(userName, monthYear) {
   if (!userName || !monthYear) return true
@@ -611,6 +692,11 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     }
   })
 
+  // The Underrated · The Deep Cut (TMDB-relative; full movies array as reference)
+  const seasonScored = seasonMovies.filter(m => movieAvgScore[m.id] != null)
+  const { underratedMovie, underratedGap, deepCutMovie, deepCutVoteCount } =
+    computeTmdbAwards(seasonScored, movies, movieAvgScore)
+
   return {
     filmOfSeason, flopOfSeason,
     pickerOfSeason, pickerOfSeasonAvg, pickerOfSeasonCount,
@@ -622,6 +708,8 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     easyCrowd, easyCrowdLowCount, easyCrowdAvg,
     contrarianWinner, contrarianHighest,
     oracleWinner, oracleBestDelta,
+    underratedMovie, underratedGap,
+    deepCutMovie, deepCutVoteCount,
     movieAvgScore,
     scoresByMovie,
   }
@@ -834,6 +922,11 @@ export function computeAnnualAwards(movies, allRatings, users, year, guesses = [
     }
   })
 
+  // The Underrated · The Deep Cut (TMDB-relative; this year's movies as reference)
+  const yearScored = revealedMovies.filter(m => movieAvgScore[m.id] != null)
+  const { underratedMovie, underratedGap, deepCutMovie, deepCutVoteCount } =
+    computeTmdbAwards(yearScored, movies, movieAvgScore)
+
   return {
     totalFilms: revealedMovies.length,
     totalScoresCast,
@@ -849,6 +942,8 @@ export function computeAnnualAwards(movies, allRatings, users, year, guesses = [
     masterOfDisguise, masterOfDisguiseRate,
     mostDivisiveFilm,
     oracleOfYear, oracleBestDelta,
+    underratedMovie, underratedGap,
+    deepCutMovie, deepCutVoteCount,
     movieAvgScore,
     scoresByMovie,
   }
@@ -1014,6 +1109,10 @@ export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
     }
   })
 
+  // 10–11. The Underrated · The Deep Cut (TMDB-relative; full movies array as reference)
+  const { underratedMovie, underratedGap, deepCutMovie, deepCutVoteCount } =
+    computeTmdbAwards(scoredMovies, movies, movieAvgScore)
+
   return {
     pickOfMonth,
     flopOfMonth,
@@ -1024,6 +1123,8 @@ export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
     divisiveMovie,
     unanimousMovie,
     contrarianWinner, contrarianHighest,
+    underratedMovie, underratedGap,
+    deepCutMovie, deepCutVoteCount,
     movieAvgScore,
     movieAvgExcitement,
     scoresByMovie,
@@ -1221,6 +1322,11 @@ export function computeAllTimeAwards(movies, allRatings, users, guesses = []) {
     }
   })
 
+  // The Underrated · The Deep Cut (TMDB-relative; full movies array as reference)
+  const allTimeScored = revealedMovies.filter(m => movieAvgScore[m.id] != null)
+  const { underratedMovie, underratedGap, deepCutMovie, deepCutVoteCount } =
+    computeTmdbAwards(allTimeScored, movies, movieAvgScore)
+
   return {
     greatestFilm, worstFilm,
     mostDivisiveFilm, mostUnanimousFilm,
@@ -1230,6 +1336,8 @@ export function computeAllTimeAwards(movies, allRatings, users, guesses = []) {
     biggestContrarian, biggestContrarianDev,
     masterOfDisguise, masterOfDisguiseRate,
     oracleAllTime, oracleAllTimeDelta,
+    underratedMovie, underratedGap,
+    deepCutMovie, deepCutVoteCount,
     movieAvgScore,
     scoresByMovie,
   }
@@ -1467,6 +1575,38 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             onWinnerClick={() => onMember?.(awards.contrarianWinner)}
             awardId={aid('contrarian')}
           />
+
+          {/* 10. The Underrated */}
+          <AwardCard
+            emoji="💎"
+            label="The Underrated"
+            winner={awards.underratedMovie?.title}
+            metric={awards.underratedMovie
+              ? `Club ${fmt(awards.movieAvgScore[awards.underratedMovie.id])} · TMDB ${fmt(awards.underratedMovie.tmdb_vote_average)} (+${awards.underratedGap.toFixed(2)})`
+              : null}
+            posterUrl={awards.underratedMovie?.poster_url}
+            posterTitle={awards.underratedMovie?.title}
+            noData={!awards.underratedMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.underratedMovie)}
+            awardId={aid('the_underrated')}
+          />
+
+          {/* 11. The Deep Cut */}
+          <AwardCard
+            emoji="🕳️"
+            label="The Deep Cut"
+            winner={awards.deepCutMovie?.title}
+            metric={awards.deepCutMovie
+              ? `${Number(awards.deepCutVoteCount).toLocaleString()} TMDB votes · rare + obscure`
+              : null}
+            posterUrl={awards.deepCutMovie?.poster_url}
+            posterTitle={awards.deepCutMovie?.title}
+            noData={!awards.deepCutMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.deepCutMovie)}
+            awardId={aid('the_deep_cut')}
+          />
         </div>
       )}
     </div>
@@ -1643,6 +1783,38 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         winnerClickable
         onWinnerClick={() => onMember?.(awards.oracleAllTime)}
         awardId={aid('oracle_alltime')}
+      />
+
+      {/* 10. The Underrated */}
+      <AwardCard
+        emoji="💎"
+        label="The Underrated"
+        winner={awards.underratedMovie?.title}
+        metric={awards.underratedMovie
+          ? `Club ${fmt(awards.movieAvgScore[awards.underratedMovie.id])} · TMDB ${fmt(awards.underratedMovie.tmdb_vote_average)} (+${awards.underratedGap.toFixed(2)})`
+          : null}
+        posterUrl={awards.underratedMovie?.poster_url}
+        posterTitle={awards.underratedMovie?.title}
+        noData={!awards.underratedMovie}
+        winnerClickable
+        onWinnerClick={() => onFilm?.(awards.underratedMovie)}
+        awardId={aid('alltime_underrated')}
+      />
+
+      {/* 11. The Deep Cut */}
+      <AwardCard
+        emoji="🕳️"
+        label="The Deep Cut"
+        winner={awards.deepCutMovie?.title}
+        metric={awards.deepCutMovie
+          ? `${Number(awards.deepCutVoteCount).toLocaleString()} TMDB votes · rare + obscure`
+          : null}
+        posterUrl={awards.deepCutMovie?.poster_url}
+        posterTitle={awards.deepCutMovie?.title}
+        noData={!awards.deepCutMovie}
+        winnerClickable
+        onWinnerClick={() => onFilm?.(awards.deepCutMovie)}
+        awardId={aid('alltime_deep_cut')}
       />
     </div>
   )
@@ -1932,6 +2104,38 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             winnerClickable
             onWinnerClick={() => onMember?.(awards.easyCrowd)}
             awardId={aid('season_easy_crowd')}
+          />
+
+          {/* 13. The Underrated */}
+          <AwardCard
+            emoji="💎"
+            label="The Underrated"
+            winner={awards.underratedMovie?.title}
+            metric={awards.underratedMovie
+              ? `Club ${fmt(awards.movieAvgScore[awards.underratedMovie.id])} · TMDB ${fmt(awards.underratedMovie.tmdb_vote_average)} (+${awards.underratedGap.toFixed(2)})`
+              : null}
+            posterUrl={awards.underratedMovie?.poster_url}
+            posterTitle={awards.underratedMovie?.title}
+            noData={!awards.underratedMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.underratedMovie)}
+            awardId={aid('season_underrated')}
+          />
+
+          {/* 14. The Deep Cut */}
+          <AwardCard
+            emoji="🕳️"
+            label="The Deep Cut"
+            winner={awards.deepCutMovie?.title}
+            metric={awards.deepCutMovie
+              ? `${Number(awards.deepCutVoteCount).toLocaleString()} TMDB votes · rare + obscure`
+              : null}
+            posterUrl={awards.deepCutMovie?.poster_url}
+            posterTitle={awards.deepCutMovie?.title}
+            noData={!awards.deepCutMovie}
+            winnerClickable
+            onWinnerClick={() => onFilm?.(awards.deepCutMovie)}
+            awardId={aid('season_deep_cut')}
           />
         </div>
       )}
@@ -2234,6 +2438,38 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           onWinnerClick={() => onMember?.(awards.mostEvolved)}
           awardId={aid('annual_most_evolved')}
         />
+
+        {/* 13. The Underrated */}
+        <AwardCard
+          emoji="💎"
+          label="The Underrated"
+          winner={awards.underratedMovie?.title}
+          metric={awards.underratedMovie
+            ? `Club ${fmt(awards.movieAvgScore[awards.underratedMovie.id])} · TMDB ${fmt(awards.underratedMovie.tmdb_vote_average)} (+${awards.underratedGap.toFixed(2)})`
+            : null}
+          posterUrl={awards.underratedMovie?.poster_url}
+          posterTitle={awards.underratedMovie?.title}
+          noData={!awards.underratedMovie}
+          winnerClickable
+          onWinnerClick={() => onFilm?.(awards.underratedMovie)}
+          awardId={aid('annual_underrated')}
+        />
+
+        {/* 14. The Deep Cut */}
+        <AwardCard
+          emoji="🕳️"
+          label="The Deep Cut"
+          winner={awards.deepCutMovie?.title}
+          metric={awards.deepCutMovie
+            ? `${Number(awards.deepCutVoteCount).toLocaleString()} TMDB votes · rare + obscure`
+            : null}
+          posterUrl={awards.deepCutMovie?.poster_url}
+          posterTitle={awards.deepCutMovie?.title}
+          noData={!awards.deepCutMovie}
+          winnerClickable
+          onWinnerClick={() => onFilm?.(awards.deepCutMovie)}
+          awardId={aid('annual_deep_cut')}
+        />
       </div>
     </div>
   )
@@ -2333,7 +2569,7 @@ export default function Awards() {
       ] = await Promise.all([
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: false }),
         supabase.from('months').select('id, season_id, month_year, status').order('month_year', { ascending: true }),
-        supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, director, genre, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id').eq('scores_revealed', true),
+        supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, director, genre, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id, tmdb_vote_average, tmdb_vote_count, tmdb_popularity').eq('scores_revealed', true),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
         supabase.from('users').select('id, name, email, role, joined_at, is_active').eq('is_active', true),
         supabase.from('picker_guesses').select('movie_id, guessing_user_id, guessed_user_id'),
