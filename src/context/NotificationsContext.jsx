@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 
@@ -19,41 +19,87 @@ const NotificationsContext = createContext(null)
 
 const PAGE_SIZE = 50
 
+// A missing preferences row means "all defaults": nothing muted, channels off, no
+// quiet hours. We normalise into this exact shape so consumers never see undefined.
+const DEFAULT_PREFS = Object.freeze({
+  muted_types: [],
+  channel_push: false,
+  channel_email: false,
+  quiet_start: null,
+  quiet_end: null,
+})
+
+function normalisePrefs(row) {
+  if (!row) return { ...DEFAULT_PREFS }
+  return {
+    muted_types: Array.isArray(row.muted_types) ? row.muted_types : [],
+    channel_push: !!row.channel_push,
+    channel_email: !!row.channel_email,
+    quiet_start: row.quiet_start ?? null,
+    quiet_end: row.quiet_end ?? null,
+  }
+}
+
 export function NotificationsProvider({ children }) {
   const { profile } = useAuth()
   const userId = profile?.id ?? null
 
-  const [notifications, setNotifications] = useState([])
+  // RAW notifications as loaded from the DB. The value we EXPOSE is derived from
+  // this by filtering out muted types (see `notifications`/`unreadCount` below),
+  // so muting takes effect in-app immediately without a re-fetch.
+  const [rawNotifications, setRawNotifications] = useState([])
   const [loading, setLoading] = useState(true)
+  const [prefs, setPrefs] = useState(() => ({ ...DEFAULT_PREFS }))
 
   // Track the latest userId in a ref so the realtime callback (created once per
   // subscription) can guard against rows that arrive after a user switch.
   const userIdRef = useRef(userId)
   useEffect(() => { userIdRef.current = userId }, [userId])
 
-  // Mirror notifications into a ref so read-marking can synchronously decide
+  // Mirror raw notifications into a ref so read-marking can synchronously decide
   // whether a write is needed without depending on React's updater timing.
-  const notificationsRef = useRef(notifications)
-  useEffect(() => { notificationsRef.current = notifications }, [notifications])
+  const notificationsRef = useRef(rawNotifications)
+  useEffect(() => { notificationsRef.current = rawNotifications }, [rawNotifications])
 
   const load = useCallback(async (uid) => {
     if (!uid) {
-      setNotifications([])
+      setRawNotifications([])
+      setPrefs({ ...DEFAULT_PREFS })
       setLoading(false)
       return
     }
     try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE)
-      if (error) throw error
-      setNotifications(data ?? [])
+      // Load notifications + the user's preferences row in parallel. Each is
+      // independently defensive: a failure in one must not blank the other.
+      const [notifRes, prefsRes] = await Promise.all([
+        supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', uid)
+          .order('created_at', { ascending: false })
+          .limit(PAGE_SIZE),
+        supabase
+          .from('notification_preferences')
+          .select('*')
+          .eq('user_id', uid)
+          .maybeSingle(),
+      ])
+
+      if (notifRes.error) {
+        console.error('[NotificationsContext] load error:', notifRes.error)
+        // Keep whatever we already had in memory rather than blanking it.
+      } else {
+        setRawNotifications(notifRes.data ?? [])
+      }
+
+      if (prefsRes.error) {
+        console.error('[NotificationsContext] prefs load error:', prefsRes.error)
+      } else {
+        // No row → all defaults (nothing muted).
+        setPrefs(normalisePrefs(prefsRes.data))
+      }
     } catch (err) {
       console.error('[NotificationsContext] load error:', err)
-      // Keep whatever we already had in memory rather than blanking it.
     } finally {
       setLoading(false)
     }
@@ -83,7 +129,10 @@ export function NotificationsProvider({ children }) {
           (payload) => {
             const row = payload?.new
             if (!row || row.user_id !== userIdRef.current) return
-            setNotifications((prev) => {
+            // We store the row even if its type is currently muted — muting is a
+            // VIEW concern (applied in the exposed `notifications`), so unmuting
+            // later surfaces it without a re-fetch.
+            setRawNotifications((prev) => {
               if (prev.some((n) => n.id === row.id)) return prev // de-dupe
               return [row, ...prev].slice(0, PAGE_SIZE)
             })
@@ -100,6 +149,17 @@ export function NotificationsProvider({ children }) {
     }
   }, [userId])
 
+  // ── Exposed (filtered) view ────────────────────────────────────────────────
+  // A notification whose `type` is muted is hidden from the center AND excluded
+  // from the unread badge. The raw list is kept internally so unmuting is instant.
+  const mutedSet = useMemo(
+    () => new Set(Array.isArray(prefs.muted_types) ? prefs.muted_types : []),
+    [prefs.muted_types]
+  )
+  const notifications = useMemo(
+    () => rawNotifications.filter((n) => !mutedSet.has(n.type)),
+    [rawNotifications, mutedSet]
+  )
   const unreadCount = notifications.reduce((n, x) => n + (x.read_at ? 0 : 1), 0)
 
   const markRead = useCallback(async (id) => {
@@ -108,7 +168,7 @@ export function NotificationsProvider({ children }) {
     const target = notificationsRef.current.find((n) => n.id === id)
     if (!target || target.read_at) return
     const now = new Date().toISOString()
-    setNotifications((prev) =>
+    setRawNotifications((prev) =>
       prev.map((n) => (n.id === id && !n.read_at ? { ...n, read_at: now } : n))
     )
     try {
@@ -121,7 +181,7 @@ export function NotificationsProvider({ children }) {
     } catch (err) {
       console.error('[NotificationsContext] markRead error:', err)
       // Revert the optimistic flip on failure.
-      setNotifications((prev) =>
+      setRawNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, read_at: null } : n))
       )
     }
@@ -130,22 +190,58 @@ export function NotificationsProvider({ children }) {
   const markAllRead = useCallback(async () => {
     if (!userId) return
     const snapshot = notificationsRef.current
-    const hadUnread = snapshot.some((n) => !n.read_at)
-    if (!hadUnread) return
+    // "Mark all read" acts on the VISIBLE set — if every unread row is muted there
+    // is nothing for the user to clear. We still persist read_at for muted rows we
+    // touch (they're already flagged read in the snapshot below), which is harmless.
+    const visibleUnread = snapshot.some((n) => !n.read_at && !mutedSet.has(n.type))
+    if (!visibleUnread) return
     const now = new Date().toISOString()
-    setNotifications((prev) =>
-      prev.map((n) => (n.read_at ? n : { ...n, read_at: now }))
+    setRawNotifications((prev) =>
+      prev.map((n) => (n.read_at || mutedSet.has(n.type) ? n : { ...n, read_at: now }))
     )
     try {
-      const { error } = await supabase
+      // Only clear the unread rows the user can actually see, so muted-but-unread
+      // notifications stay unread and resurface (unread) if the type is unmuted.
+      const visibleTypes = [...new Set(snapshot.map((n) => n.type))].filter(
+        (t) => !mutedSet.has(t)
+      )
+      let q = supabase
         .from('notifications')
         .update({ read_at: now })
         .eq('user_id', userId)
-        .is('read_at', null)
+      // Restrict to the visible types BEFORE the terminal `.is()` filter so muted
+      // rows stay unread and resurface (unread) if their type is later unmuted.
+      if (visibleTypes.length > 0) q = q.in('type', visibleTypes)
+      const { error } = await q.is('read_at', null)
       if (error) throw error
     } catch (err) {
       console.error('[NotificationsContext] markAllRead error:', err)
-      setNotifications(snapshot) // rollback
+      setRawNotifications(snapshot) // rollback
+    }
+  }, [userId, mutedSet])
+
+  // ── Preferences write ──────────────────────────────────────────────────────
+  // Optimistic upsert: apply the partial locally immediately, persist via upsert
+  // (onConflict user_id), and roll back to the prior snapshot if the write fails.
+  const prefsRef = useRef(prefs)
+  useEffect(() => { prefsRef.current = prefs }, [prefs])
+
+  const updatePrefs = useCallback(async (partial) => {
+    if (!userId || !partial || typeof partial !== 'object') return
+    const prev = prefsRef.current
+    const next = normalisePrefs({ ...prev, ...partial })
+    setPrefs(next) // optimistic
+    try {
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(
+          { user_id: userId, ...next, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' }
+        )
+      if (error) throw error
+    } catch (err) {
+      console.error('[NotificationsContext] updatePrefs error:', err)
+      setPrefs(prev) // rollback
     }
   }, [userId])
 
@@ -155,6 +251,8 @@ export function NotificationsProvider({ children }) {
     loading,
     markRead,
     markAllRead,
+    prefs,
+    updatePrefs,
     refresh: () => load(userId),
   }
 
@@ -175,6 +273,8 @@ export function useNotifications() {
       loading: false,
       markRead: () => {},
       markAllRead: () => {},
+      prefs: { ...DEFAULT_PREFS },
+      updatePrefs: async () => {},
       refresh: () => {},
     }
   )

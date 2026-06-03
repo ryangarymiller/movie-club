@@ -9,6 +9,7 @@ import AwardsBadges from '../components/AwardsBadges'
 import { deliberateSignOut } from '../lib/authLog'
 import { FilmDetailOverlay } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
+import { useNotifications } from '../context/NotificationsContext'
 
 const ACCENT_SWATCHES = [
   { name: 'crimson',    hex: '#dc2626', label: 'Crimson'    },
@@ -21,6 +22,18 @@ const ACCENT_SWATCHES = [
 ]
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
+
+// Notification event types the member can mute. Glyphs mirror the bulletin/call-sheet
+// language used in the notification center so the section reads as the same system.
+// `desc` is a one-line clarifier shown under the friendly label.
+const NOTIF_TYPES = [
+  { key: 'scores_revealed', glyph: '🎬',  label: 'Scores revealed', desc: "A film's scores go public" },
+  { key: 'month_active',    glyph: '📅',  label: 'New month starts', desc: 'This month’s films go live' },
+  { key: 'month_reveal',    glyph: '🎭',  label: 'End-of-month reveal', desc: 'Pickers + recap revealed' },
+  { key: 'reply',           glyph: '💬',  label: 'Replies to me', desc: 'Someone replies to your review or comment' },
+  { key: 'mention',         glyph: '@',   label: '@mentions', desc: 'You’re tagged in a review or comment' },
+  { key: 'score_change',    glyph: '✏️',  label: 'My score-change decisions', desc: 'Admin approves or denies your request' },
+]
 
 // ─── Style helpers ──────────────────────────────────────────────────────────────
 
@@ -86,6 +99,162 @@ function StatCard({ label, value, sub }) {
           {sub}
         </p>
       )}
+    </div>
+  )
+}
+
+// An accessible on/off switch (role="switch"). On = accent-filled track + knob
+// pushed right; off = neutral hairline track. Theme tokens only so light + dark land.
+function NotifToggle({ checked, onChange, label, disabled = false }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      style={{
+        position: 'relative',
+        flexShrink: 0,
+        width: 42,
+        height: 24,
+        borderRadius: '999px',
+        border: '1px solid rgba(var(--fg-rgb), 0.12)',
+        background: checked ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.10)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        padding: 0,
+        opacity: disabled ? 0.5 : 1,
+        transition: 'background 0.18s ease, border-color 0.18s ease',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: checked ? '20px' : '2px',
+          transform: 'translateY(-50%)',
+          width: 18,
+          height: 18,
+          borderRadius: '50%',
+          background: checked ? '#fff' : 'var(--surface)',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
+          transition: 'left 0.18s cubic-bezier(0.16,1,0.3,1)',
+        }}
+      />
+    </button>
+  )
+}
+
+// One event-type row: glyph chip + friendly label/desc on the left, switch on the
+// right. On = notified, off = muted.
+function NotifTypeRow({ type, enabled, onToggle, isLast }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '11px 0',
+        borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb), 0.06)',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          flexShrink: 0,
+          width: 30,
+          height: 30,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: type.key === 'mention' ? '15px' : '14px',
+          fontWeight: type.key === 'mention' ? 700 : 400,
+          fontFamily: type.key === 'mention' ? "'DM Mono', monospace" : undefined,
+          color: type.key === 'mention' ? 'var(--accent)' : undefined,
+          borderRadius: '8px',
+          background: 'rgba(var(--fg-rgb), 0.05)',
+          border: '1px solid rgba(var(--fg-rgb), 0.06)',
+          lineHeight: 1,
+        }}
+      >
+        {type.glyph}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 600, color: 'var(--text-strong)', lineHeight: 1.3 }}>
+          {type.label}
+        </p>
+        <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--text-dim)', lineHeight: 1.3 }}>
+          {type.desc}
+        </p>
+      </div>
+      <NotifToggle
+        checked={enabled}
+        onChange={onToggle}
+        label={`${enabled ? 'Mute' : 'Unmute'} ${type.label}`}
+      />
+    </div>
+  )
+}
+
+// A delivery channel placeholder row (Browser push / Email) — disabled with a
+// "Coming soon" tag; the delivery layer isn't wired yet.
+function ChannelPlaceholderRow({ glyph, label, desc, isLast }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '11px 0',
+        borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb), 0.06)',
+        opacity: 0.62,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          flexShrink: 0,
+          width: 30,
+          height: 30,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '14px',
+          borderRadius: '8px',
+          background: 'rgba(var(--fg-rgb), 0.05)',
+          border: '1px solid rgba(var(--fg-rgb), 0.06)',
+          lineHeight: 1,
+        }}
+      >
+        {glyph}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 600, color: 'var(--text-muted)', lineHeight: 1.3 }}>
+          {label}
+        </p>
+        <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--text-dim)', lineHeight: 1.3 }}>
+          {desc}
+        </p>
+      </div>
+      <span
+        style={{
+          flexShrink: 0,
+          fontFamily: "'DM Mono', monospace",
+          fontSize: '9px',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--text-dim)',
+          background: 'rgba(var(--fg-rgb), 0.06)',
+          border: '1px solid rgba(var(--fg-rgb), 0.08)',
+          borderRadius: '999px',
+          padding: '3px 9px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Coming soon
+      </span>
     </div>
   )
 }
@@ -232,6 +401,7 @@ export default function Profile({ overlayUserId = null } = {}) {
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, toggleMode } = useTheme()
   const { close: closeMemberOverlay } = useMemberOverlay()
+  const { prefs: notifPrefs, updatePrefs: updateNotifPrefs } = useNotifications()
   const isOverlayMode = !!overlayUserId
 
   // If viewing another member's profile, load their data
@@ -491,6 +661,24 @@ export default function Profile({ overlayUserId = null } = {}) {
     loadPicks()
     return () => { cancelled = true }
   }, [displayProfile])
+
+  // ── Notification preferences ──────────────────────────────────────────────────
+  const mutedTypes = notifPrefs?.muted_types ?? []
+  // Toggle a single event type's notified/muted state. on → ensure NOT muted;
+  // off → add to muted_types. We send the full next array so the upsert is atomic.
+  function toggleNotifType(typeKey, enabled) {
+    const set = new Set(mutedTypes)
+    if (enabled) set.delete(typeKey)
+    else set.add(typeKey)
+    updateNotifPrefs({ muted_types: [...set] })
+  }
+  function setQuietHour(field, value) {
+    // Empty input clears the bound (stored as null).
+    updateNotifPrefs({ [field]: value ? `${value}:00` : null })
+  }
+  // <input type="time"> wants HH:MM; the DB stores HH:MM:SS — trim for display.
+  const quietStartVal = (notifPrefs?.quiet_start ?? '').slice(0, 5)
+  const quietEndVal = (notifPrefs?.quiet_end ?? '').slice(0, 5)
 
   // ── Sign out ─────────────────────────────────────────────────────────────────
   async function handleSignOut() {
@@ -1093,6 +1281,86 @@ export default function Profile({ overlayUserId = null } = {}) {
             >
               {ACCENT_SWATCHES.find(s => s.name === accent)?.label ?? ''}
             </p>
+          </div>
+        </section>}
+
+        {/* ── Section 4b: Notifications ── */}
+        {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.26s ease both' }}>
+          <span style={SECTION_LABEL}>Notifications</span>
+
+          <div style={{ ...CARD, padding: '16px' }}>
+            {/* Per-type toggles. On = notified, off = muted (hidden from the bell
+                immediately and excluded from the unread badge). */}
+            <p style={{ ...LABEL_STYLE, margin: '0 0 4px', display: 'block' }}>What you’re notified about</p>
+            <div style={{ marginTop: '4px' }}>
+              {NOTIF_TYPES.map((t, i) => (
+                <NotifTypeRow
+                  key={t.key}
+                  type={t}
+                  enabled={!mutedTypes.includes(t.key)}
+                  onToggle={(enabled) => toggleNotifType(t.key, enabled)}
+                  isLast={i === NOTIF_TYPES.length - 1}
+                />
+              ))}
+            </div>
+
+            {/* Quiet hours */}
+            <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
+              <p style={{ ...LABEL_STYLE, margin: '0 0 4px', display: 'block' }}>Quiet hours</p>
+              <p style={{ margin: '0 0 12px', fontSize: '11.5px', color: 'var(--text-dim)', lineHeight: 1.4 }}>
+                Used for push &amp; email (coming soon). In-app notifications always appear.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                {[
+                  { label: 'From', field: 'quiet_start', value: quietStartVal },
+                  { label: 'Until', field: 'quiet_end', value: quietEndVal },
+                ].map(({ label, field, value }) => (
+                  <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ ...LABEL_STYLE, color: 'var(--text-dim)' }}>{label}</span>
+                    <input
+                      type="time"
+                      value={value}
+                      onChange={(e) => setQuietHour(field, e.target.value)}
+                      style={{
+                        fontFamily: "'DM Mono', monospace",
+                        fontSize: '13px',
+                        color: 'var(--text-strong)',
+                        background: 'rgba(var(--fg-rgb), 0.04)',
+                        border: '1px solid rgba(var(--fg-rgb), 0.12)',
+                        borderRadius: '9px',
+                        padding: '8px 10px',
+                        colorScheme: mode === 'dark' ? 'dark' : 'light',
+                      }}
+                    />
+                  </label>
+                ))}
+                {(quietStartVal || quietEndVal) && (
+                  <button
+                    type="button"
+                    onClick={() => updateNotifPrefs({ quiet_start: null, quiet_end: null })}
+                    style={{
+                      fontFamily: "'DM Mono', monospace",
+                      fontSize: '10px',
+                      letterSpacing: '0.06em',
+                      color: 'var(--text-dim)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '8px 0',
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Delivery channels — placeholders, not wired yet. */}
+            <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
+              <p style={{ ...LABEL_STYLE, margin: '0 0 6px', display: 'block' }}>Delivery</p>
+              <ChannelPlaceholderRow glyph="🔔" label="Browser push" desc="Get notified even when the app is closed" />
+              <ChannelPlaceholderRow glyph="✉️" label="Email" desc="A digest of what you missed" isLast />
+            </div>
           </div>
         </section>}
 
