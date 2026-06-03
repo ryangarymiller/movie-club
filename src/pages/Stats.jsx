@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { FilmDetailOverlay } from './Films'
+import { memberColor } from '../lib/colors'
 import {
   ResponsiveContainer,
   BarChart, Bar,
@@ -101,6 +102,37 @@ function ScoreHistogram({ data, height = 150, color }) {
   )
 }
 
+// Per-member score bar chart for a single film, with mean + ±1 std-dev
+// reference lines. data: [{ name, value, fill }]; mean/sd annotate the spread.
+// Used when a film stat (highest / lowest / divisive / unanimous) is expanded.
+function MemberScoreBars({ data, mean, sd, height }) {
+  const accent = accentColor()
+  const h = height || Math.max(130, data.length * 30 + 40)
+  return (
+    <ResponsiveContainer width="100%" height={h}>
+      <BarChart data={data} layout="vertical" margin={{ top: 6, right: 30, left: 4, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
+        <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+        <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
+        <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
+        {mean != null && (
+          <ReferenceLine x={mean} stroke={CHART.muted} strokeDasharray="4 4"
+            label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} />
+        )}
+        {mean != null && sd != null && sd > 0 && (
+          <>
+            <ReferenceLine x={Math.max(0, mean - sd)} stroke="rgba(var(--fg-rgb), 0.12)" strokeDasharray="2 4" />
+            <ReferenceLine x={Math.min(10, mean + sd)} stroke="rgba(var(--fg-rgb), 0.12)" strokeDasharray="2 4" />
+          </>
+        )}
+        <Bar dataKey="value" name="Score" radius={[0, 3, 3, 0]} isAnimationActive={false}>
+          {data.map((d, i) => <Cell key={i} fill={d.fill || accent} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
 // Line chart over months. data: [{ month, value, value2? }]
 function MonthLineChart({ data, height = 170, series, color }) {
   const c = color || accentColor()
@@ -113,9 +145,23 @@ function MonthLineChart({ data, height = 170, series, color }) {
         <YAxis domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
         <Tooltip content={<ChartTooltip />} cursor={{ stroke: CHART.muted }} />
         {lines.length > 1 && <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />}
-        {lines.map(l => (
-          <Line key={l.key} type="monotone" dataKey={l.key} name={l.name} stroke={l.color} strokeWidth={2} dot={{ r: 2.5, fill: l.color }} activeDot={{ r: 4 }} connectNulls />
-        ))}
+        {lines.map(l => {
+          const emphasize = l.key === 'club'
+          return (
+            <Line
+              key={l.key}
+              type="monotone"
+              dataKey={l.key}
+              name={l.name}
+              stroke={l.color}
+              strokeWidth={emphasize ? 3 : 1.6}
+              strokeOpacity={lines.length > 1 && !emphasize ? 0.75 : 1}
+              dot={{ r: emphasize ? 3 : 2, fill: l.color }}
+              activeDot={{ r: 4 }}
+              connectNulls
+            />
+          )
+        })}
       </LineChart>
     </ResponsiveContainer>
   )
@@ -140,9 +186,12 @@ function ExcitementScatter({ data, height = 220, color }) {
 }
 
 // Horizontal/vertical comparison bar chart. data: [{ name, ...keys }]
-function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name' }) {
+// When `cellFill` is given and there is exactly one series, each bar is coloured
+// per-datum from data[i][cellFill] (used to apply member colours).
+function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name', cellFill }) {
   const accent = accentColor()
   const resolved = keys.map((k, i) => ({ ...k, color: k.color || (i === 0 ? accent : CAT_PALETTE[i % CAT_PALETTE.length]) }))
+  const perCell = cellFill && resolved.length === 1
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout={layout} margin={{ top: 6, right: 14, left: layout === 'vertical' ? 4 : -20, bottom: 0 }}>
@@ -161,7 +210,9 @@ function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey
         <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
         {resolved.length > 1 && <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />}
         {resolved.map(k => (
-          <Bar key={k.key} dataKey={k.key} name={k.name} fill={k.color} radius={layout === 'vertical' ? [0, 3, 3, 0] : [3, 3, 0, 0]} />
+          <Bar key={k.key} dataKey={k.key} name={k.name} fill={k.color} radius={layout === 'vertical' ? [0, 3, 3, 0] : [3, 3, 0, 0]}>
+            {perCell && data.map((d, i) => <Cell key={i} fill={d[cellFill] || k.color} />)}
+          </Bar>
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -301,7 +352,9 @@ function PercentileBar({ data, height }) {
         <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} unit="%" />
         <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
         <Tooltip content={<ChartTooltip suffix="%" />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
-        <Bar dataKey="value" name="Percentile" fill={c} radius={[0, 3, 3, 0]} />
+        <Bar dataKey="value" name="Percentile" fill={c} radius={[0, 3, 3, 0]}>
+          {data.map((d, i) => <Cell key={i} fill={d._fill || c} />)}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   )
@@ -311,6 +364,15 @@ function PercentileBar({ data, height }) {
 
 function initials(name) {
   return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+}
+
+// "First L." — first name + last initial. There are two Ryans, so a bare first
+// name is ambiguous; this disambiguates them in every member-comparison label.
+function firstLast(name) {
+  const parts = (name || '').split(' ').filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0]
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`
 }
 
 function avg(arr) {
@@ -369,6 +431,59 @@ export function percentileRank(arr, value) {
   const below = arr.filter(v => v < value).length
   const equal = arr.filter(v => v === value).length
   return ((below + equal / 2) / arr.length) * 100
+}
+
+// Choose a bin count for a histogram of N samples. Blends Sturges and the
+// square-root rule, clamped to a sane range so the chart reads well as the
+// dataset grows (few films → coarse bins; many → finer). Returns a count over
+// the 0–10 score range; each bin spans 10 / binCount points.
+export function dynamicBinCount(n) {
+  if (!n || n < 2) return 5
+  const sturges = Math.ceil(Math.log2(n) + 1)
+  const sqrt = Math.ceil(Math.sqrt(n))
+  const blended = Math.round((sturges + sqrt) / 2)
+  return Math.max(5, Math.min(20, blended))
+}
+
+// Build histogram buckets over the 0–10 score range using a dynamic bin count.
+// Returns [{ label, count, min, max }]. The final bin is inclusive of 10.
+export function buildScoreBins(scores, binCount) {
+  const bins = binCount || dynamicBinCount(scores.length)
+  const width = 10 / bins
+  return Array.from({ length: bins }, (_, i) => {
+    const min = i * width
+    const max = (i + 1) * width
+    const isLast = i === bins - 1
+    const label = `${min.toFixed(width < 1 ? 1 : 0)}–${max.toFixed(width < 1 ? 1 : 0)}`
+    return {
+      label,
+      min,
+      max,
+      count: scores.filter(s => s >= min && (isLast ? s <= 10.01 : s < max)).length,
+    }
+  })
+}
+
+// The smallest increment a member actually uses across their scores. Detects the
+// finest grid (1 / 0.5 / 0.25 / 0.1 / 0.01) every score lands on. Returns one of
+// those step values, or null when there aren't enough scores to tell.
+export function scoringGranularity(scores) {
+  if (!scores || scores.length < 2) return null
+  const steps = [1, 0.5, 0.25, 0.1, 0.01]
+  // Work in integer hundredths to dodge float error.
+  const cents = scores.map(s => Math.round(Number(s) * 100))
+  for (const step of steps) {
+    const stepC = Math.round(step * 100)
+    if (cents.every(c => c % stepC === 0)) return step
+  }
+  return 0.01
+}
+
+// Release decade label for a 4-digit year. e.g. 1994 → "1990s".
+export function decadeLabel(year) {
+  const y = Number(year)
+  if (!y || isNaN(y)) return null
+  return `${Math.floor(y / 10) * 10}s`
 }
 
 // Quarterly season label for a YYYY-MM string. Winter Dec–Feb, Spring Mar–May,
@@ -530,9 +645,77 @@ function FilmRowCard({ movie, label, sublabel, onClick }) {
   )
 }
 
+// ─── Expandable film stat (row card + per-member breakdown chart) ────────────
+// The row stays clickable into the film overlay; a separate chevron toggles an
+// inline per-member score bar chart (with mean + std-dev annotation).
+
+function ExpandableFilmStat({ movie, label, sublabel, onFilm, expanded, onToggle, chartData, caption }) {
+  return (
+    <div>
+      <div style={{ position: 'relative' }}>
+        <FilmRowCard movie={movie} label={label} sublabel={sublabel} onClick={() => onFilm?.(movie)} />
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggle() }}
+          aria-label={expanded ? 'Hide breakdown' : 'Show per-member breakdown'}
+          style={{
+            position: 'absolute', top: '50%', right: '8px', transform: 'translateY(-50%)',
+            width: '26px', height: '26px', borderRadius: '8px',
+            background: expanded ? 'rgba(var(--fg-rgb), 0.09)' : 'rgba(var(--fg-rgb), 0.04)',
+            border: '1px solid rgba(var(--fg-rgb), 0.08)',
+            color: 'var(--text-dim)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: "'DM Mono',monospace", fontSize: '11px',
+            transition: 'transform 0.15s ease',
+          }}
+        >
+          {expanded ? '▾' : '▸'}
+        </button>
+      </div>
+      {expanded && (
+        <GlassCard style={{ marginTop: '8px', padding: '14px 12px' }}>
+          {chartData && chartData.bars.length > 0 ? (
+            <>
+              <MemberScoreBars data={chartData.bars} mean={chartData.mean} sd={chartData.sd} />
+              {caption && (
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                  {caption}
+                </p>
+              )}
+            </>
+          ) : (
+            <ChartPlaceholder height={90}>Individual member scores not available for this film yet.</ChartPlaceholder>
+          )}
+        </GlassCard>
+      )}
+    </div>
+  )
+}
+
 // ─── Overview Tab ────────────────────────────────────────────────────────────
 
 function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
+  // Which film stat is expanded into a per-member chart (null = none).
+  const [expanded, setExpanded] = useState(null)
+
+  // Per-member score bars for a single film, sorted high→low. Returns
+  // { bars: [{ name, value, fill }], mean, sd } or null.
+  const memberBarsForMovie = useCallback((movieId) => {
+    if (!movieId) return null
+    const byUser = {}
+    for (const u of users) byUser[u.id] = u
+    const rows = ratings
+      .filter(r => r.movie_id === movieId && r.score != null && byUser[r.user_id])
+      .map(r => ({
+        name: firstLast(byUser[r.user_id].name),
+        value: Number(r.score),
+        fill: memberColor(byUser[r.user_id].name),
+      }))
+      .sort((a, b) => b.value - a.value)
+    if (rows.length === 0) return null
+    const vals = rows.map(r => r.value)
+    return { bars: rows, mean: avg(vals), sd: stddev(vals) }
+  }, [ratings, users])
+
   const stats = useMemo(() => {
     if (!movies.length) return null
 
@@ -701,10 +884,11 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
           <SectionLabel>Member Averages</SectionLabel>
           <GlassCard style={{ padding: '14px 10px' }}>
             <ComparisonBar
-              data={stats.memberAvgs.map(u => ({ name: u.name.split(' ')[0], value: u.avgScore }))}
+              data={stats.memberAvgs.map(u => ({ name: firstLast(u.name), value: u.avgScore, _fill: memberColor(u.name) }))}
               keys={[{ key: 'value', name: 'Avg' }]}
               layout="vertical"
               height={Math.max(120, stats.memberAvgs.length * 30 + 20)}
+              cellFill="_fill"
             />
           </GlassCard>
         </div>
@@ -720,7 +904,14 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
         ) : (
           <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px' }}>
             {stats.vault.map(m => (
-              <div key={m.id} style={{ flexShrink: 0, width: '112px' }}>
+              <div
+                key={m.id}
+                onClick={() => onFilm?.(m)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFilm?.(m) } }}
+                style={{ flexShrink: 0, width: '112px', cursor: 'pointer' }}
+              >
                 <div style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden', background: 'var(--surface-2)', aspectRatio: '2/3' }}>
                   {m.poster_url ? (
                     <img
@@ -773,11 +964,15 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
       <div>
         <SectionLabel>Most Divisive Film</SectionLabel>
         {stats.mostDivisive ? (
-          <FilmRowCard
+          <ExpandableFilmStat
             movie={stats.mostDivisive.movie}
             label={`${fmt(stats.mostDivisive.avgScore)}`}
             sublabel={`Std dev: ${fmt(stats.mostDivisive.sd)} · Low: ${fmt(stats.mostDivisive.low)} · High: ${fmt(stats.mostDivisive.high)}`}
-            onClick={() => onFilm?.(stats.mostDivisive.movie)}
+            onFilm={onFilm}
+            expanded={expanded === 'divisive'}
+            onToggle={() => setExpanded(e => e === 'divisive' ? null : 'divisive')}
+            chartData={memberBarsForMovie(stats.mostDivisive.movie.id)}
+            caption="Each member's score · μ = club mean · dashed = ±1 std-dev (high spread)"
           />
         ) : (
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
@@ -790,11 +985,15 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
       <div>
         <SectionLabel>Most Unanimous Film</SectionLabel>
         {stats.mostUnanimous ? (
-          <FilmRowCard
+          <ExpandableFilmStat
             movie={stats.mostUnanimous.movie}
             label={`${fmt(stats.mostUnanimous.avgScore)}`}
             sublabel={`Std dev: ${fmt(stats.mostUnanimous.sd)} · Low: ${fmt(stats.mostUnanimous.low)} · High: ${fmt(stats.mostUnanimous.high)}`}
-            onClick={() => onFilm?.(stats.mostUnanimous.movie)}
+            onFilm={onFilm}
+            expanded={expanded === 'unanimous'}
+            onToggle={() => setExpanded(e => e === 'unanimous' ? null : 'unanimous')}
+            chartData={memberBarsForMovie(stats.mostUnanimous.movie.id)}
+            caption="Each member's score · μ = club mean · dashed = ±1 std-dev (tight spread)"
           />
         ) : (
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
@@ -807,11 +1006,15 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
       <div>
         <SectionLabel>Highest Rated Film</SectionLabel>
         {stats.highest ? (
-          <FilmRowCard
+          <ExpandableFilmStat
             movie={stats.highest.movie}
             label={fmt(stats.highest.avgScore)}
             sublabel={`Avg of ${(stats.movieScores[stats.highest.movie.id] || []).length} score(s)`}
-            onClick={() => onFilm?.(stats.highest.movie)}
+            onFilm={onFilm}
+            expanded={expanded === 'highest'}
+            onToggle={() => setExpanded(e => e === 'highest' ? null : 'highest')}
+            chartData={memberBarsForMovie(stats.highest.movie.id)}
+            caption="Per-member score · μ = club mean"
           />
         ) : (
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>No data.</p>
@@ -822,11 +1025,15 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
       <div>
         <SectionLabel>Lowest Rated Film</SectionLabel>
         {stats.lowest ? (
-          <FilmRowCard
+          <ExpandableFilmStat
             movie={stats.lowest.movie}
             label={fmt(stats.lowest.avgScore)}
             sublabel={`Avg of ${(stats.movieScores[stats.lowest.movie.id] || []).length} score(s)`}
-            onClick={() => onFilm?.(stats.lowest.movie)}
+            onFilm={onFilm}
+            expanded={expanded === 'lowest'}
+            onToggle={() => setExpanded(e => e === 'lowest' ? null : 'lowest')}
+            chartData={memberBarsForMovie(stats.lowest.movie.id)}
+            caption="Per-member score · μ = club mean"
           />
         ) : (
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>Need at least 2 scores per film.</p>
@@ -840,20 +1047,22 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>No ratings yet.</p>
         ) : (
           <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-            {stats.memberAvgs.map(u => (
+            {stats.memberAvgs.map(u => {
+              const ring = memberColor(u.name) || 'var(--accent)'
+              return (
               <GlassCard key={u.id} onClick={() => onMember?.(u.id)} style={{ flexShrink: 0, padding: '14px 16px', textAlign: 'center', minWidth: '90px' }}>
                 {/* Avatar */}
                 <div style={{
                   width: '40px', height: '40px',
                   borderRadius: '50%',
-                  border: '2px solid var(--accent)',
+                  border: `2px solid ${ring}`,
                   background: 'rgba(var(--fg-rgb), 0.05)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   margin: '0 auto 8px',
                 }}>
                   <span style={{
                     fontFamily: "'Bebas Neue',sans-serif",
-                    color: 'var(--accent)',
+                    color: ring,
                     fontSize: '14px',
                     letterSpacing: '0.04em',
                   }}>
@@ -868,7 +1077,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
                   overflow: 'hidden', textOverflow: 'ellipsis',
                   maxWidth: '80px',
                 }}>
-                  {u.name.split(' ')[0]}
+                  {firstLast(u.name)}
                 </p>
                 <p style={{
                   fontFamily: "'Bebas Neue',sans-serif",
@@ -879,7 +1088,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
                   {fmt(u.avgScore)}
                 </p>
               </GlassCard>
-            ))}
+            )})}
           </div>
         )}
       </div>
@@ -922,23 +1131,9 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
     const recommendations = ratings.filter(r => r.recommend_outside_club != null)
     const wouldRecommend = recommendations.filter(r => r.recommend_outside_club === true)
 
-    // Score distribution buckets
-    const buckets = [
-      { label: '0–1', min: 0, max: 1 },
-      { label: '1–2', min: 1, max: 2 },
-      { label: '2–3', min: 2, max: 3 },
-      { label: '3–4', min: 3, max: 4 },
-      { label: '4–5', min: 4, max: 5 },
-      { label: '5–6', min: 5, max: 6 },
-      { label: '6–7', min: 6, max: 7 },
-      { label: '7–8', min: 7, max: 8 },
-      { label: '8–9', min: 8, max: 9 },
-      { label: '9–10', min: 9, max: 10.01 },
-    ]
-    const bucketCounts = buckets.map(b => ({
-      label: b.label,
-      count: scores.filter(s => s >= b.min && s < b.max).length,
-    }))
+    // Score distribution buckets — bin count scales with N (Sturges/sqrt blend)
+    // so the histogram stays well-shaped as more films are scored.
+    const bucketCounts = buildScoreBins(scores)
 
     // Top 5 and bottom 5
     const scoredWithMovies = scored
@@ -977,6 +1172,21 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
       month: monthsById[mid]?.month_year ? formatMonthLabel(monthsById[mid].month_year) : 'm',
       value: avg(byMonth[mid]),
     }))
+
+    // Individual scores over time (chronological by submission). x = film title
+    // (truncated). Lets you see your raw scoring sequence, not just the monthly avg.
+    const scoresOverTime = scored
+      .map(r => ({ ...r, movie: movieMap[r.movie_id] }))
+      .filter(r => r.movie)
+      .sort((a, b) => {
+        const ta = a.submitted_at ? Date.parse(a.submitted_at) : 0
+        const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
+        return ta - tb
+      })
+      .map(r => ({
+        month: r.movie.title.length > 14 ? r.movie.title.slice(0, 13) + '…' : r.movie.title,
+        value: Number(r.score),
+      }))
 
     // Me vs club average (comparison bar)
     const clubScores = allRatings.filter(r => r.score != null).map(r => Number(r.score))
@@ -1044,6 +1254,8 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
     return {
       filmCount: scored.length,
       avgScore: myAvg,
+      stdDev: stddev(scores),
+      granularity: scoringGranularity(scores),
       excitementAvg: avg(excitements),
       recommendPct: recommendations.length > 0 ? (wouldRecommend.length / recommendations.length) * 100 : null,
       bucketCounts,
@@ -1052,6 +1264,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
       excVsFinal,
       scatter,
       trend,
+      scoresOverTime,
       myVsClub,
       myPercentile,
       myGenreDonut,
@@ -1086,7 +1299,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
-      {/* Header row — 4 mini stat cards */}
+      {/* Header row — mini stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         <StatCard label="Films Scored" value={stats.filmCount} />
         <StatCard label="Avg Score" value={fmt(stats.avgScore)} />
@@ -1095,6 +1308,8 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
           label="Would Recommend"
           value={stats.recommendPct != null ? `${Math.round(stats.recommendPct)}%` : '—'}
         />
+        <StatCard label="Std Dev" value={stats.stdDev != null ? fmt(stats.stdDev) : '—'} />
+        <StatCard label="Granularity" value={stats.granularity != null ? stats.granularity.toFixed(2) : '—'} />
       </div>
 
       {/* Score Distribution Bar Chart */}
@@ -1118,14 +1333,26 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         </GlassCard>
       </div>
 
-      {/* Scoring Trend */}
+      {/* Scoring Trend (avg per month) */}
       <div>
-        <SectionLabel>Scoring Trend</SectionLabel>
+        <SectionLabel>Scoring Trend · Avg Per Month</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.trend.length >= 2 ? (
             <MonthLineChart data={stats.trend} height={180} />
           ) : (
             <ChartPlaceholder>Not enough months scored yet for a trend.</ChartPlaceholder>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Scores Over Time (each individual score, chronological) */}
+      <div>
+        <SectionLabel>Your Scores Over Time</SectionLabel>
+        <GlassCard style={{ padding: '16px 12px' }}>
+          {stats.scoresOverTime.length >= 2 ? (
+            <MonthLineChart data={stats.scoresOverTime} height={190} />
+          ) : (
+            <ChartPlaceholder>Score a few films to see your scoring sequence.</ChartPlaceholder>
           )}
         </GlassCard>
       </div>
@@ -1521,6 +1748,9 @@ export function calcGivenVsReceived(userId, ratings, moviePickedBy, scoresByMovi
 // ─── Members Tab ─────────────────────────────────────────────────────────────
 
 function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
+  // Which member's card is expanded into its detailed plots (null = none).
+  const [expandedId, setExpandedId] = useState(null)
+
   const stats = useMemo(() => {
     if (!users.length) return null
 
@@ -1565,6 +1795,24 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
           .map(r => Number(r.pre_watch_excitement))
         const avgExcitement = avg(excitements)
 
+        // Richer per-member stats for the expandable card.
+        const sd = stddev(scores)
+        const granularity = scoringGranularity(scores)
+        const distBins = scores.length ? buildScoreBins(scores) : []
+
+        // This member's scores over time (chronological), as a line.
+        const overTime = scoredWithMovies
+          .slice()
+          .sort((a, b) => {
+            const ta = a.submitted_at ? Date.parse(a.submitted_at) : 0
+            const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
+            return ta - tb
+          })
+          .map(r => ({
+            month: r.movie.title.length > 14 ? r.movie.title.slice(0, 13) + '…' : r.movie.title,
+            value: Number(r.score),
+          }))
+
         return {
           ...u,
           filmCount: scored.length,
@@ -1573,6 +1821,11 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
           lowest,
           recommendPct,
           avgExcitement,
+          sd,
+          granularity,
+          distBins,
+          overTime,
+          color: memberColor(u.name) || 'var(--accent)',
         }
       })
       .filter(u => u.avgScore != null)
@@ -1600,25 +1853,26 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
       {stats.map(u => (
         <GlassCard key={u.id} style={{ padding: '18px' }}>
           {/* Header row — click avatar/name to open the member's profile */}
-          <div
-            onClick={() => onMember?.(u.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onMember?.(u.id) } }}
-            style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px', cursor: 'pointer' }}
-          >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+            <div
+              onClick={() => onMember?.(u.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onMember?.(u.id) } }}
+              style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0, cursor: 'pointer' }}
+            >
             {/* Initials avatar */}
             <div style={{
               flexShrink: 0,
               width: '44px', height: '44px',
               borderRadius: '50%',
-              border: '2px solid var(--accent)',
+              border: `2px solid ${u.color}`,
               background: 'rgba(var(--fg-rgb), 0.04)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <span style={{
                 fontFamily: "'Bebas Neue',sans-serif",
-                color: 'var(--accent)',
+                color: u.color,
                 fontSize: '15px',
                 letterSpacing: '0.04em',
               }}>
@@ -1645,6 +1899,7 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
                 {u.filmCount} film{u.filmCount !== 1 ? 's' : ''} scored
               </p>
             </div>
+            </div>
             {/* Big avg score */}
             <div style={{ flexShrink: 0, textAlign: 'right' }}>
               <p style={{
@@ -1668,6 +1923,21 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
                 {fmt(u.avgScore)}
               </p>
             </div>
+            {/* Expand toggle — reveals detailed per-member plots */}
+            <button
+              onClick={() => setExpandedId(id => id === u.id ? null : u.id)}
+              aria-label={expandedId === u.id ? 'Hide details' : 'Show details'}
+              style={{
+                flexShrink: 0, width: '30px', height: '30px', borderRadius: '9px',
+                background: expandedId === u.id ? 'rgba(var(--fg-rgb), 0.09)' : 'rgba(var(--fg-rgb), 0.04)',
+                border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                color: 'var(--text-dim)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: "'DM Mono',monospace", fontSize: '12px',
+              }}
+            >
+              {expandedId === u.id ? '▾' : '▸'}
+            </button>
           </div>
 
           {/* Stats grid */}
@@ -1729,6 +1999,55 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
               )}
             </div>
           )}
+
+          {/* Expandable detailed plots — keeps the page uncluttered by default */}
+          {expandedId === u.id && (
+            <div style={{ borderTop: '1px solid rgba(var(--fg-rgb), 0.05)', marginTop: '14px', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Secondary stat chips: std dev + granularity */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', borderRadius: '9px', padding: '10px 12px' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
+                    Std Dev (spread)
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                    {u.sd != null ? fmt(u.sd) : '—'}
+                  </p>
+                </div>
+                <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', borderRadius: '9px', padding: '10px 12px' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
+                    Granularity
+                  </p>
+                  <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+                    {u.granularity != null ? u.granularity.toFixed(2) : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Score distribution */}
+              <div>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--hairline)', margin: '0 0 8px' }}>
+                  Score Distribution
+                </p>
+                {u.distBins.length > 0 ? (
+                  <ScoreHistogram data={u.distBins} height={130} color={u.color} />
+                ) : (
+                  <ChartPlaceholder height={80}>No scores yet.</ChartPlaceholder>
+                )}
+              </div>
+
+              {/* Scores over time */}
+              <div>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--hairline)', margin: '0 0 8px' }}>
+                  Scores Over Time
+                </p>
+                {u.overTime.length >= 2 ? (
+                  <MonthLineChart data={u.overTime} height={170} color={u.color} />
+                ) : (
+                  <ChartPlaceholder height={80}>Need 2+ scored films.</ChartPlaceholder>
+                )}
+              </div>
+            </div>
+          )}
         </GlassCard>
       ))}
     </div>
@@ -1742,6 +2061,78 @@ function formatMonthLabel(monthYear) {
   // Local noon, not UTC midnight — avoids the previous-month rollover in ET/PT.
   const d = new Date(monthYear + '-01T12:00:00')
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
+
+// Club average vs TMDB community vote_average. Fetches vote_average per film from
+// TMDB (client-safe read token). Degrades gracefully: if the token is missing or
+// requests fail, renders a placeholder rather than erroring. candidates:
+// [{ id, tmdb_id, title, clubAvg }].
+function ClubVsTmdbChart({ candidates }) {
+  const [rows, setRows] = useState(null) // null = loading, [] = none, [...] = data
+  const [failed, setFailed] = useState(false)
+
+  // Stable signature so the effect re-runs only when the candidate set changes.
+  const sig = useMemo(
+    () => candidates.map(c => c.tmdb_id).sort((a, b) => a - b).join(','),
+    [candidates],
+  )
+
+  useEffect(() => {
+    const token = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
+    if (!token || candidates.length === 0) { setRows([]); return }
+    let cancelled = false
+    ;(async () => {
+      setRows(null)
+      setFailed(false)
+      try {
+        // Cap requests to keep this light; most-recent / first N candidates.
+        const subset = candidates.slice(0, 40)
+        const results = await Promise.all(subset.map(async (c) => {
+          try {
+            const resp = await fetch(`https://api.themoviedb.org/3/movie/${c.tmdb_id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (!resp.ok) return null
+            const j = await resp.json()
+            const va = typeof j?.vote_average === 'number' ? j.vote_average : null
+            if (va == null || va === 0) return null
+            return {
+              name: c.title.length > 16 ? c.title.slice(0, 15) + '…' : c.title,
+              club: Number(c.clubAvg.toFixed(2)),
+              tmdb: Number(va.toFixed(2)),
+            }
+          } catch { return null }
+        }))
+        if (cancelled) return
+        const clean = results.filter(Boolean)
+        setRows(clean)
+        if (clean.length === 0) setFailed(true)
+      } catch {
+        if (!cancelled) { setRows([]); setFailed(true) }
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig])
+
+  if (rows === null) return <ChartPlaceholder>Loading TMDB ratings…</ChartPlaceholder>
+  if (failed || rows.length === 0) {
+    return <ChartPlaceholder>TMDB ratings unavailable.</ChartPlaceholder>
+  }
+  return (
+    <>
+      <ComparisonBar
+        data={rows}
+        keys={[{ key: 'club', name: 'Club' }, { key: 'tmdb', name: 'TMDB' }]}
+        layout="horizontal"
+        labelKey="name"
+        height={Math.max(220, rows.length * 30 + 40)}
+      />
+      <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+        Our club average vs the wider TMDB community vote (both on a 0–10 scale)
+      </p>
+    </>
+  )
 }
 
 function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
@@ -1843,11 +2234,34 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     const avgExcitement = avg(excitements)
     const avgFinal = avg(finalScores)
 
-    // ── Avg score per month line (x = month name) ──
-    const monthLine = monthAvgs.map(m => ({
-      month: m.month_year ? formatMonthLabel(m.month_year) : 'm',
-      value: m.avgScore,
-    }))
+    // ── Trend overlay: club avg + each member's monthly avg over months ──
+    // Per-member, per-month average of their own scores. Keyed by month_id so it
+    // aligns with the monthAvgs ordering.
+    const memberMonthScores = {} // userId -> { monthId -> [scores] }
+    for (const r of ratings) {
+      if (r.score == null) continue
+      const mv = movieMap[r.movie_id]
+      if (!mv || !mv.month_id) continue
+      ;(memberMonthScores[r.user_id] ||= {})
+      ;(memberMonthScores[r.user_id][mv.month_id] ||= []).push(Number(r.score))
+    }
+    const trendMembers = users.filter(u => u.is_active !== false && memberMonthScores[u.id])
+    // Each row is one month; columns are clubAvg + one key per member (u_<id>).
+    const trendData = monthAvgs.map(m => {
+      const row = {
+        month: m.month_year ? formatMonthLabel(m.month_year) : 'm',
+        club: m.avgScore,
+      }
+      for (const u of trendMembers) {
+        const arr = memberMonthScores[u.id]?.[m.month_id]
+        row[`u_${u.id}`] = arr && arr.length ? avg(arr) : null
+      }
+      return row
+    })
+    const trendSeries = [
+      { key: 'club', name: 'Club avg', color: accentColor() },
+      ...trendMembers.map(u => ({ key: `u_${u.id}`, name: firstLast(u.name), color: memberColor(u.name) || CAT_PALETTE[0] })),
+    ]
 
     // ── All-time score distribution histogram (0–10 buckets) ──
     const allScores = ratings.filter(r => r.score != null).map(r => Number(r.score))
@@ -1870,7 +2284,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
 
     const memberBox = users
       .filter(u => u.is_active !== false && (scoresByUser[u.id] || []).length >= 2)
-      .map(u => ({ name: u.name.split(' ')[0], ...quartiles(scoresByUser[u.id]) }))
+      .map(u => ({ name: firstLast(u.name), ...quartiles(scoresByUser[u.id]) }))
 
     const clubAvgAll = avg(allScores)
     const givenReceived = users
@@ -1878,7 +2292,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       .map(u => {
         const gr = calcGivenVsReceived(u.id, ratings, moviePickedBy, ratingsByMovie)
         return {
-          name: u.name.split(' ')[0],
+          name: firstLast(u.name),
           given: gr.given,
           received: gr.received,
           club: clubAvgAll,
@@ -1933,7 +2347,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     const percentileData = corrMembers
       .map(u => {
         const a = avg(scoresByUser[u.id])
-        return { name: u.name.split(' ')[0], value: percentileRank(memberAvgArr, a), avgScore: a }
+        return { name: firstLast(u.name), value: percentileRank(memberAvgArr, a), avgScore: a, _fill: memberColor(u.name) }
       })
       .sort((a, b) => b.value - a.value)
 
@@ -1941,9 +2355,76 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     const genreDonut = topGenres.map(([name, value]) => ({ name, value }))
     const genreBarData = topGenres.map(([name, count]) => ({ genre: name, count }))
 
+    // ── Average score per release DECADE ──
+    // Group films by release decade; average each film's authoritative average.
+    const decadeBuckets = {} // "1990s" -> [filmAvg, ...]
+    for (const m of movies) {
+      if (!m.scores_revealed) continue
+      const dl = decadeLabel(m.year_released)
+      if (!dl) continue
+      const sc = ratingsByMovie[m.id] || []
+      const a = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+      if (a == null) continue
+      ;(decadeBuckets[dl] ||= []).push(a)
+    }
+    const decadeData = Object.entries(decadeBuckets)
+      .map(([decade, arr]) => ({ decade, value: avg(arr), count: arr.length }))
+      .sort((a, b) => (a.decade < b.decade ? -1 : 1))
+
+    // ── Per-user scoring GRANULARITY (smallest increment they use) ──
+    const granularityData = users
+      .filter(u => u.is_active !== false && (scoresByUser[u.id] || []).length >= 2)
+      .map(u => ({
+        name: firstLast(u.name),
+        granularity: scoringGranularity(scoresByUser[u.id]),
+        color: memberColor(u.name) || accentColor(),
+      }))
+      .filter(d => d.granularity != null)
+      .sort((a, b) => a.granularity - b.granularity)
+
+    // ── Per-user STD DEV (scoring variation) ──
+    const stdDevData = users
+      .filter(u => u.is_active !== false && (scoresByUser[u.id] || []).length >= 2)
+      .map(u => ({
+        name: firstLast(u.name),
+        value: stddev(scoresByUser[u.id]),
+        _fill: memberColor(u.name) || accentColor(),
+      }))
+      .filter(d => d.value != null)
+      .sort((a, b) => b.value - a.value)
+
+    // ── Per-MOVIE stats: each member's avg + spread, plus film stddev ──
+    // One row per revealed film with ≥2 scores: club avg + score stddev across
+    // members. Most-divergent first; capped so the chart stays readable.
+    const perMovieStats = movies
+      .filter(m => m.scores_revealed && (ratingsByMovie[m.id] || []).length >= 2)
+      .map(m => {
+        const sc = ratingsByMovie[m.id]
+        return { id: m.id, title: m.title, mean: avg(sc), sd: stddev(sc), count: sc.length }
+      })
+      .sort((a, b) => (b.sd ?? 0) - (a.sd ?? 0))
+
+    // ── Club vs TMDB: films with a tmdb_id, paired club avg vs TMDB vote_average.
+    // The actual vote_average is fetched client-side (see component) since the DB
+    // doesn't store it. Here we just expose the candidate films + club avgs.
+    const tmdbCandidates = movies
+      .filter(m => m.scores_revealed && m.tmdb_id)
+      .map(m => {
+        const sc = ratingsByMovie[m.id] || []
+        const clubAvg = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+        return clubAvg != null ? { id: m.id, tmdb_id: m.tmdb_id, title: m.title, clubAvg } : null
+      })
+      .filter(Boolean)
+
     return {
       monthAvgs,
-      monthLine,
+      trendData,
+      trendSeries,
+      decadeData,
+      granularityData,
+      stdDevData,
+      perMovieStats,
+      tmdbCandidates,
       mostActiveUser,
       mostActiveCount,
       streaks,
@@ -1991,13 +2472,18 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
-      {/* Avg Score Per Month (line) */}
+      {/* Score Over Time — TREND overlay (club avg + each member) */}
       <div>
-        <SectionLabel>Average Score Per Month</SectionLabel>
+        <SectionLabel>Score Over Time · Club vs Members</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
-          {stats.monthLine.length >= 2 ? (
-            <MonthLineChart data={stats.monthLine} height={190} />
-          ) : stats.monthLine.length === 1 ? (
+          {stats.trendData.length >= 2 ? (
+            <>
+              <MonthLineChart data={stats.trendData} series={stats.trendSeries} height={230} />
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                Thick accent line = club average · others = each member's monthly average
+              </p>
+            </>
+          ) : stats.trendData.length === 1 ? (
             <ChartPlaceholder>Only one month of data — need 2+ for a trend.</ChartPlaceholder>
           ) : (
             <ChartPlaceholder>No monthly data yet.</ChartPlaceholder>
@@ -2010,6 +2496,124 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
         <SectionLabel>All-Time Score Distribution</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           <ScoreHistogram data={stats.distBuckets} height={170} />
+        </GlassCard>
+      </div>
+
+      {/* Club vs TMDB community rating */}
+      <div>
+        <SectionLabel>Club vs TMDB</SectionLabel>
+        <GlassCard style={{ padding: '16px 12px' }}>
+          {stats.tmdbCandidates.length > 0 ? (
+            <ClubVsTmdbChart candidates={stats.tmdbCandidates} />
+          ) : (
+            <ChartPlaceholder>No films with a TMDB id yet.</ChartPlaceholder>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Average Score by Release Decade */}
+      <div>
+        <SectionLabel>Average Score by Decade</SectionLabel>
+        <GlassCard style={{ padding: '16px 12px' }}>
+          {stats.decadeData.length > 0 ? (
+            <>
+              <ComparisonBar
+                data={stats.decadeData.map(d => ({ name: d.decade, value: d.value }))}
+                keys={[{ key: 'value', name: 'Avg' }]}
+                layout="horizontal"
+                labelKey="name"
+                height={Math.max(160, stats.decadeData.length * 26 + 50)}
+              />
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                {stats.decadeData.map(d => `${d.decade}: ${d.count}`).join(' · ')} films
+              </p>
+            </>
+          ) : (
+            <ChartPlaceholder>No release-year data yet.</ChartPlaceholder>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Per-member scoring granularity (smallest increment used) */}
+      <div>
+        <SectionLabel>Scoring Granularity</SectionLabel>
+        <GlassCard style={{ padding: '16px' }}>
+          {stats.granularityData.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {stats.granularityData.map(d => (
+                <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.name}
+                  </span>
+                  <span style={{
+                    flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '12px',
+                    color: d.color, background: 'rgba(var(--fg-rgb), 0.05)',
+                    border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                    padding: '3px 10px', borderRadius: '999px',
+                  }}>
+                    {d.granularity.toFixed(2)}
+                  </span>
+                </div>
+              ))}
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '4px 0 0' }}>
+                Smallest score increment each member actually lands on (1 / 0.5 / 0.25 / 0.1 / 0.01).
+              </p>
+            </div>
+          ) : (
+            <ChartPlaceholder>Need at least 2 scores per member.</ChartPlaceholder>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Per-member scoring variation (std dev) */}
+      <div>
+        <SectionLabel>Scoring Variation · Std Dev</SectionLabel>
+        <GlassCard style={{ padding: '16px 12px' }}>
+          {stats.stdDevData.length > 0 ? (
+            <ComparisonBar
+              data={stats.stdDevData}
+              keys={[{ key: 'value', name: 'Std dev' }]}
+              layout="vertical"
+              cellFill="_fill"
+              height={Math.max(120, stats.stdDevData.length * 30 + 20)}
+            />
+          ) : (
+            <ChartPlaceholder>Need at least 2 scores per member.</ChartPlaceholder>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Per-movie score spread (stddev across members) */}
+      <div>
+        <SectionLabel>Per-Film Score Spread</SectionLabel>
+        <GlassCard style={{ padding: '4px 0' }}>
+          {stats.perMovieStats.length > 0 ? (
+            stats.perMovieStats.slice(0, 12).map((m, i) => (
+              <div key={m.id} style={{
+                display: 'flex', alignItems: 'center', gap: '12px',
+                padding: '10px 16px',
+                borderBottom: i < Math.min(12, stats.perMovieStats.length) - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
+              }}>
+                <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {m.title}
+                </p>
+                <span style={{ flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)' }}>
+                  μ {fmt(m.mean)}
+                </span>
+                <span style={{
+                  flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '11px',
+                  color: (m.sd ?? 0) >= 1.5 ? '#f87171' : (m.sd ?? 0) <= 0.6 ? '#86efac' : 'var(--text-dim)',
+                  minWidth: '52px', textAlign: 'right',
+                }}>
+                  σ {fmt(m.sd)}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div style={{ padding: '16px' }}>
+              <ChartPlaceholder height={70}>Need at least 2 member scores on a film.</ChartPlaceholder>
+            </div>
+          )}
         </GlassCard>
       </div>
 
@@ -2395,7 +2999,7 @@ function MemberPill({ activeUsers, selected, onSelect, exclude }) {
   )
 }
 
-function HeadToHeadTab({ movies, ratings, users, loading }) {
+function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
   const activeUsers = useMemo(
     () => users.filter(u => u.is_active !== false),
     [users],
@@ -2653,7 +3257,7 @@ function HeadToHeadTab({ movies, ratings, users, loading }) {
             <SectionLabel>Most Agreed On</SectionLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {h2h.mostAgreed.map(f => (
-                <GlassCard key={f.movie_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px' }}>
+                <GlassCard key={f.movie_id} onClick={() => onFilm?.(f.movie)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)', fontWeight: 500, fontSize: '13px', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {f.movie.title}
@@ -2683,7 +3287,7 @@ function HeadToHeadTab({ movies, ratings, users, loading }) {
             <SectionLabel>Most Disagreed On</SectionLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {h2h.mostDisagreed.map(f => (
-                <GlassCard key={f.movie_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px' }}>
+                <GlassCard key={f.movie_id} onClick={() => onFilm?.(f.movie)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)', fontWeight: 500, fontSize: '13px', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {f.movie.title}
@@ -2720,7 +3324,12 @@ const TABS = ['Overview', 'Me', 'Members', 'Club', 'Head to Head']
 export default function Stats() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('Overview')
+  // Honor a ?tab= deep link (e.g. Home's "all caught up" box → ?tab=me), matched case-insensitively.
+  const initialTab = (() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return TABS.find(x => x.toLowerCase() === (t ?? '').toLowerCase()) ?? 'Overview'
+  })()
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [selectedMovie, setSelectedMovie] = useState(null)
 
   // Spec: films are clickable everywhere in Stats (open the film overlay) and
@@ -2753,7 +3362,7 @@ export default function Stats() {
       ] = await Promise.all([
         supabase
           .from('movies_safe')
-          .select('id, month_id, title, poster_url, year_released, director, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
+          .select('id, month_id, title, tmdb_id, poster_url, year_released, director, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
         supabase
           .from('ratings')
           .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
@@ -2928,6 +3537,7 @@ export default function Stats() {
               users={users}
               loading={loading}
               monthsById={monthsById}
+              onFilm={onFilm}
             />
           )}
         </div>

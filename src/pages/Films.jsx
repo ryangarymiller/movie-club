@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
@@ -7,20 +8,15 @@ import GuessThePicker from '../components/GuessThePicker'
 import VetoControl from '../components/VetoControl'
 import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
+import { memberColor, MEMBER_COLORS } from '../lib/colors'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-export const MEMBER_COLORS = {
-  'Ryan Miller':    '#6366f1',
-  'Ryan Bey':       '#f43f5e',
-  'Andrew Bond':    '#10b981',
-  'Zack Anjoorian': '#f59e0b',
-  'Chris Deschenes':'#3b82f6',
-}
+// Re-export the shared member-color map so existing imports keep working.
+export { MEMBER_COLORS }
 
 export function pickerColor(pickerName) {
-  if (!pickerName) return undefined
-  return MEMBER_COLORS[pickerName] ?? undefined
+  return memberColor(pickerName)
 }
 
 export function sortMonthsDescending(months) {
@@ -249,16 +245,18 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
 // ─── PickerLegend ─────────────────────────────────────────────────────────────
 
 function PickerLegend({ movies, userById }) {
+  const navigate = useNavigate()
   // Collect unique pickers that are revealed
   const seen = new Set()
   const entries = []
   for (const m of movies) {
     if (m.picker_revealed && m.picked_by_user_id) {
-      const name = userById[m.picked_by_user_id]?.name
-      if (name && !seen.has(name)) {
-        seen.add(name)
+      const id = m.picked_by_user_id
+      const name = userById[id]?.name
+      if (name && !seen.has(id)) {
+        seen.add(id)
         const color = pickerColor(name)
-        if (color) entries.push({ name, color })
+        if (color) entries.push({ id, name, color })
       }
     }
   }
@@ -274,11 +272,23 @@ function PickerLegend({ movies, userById }) {
         color: 'rgba(var(--fg-rgb), 0.2)',
         margin: '0 0 10px',
       }}>
-        Members
+        Club Members
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 16px' }}>
-        {entries.map(({ name, color }) => (
-          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {entries.map(({ id, name, color }) => (
+          <button
+            key={id}
+            onClick={() => navigate(`/profile/${id}`)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+            }}
+          >
             <div style={{
               width: '8px',
               height: '8px',
@@ -294,7 +304,7 @@ function PickerLegend({ movies, userById }) {
             }}>
               {name}
             </span>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -309,7 +319,7 @@ function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSele
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
           gap: '10px',
         }}
         className="films-grid"
@@ -340,10 +350,12 @@ function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSele
 
 // ─── FilmDetailOverlay ────────────────────────────────────────────────────────
 
-function MemberScoreRow({ rating, user }) {
+function MemberScoreRow({ rating, user, onNameClick }) {
   const name = user?.name ?? 'Unknown'
   const score = rating?.score
   const excitement = rating?.pre_watch_excitement
+  const clickable = typeof onNameClick === 'function' && user?.id
+  const handleClick = clickable ? () => onNameClick(user.id) : undefined
 
   return (
     <div style={{
@@ -354,23 +366,28 @@ function MemberScoreRow({ rating, user }) {
       borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)',
     }}>
       {/* Avatar */}
-      <div style={{
-        flexShrink: 0,
-        width: '32px',
-        height: '32px',
-        borderRadius: '50%',
-        background: avatarColor(name),
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
+      <div
+        onClick={handleClick}
+        style={{
+          flexShrink: 0,
+          width: '32px',
+          height: '32px',
+          borderRadius: '50%',
+          background: avatarColor(name),
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: clickable ? 'pointer' : 'default',
+        }}>
         <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
           {initials(name)}
         </span>
       </div>
 
       {/* Name */}
-      <span style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans', sans-serif", fontSize: '14px', color: 'rgba(var(--fg-rgb), 0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span
+        onClick={handleClick}
+        style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans', sans-serif", fontSize: '14px', color: 'rgba(var(--fg-rgb), 0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: clickable ? 'pointer' : 'default' }}>
         {name}
       </span>
 
@@ -513,8 +530,15 @@ function ProviderRow({ label, items }) {
 }
 
 function StreamingSection({ providers }) {
-  // providers is the full TMDB watch_providers response JSON stored in the DB
-  const us = providers?.results?.US ?? providers?.US ?? null
+  // providers may be stored in three shapes:
+  //  1. full TMDB response: { results: { US: {flatrate,rent,buy} } }
+  //  2. region-keyed:       { US: {flatrate,rent,buy} }
+  //  3. flat US object:     { flatrate, rent, buy }  ← how fetchDetails caches it
+  // Accept all three so cached providers actually render.
+  const us =
+    providers?.results?.US ??
+    providers?.US ??
+    (providers && (('flatrate' in providers) || ('rent' in providers) || ('buy' in providers)) ? providers : null)
 
   const flatrate = us?.flatrate ?? []
   const rent = us?.rent ?? []
@@ -830,18 +854,13 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, isPic
 
 export function FilmDetailOverlay({ movie, onClose }) {
   const { profile, isAdmin } = useAuth()
+  const navigate = useNavigate()
   const [visible, setVisible] = useState(false)
   const [detailLoading, setDetailLoading] = useState(true)
   const [ratings, setRatings] = useState([])
   const [users, setUsers] = useState([])
-  const [reviews, setReviews] = useState([])
   const [fullMovie, setFullMovie] = useState(null)
   const [showScoreModal, setShowScoreModal] = useState(false)
-  const [reviewText, setReviewText] = useState('')
-  const [editingReview, setEditingReview] = useState(false)
-  const [editText, setEditText] = useState('')
-  const [reviewError, setReviewError] = useState('')
-  const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [predictions, setPredictions] = useState([])
   const [isPicker, setIsPicker] = useState(false) // is the current user the picker of THIS film?
   const [awardData, setAwardData] = useState(null) // { movies, ratings, users, months, seasons }
@@ -880,7 +899,6 @@ export function FilmDetailOverlay({ movie, onClose }) {
       { data: movieData },
       { data: ratingsData },
       { data: usersData },
-      { data: reviewsData },
       { data: predictionsData },
     ] = await Promise.all([
       supabase
@@ -896,16 +914,24 @@ export function FilmDetailOverlay({ movie, onClose }) {
         .from('users')
         .select('id, name, email, role, joined_at'),
       supabase
-        .from('reviews')
-        .select('id, movie_id, user_id, body, created_at')
-        .eq('movie_id', movieId),
-      supabase
         .from('score_predictions')
         .select('id, predicting_user_id, target_user_id, predicted_score')
         .eq('movie_id', movieId),
     ])
 
     let resolvedMovie = movieData ?? movieFallback
+
+    // Resolve the film's calendar month (YYYY-MM) so the recommend stat can be
+    // computed out of the members who were in the club that month (pre-Zack 4,
+    // post-Zack 5, test excluded).
+    if (resolvedMovie && resolvedMovie.month_id && resolvedMovie._monthYear == null) {
+      const { data: monthRow } = await supabase
+        .from('months')
+        .select('month_year')
+        .eq('id', resolvedMovie.month_id)
+        .maybeSingle()
+      if (monthRow?.month_year) resolvedMovie = { ...resolvedMovie, _monthYear: monthRow.month_year }
+    }
 
     // Fix 1: Fetch and cache streaming providers if not yet stored.
     // Order: TMDB first; if it returns nothing, fall back to the streaming-fallback
@@ -968,14 +994,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
     }
 
     // Exclude the test account from every list shown in the overlay (scores,
-    // prediction targets, reviews). Spec: filter by email in all queries/displays.
+    // prediction targets). Spec: filter by email in all queries/displays.
     const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
     const testId = (usersData ?? []).find(u => u.email === TEST_EMAIL)?.id ?? null
 
     setFullMovie(resolvedMovie)
     setRatings((ratingsData ?? []).filter(r => r.user_id !== testId))
     setUsers((usersData ?? []).filter(u => u.email !== TEST_EMAIL))
-    setReviews((reviewsData ?? []).filter(r => r.user_id !== testId))
     setPredictions((predictionsData ?? []).filter(p => p.predicting_user_id !== testId && p.target_user_id !== testId))
     setDetailLoading(false)
   }, [])
@@ -986,14 +1011,9 @@ export function FilmDetailOverlay({ movie, onClose }) {
     setDetailLoading(true)
     setRatings([])
     setUsers([])
-    setReviews([])
     setPredictions([])
     setFullMovie(null)
     setShowScoreModal(false)
-    setReviewText('')
-    setEditingReview(false)
-    setEditText('')
-    setReviewError('')
     setFilmAwardsState(null)
 
     fetchDetails(movie.id, movie)
@@ -1053,46 +1073,19 @@ export function FilmDetailOverlay({ movie, onClose }) {
     setTimeout(onClose, 300)
   }
 
-  async function handleSubmitReview() {
-    if (!profile || !movie) return
-    const text = reviewText.trim()
-    if (text.length < 10) {
-      setReviewError('Review must be at least 10 characters.')
-      return
-    }
-    setReviewError('')
-    setReviewSubmitting(true)
-    await supabase
-      .from('reviews')
-      .upsert(
-        { movie_id: movie.id, user_id: profile.id, body: text },
-        { onConflict: 'movie_id,user_id' }
-      )
-    setReviewText('')
-    await fetchDetails(movie.id, movie)
-    setReviewSubmitting(false)
-  }
+  // Navigate to a member's profile, closing the overlay first.
+  const goToProfile = useCallback((userId) => {
+    if (!userId) return
+    setVisible(false)
+    setTimeout(() => { onClose(); navigate(`/profile/${userId}`) }, 240)
+  }, [navigate, onClose])
 
-  async function handleEditReview() {
-    if (!profile || !movie) return
-    const text = editText.trim()
-    if (text.length < 10) {
-      setReviewError('Review must be at least 10 characters.')
-      return
-    }
-    setReviewError('')
-    setReviewSubmitting(true)
-    await supabase
-      .from('reviews')
-      .upsert(
-        { movie_id: movie.id, user_id: profile.id, body: text },
-        { onConflict: 'movie_id,user_id' }
-      )
-    setEditingReview(false)
-    setEditText('')
-    await fetchDetails(movie.id, movie)
-    setReviewSubmitting(false)
-  }
+  // Navigate to a tab on the Films page (genre filter / vault), closing the overlay.
+  const goToFilms = useCallback((params) => {
+    setVisible(false)
+    const qs = params ? `?${new URLSearchParams(params).toString()}` : ''
+    setTimeout(() => { onClose(); navigate(`/films${qs}`) }, 240)
+  }, [navigate, onClose])
 
   // Close on Escape key
   useEffect(() => {
@@ -1150,14 +1143,18 @@ export function FilmDetailOverlay({ movie, onClose }) {
     ? Number(m.historical_avg_score)
     : computedAvg
 
-  // Recommend count — exclude test user
-  const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
-  const testUserId = users.find(u => u.email === TEST_EMAIL)?.id ?? null
-  const ratedWithRecommend = ratings.filter(r =>
-    r.recommend_outside_club != null && r.user_id !== testUserId
-  )
-  const recommendYes = ratedWithRecommend.filter(r => r.recommend_outside_club).length
-  const recommendTotal = ratedWithRecommend.length
+  // Recommend count — "X/Y would recommend" out of the members who were in the
+  // club that month (pre-Zack 4, post-Zack 5, test excluded), not out of however
+  // many filled the recommend field. The denominator is the expected member count
+  // for the film's calendar month, derived from each member's joined_at.
+  // `users` is already test-filtered in fetchDetails.
+  const recommendYes = ratings.filter(r => r.recommend_outside_club === true).length
+  const hasRecommendData = ratings.some(r => r.recommend_outside_club != null)
+  const filmMonthEnd = m._monthYear ? `${m._monthYear}-31` : null
+  const expectedMemberCount = filmMonthEnd
+    ? users.filter(u => u.joined_at != null && u.joined_at <= filmMonthEnd).length
+    : users.length
+  const recommendTotal = expectedMemberCount
 
   // Month label
   const monthLabel = m._monthLabel ?? null
@@ -1165,16 +1162,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
   // Streaming providers
   const streamingProviders = m.streaming_providers ?? null
 
-  // Picker name
+  // Picker name + id (for member links)
   let pickerName = null
-  if (m.picker_revealed && m.picked_by_user_id) {
-    const pickerUser = users.find(u => u.id === m.picked_by_user_id)
+  const pickerUserId = (m.picker_revealed && m.picked_by_user_id) ? m.picked_by_user_id : null
+  if (pickerUserId) {
+    const pickerUser = users.find(u => u.id === pickerUserId)
     pickerName = pickerUser?.name ?? null
   }
-
-  // Reviews
-  const sortedReviews = [...reviews].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-  const myReview = reviews.find(r => r.user_id === myUserId) ?? null
 
   // Awards this film has won — prefer DB read; fall back to compute if DB empty.
   const filmAwards = filmAwardsState != null
@@ -1316,37 +1310,45 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 </p>
               )}
 
-              {/* Genre tags */}
+              {/* Genre tags — clicking jumps to All Films filtered to that genre */}
               {genres.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
                   {genres.map(g => (
-                    <span key={g} style={{
-                      fontFamily: "'DM Sans', sans-serif",
-                      fontSize: '11px',
-                      padding: '3px 10px',
-                      borderRadius: '999px',
-                      background: 'rgba(var(--fg-rgb), 0.06)',
-                      color: 'rgba(var(--fg-rgb), 0.5)',
-                      border: '1px solid rgba(var(--fg-rgb), 0.08)',
-                    }}>
+                    <button
+                      key={g}
+                      onClick={() => goToFilms({ tab: 'All Films', genre: g })}
+                      style={{
+                        fontFamily: "'DM Sans', sans-serif",
+                        fontSize: '11px',
+                        padding: '3px 10px',
+                        borderRadius: '999px',
+                        background: 'rgba(var(--fg-rgb), 0.06)',
+                        color: 'rgba(var(--fg-rgb), 0.5)',
+                        border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                        cursor: 'pointer',
+                      }}>
                       {g}
-                    </span>
+                    </button>
                   ))}
                 </div>
               )}
 
-              {/* Vault badge */}
+              {/* Vault badge — links to the Vault tab */}
               {vault && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 10px', borderRadius: '999px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)' }}>
+                <button
+                  onClick={() => goToFilms({ tab: 'The Vault' })}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 10px', borderRadius: '999px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', cursor: 'pointer' }}>
                   <span style={{ fontSize: '11px' }}>★</span>
                   <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.15em', color: '#fbbf24' }}>THE VAULT</span>
-                </div>
+                </button>
               )}
             </div>
           </div>
 
-          {/* ── SUBMIT YOUR SCORE (backfill CTA) ── */}
-          {m.scores_revealed && !myHasSubmitted && (
+          {/* ── SUBMIT YOUR SCORE (backfill CTA) ──
+              Only after the detail load confirms there's genuinely no score for the
+              viewer — never while the overlay is still loading (ratings empty mid-fetch). */}
+          {!detailLoading && m.scores_revealed && !myHasSubmitted && (
             <>
               <Divider />
               <div style={{
@@ -1396,7 +1398,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           {/* ── SCORES ── */}
           <Divider />
           <div style={{ marginBottom: '0' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: m.scores_revealed && recommendTotal > 0 ? '8px' : '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: m.scores_revealed && hasRecommendData ? '8px' : '16px' }}>
               <SectionLabel>Scores</SectionLabel>
               {groupAvg != null && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px' }}>
@@ -1417,8 +1419,10 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 </div>
               )}
             </div>
-            {/* Recommend stat — only after scores revealed and if any ratings have the field set */}
-            {m.scores_revealed && recommendTotal > 0 && (
+            {/* Recommend stat — only after scores revealed and if any ratings have the
+                field set. Denominator is the expected member count for the film's month
+                (pre-Zack 4, post-Zack 5), not the number who filled the field. */}
+            {m.scores_revealed && hasRecommendData && recommendTotal > 0 && (
               <p style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '10px',
@@ -1443,6 +1447,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   <MemberScoreRow
                     rating={myRating}
                     user={userById[myRating.user_id]}
+                    onNameClick={goToProfile}
                   />
                 )}
 
@@ -1473,6 +1478,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                             key={r.user_id}
                             rating={r}
                             user={userById[r.user_id]}
+                            onNameClick={goToProfile}
                           />
                         ))
                     )}
@@ -1562,23 +1568,28 @@ export function FilmDetailOverlay({ movie, onClose }) {
             {m.picker_revealed ? (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                 {pickerName && (
-                  <div style={{
-                    flexShrink: 0,
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '50%',
-                    background: avatarColor(pickerName),
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
+                  <div
+                    onClick={pickerUserId ? () => goToProfile(pickerUserId) : undefined}
+                    style={{
+                      flexShrink: 0,
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      background: avatarColor(pickerName),
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: pickerUserId ? 'pointer' : 'default',
+                    }}>
                     <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
                       {initials(pickerName)}
                     </span>
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '15px', fontWeight: 600, color: 'var(--text-strong)', margin: '0 0 6px' }}>
+                  <p
+                    onClick={pickerUserId ? () => goToProfile(pickerUserId) : undefined}
+                    style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '15px', fontWeight: 600, color: 'var(--text-strong)', margin: '0 0 6px', cursor: pickerUserId ? 'pointer' : 'default', display: 'inline-block' }}>
                     {pickerName ?? 'Unknown'}
                   </p>
                   {m.pick_justification && (
@@ -1648,7 +1659,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           )}
 
           {/* ── RECOMMEND ── */}
-          {m.scores_revealed && recommendTotal > 0 && (
+          {m.scores_revealed && hasRecommendData && recommendTotal > 0 && (
             <>
               <Divider />
               <div>
@@ -1680,221 +1691,6 @@ export function FilmDetailOverlay({ movie, onClose }) {
                     {recommendYes}/{recommendTotal} would recommend
                   </span>
                 </div>
-              </div>
-            </>
-          )}
-
-          {/* ── REVIEWS ── */}
-          {m.scores_revealed && (
-            <>
-              <Divider />
-              <div>
-                <SectionLabel>Reviews</SectionLabel>
-
-                {/* Existing reviews list */}
-                {sortedReviews.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
-                    {sortedReviews.map(review => {
-                      const reviewer = userById[review.user_id]
-                      const reviewerName = reviewer?.name ?? 'Unknown'
-                      const isMyReview = review.user_id === myUserId
-                      const dateStr = review.created_at
-                        ? new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                        : ''
-                      return (
-                        <div
-                          key={review.id}
-                          style={{
-                            background: 'rgba(var(--fg-rgb), 0.03)',
-                            border: '1px solid rgba(var(--fg-rgb), 0.07)',
-                            borderRadius: '12px',
-                            padding: '14px',
-                          }}
-                        >
-                          {/* Header row */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                            <div style={{
-                              flexShrink: 0,
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '50%',
-                              background: avatarColor(reviewerName),
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
-                                {initials(reviewerName)}
-                              </span>
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', fontWeight: 600, color: 'rgba(var(--fg-rgb), 0.85)', margin: 0 }}>
-                                {reviewerName}
-                              </p>
-                              {dateStr && (
-                                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(var(--fg-rgb), 0.25)', margin: '2px 0 0', letterSpacing: '0.04em' }}>
-                                  {dateStr}
-                                </p>
-                              )}
-                            </div>
-                            {isMyReview && !editingReview && (
-                              <button
-                                onClick={() => { setEditingReview(true); setEditText(review.body); setReviewError('') }}
-                                style={{
-                                  background: 'rgba(var(--fg-rgb), 0.06)',
-                                  border: '1px solid rgba(var(--fg-rgb), 0.1)',
-                                  borderRadius: '6px',
-                                  padding: '4px 10px',
-                                  fontFamily: "'DM Mono', monospace",
-                                  fontSize: '10px',
-                                  letterSpacing: '0.08em',
-                                  color: 'rgba(var(--fg-rgb), 0.5)',
-                                  cursor: 'pointer',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                Edit
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Body or edit textarea */}
-                          {isMyReview && editingReview ? (
-                            <div>
-                              <textarea
-                                value={editText}
-                                onChange={e => setEditText(e.target.value)}
-                                placeholder="What did you think?"
-                                style={{
-                                  width: '100%',
-                                  background: 'rgba(var(--fg-rgb), 0.04)',
-                                  border: '1px solid rgba(var(--fg-rgb), 0.1)',
-                                  borderRadius: '8px',
-                                  padding: '10px',
-                                  color: 'var(--text-strong)',
-                                  fontFamily: "'DM Sans', sans-serif",
-                                  fontSize: '14px',
-                                  minHeight: '80px',
-                                  resize: 'vertical',
-                                  boxSizing: 'border-box',
-                                  outline: 'none',
-                                }}
-                              />
-                              {reviewError && (
-                                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '12px', color: '#f87171', margin: '6px 0 0' }}>
-                                  {reviewError}
-                                </p>
-                              )}
-                              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                                <button
-                                  onClick={handleEditReview}
-                                  disabled={reviewSubmitting}
-                                  style={{
-                                    background: 'var(--accent)',
-                                    color: 'var(--text-strong)',
-                                    fontFamily: "'DM Sans', sans-serif",
-                                    fontWeight: 600,
-                                    fontSize: '14px',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    padding: '8px 16px',
-                                    cursor: reviewSubmitting ? 'not-allowed' : 'pointer',
-                                    opacity: reviewSubmitting ? 0.6 : 1,
-                                  }}
-                                >
-                                  {reviewSubmitting ? 'Saving…' : 'Save'}
-                                </button>
-                                <button
-                                  onClick={() => { setEditingReview(false); setEditText(''); setReviewError('') }}
-                                  disabled={reviewSubmitting}
-                                  style={{
-                                    background: 'rgba(var(--fg-rgb), 0.06)',
-                                    border: '1px solid rgba(var(--fg-rgb), 0.1)',
-                                    borderRadius: '8px',
-                                    padding: '8px 16px',
-                                    fontFamily: "'DM Sans', sans-serif",
-                                    fontSize: '14px',
-                                    color: 'rgba(var(--fg-rgb), 0.5)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <p style={{
-                              fontFamily: "'DM Sans', sans-serif",
-                              fontSize: '14px',
-                              lineHeight: 1.7,
-                              color: 'rgba(var(--fg-rgb), 0.65)',
-                              margin: 0,
-                              whiteSpace: 'pre-wrap',
-                            }}>
-                              {review.body}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Fix 2: prompt to score first if user has no score yet */}
-                {!myReview && myRating?.score == null && (
-                  <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'rgba(var(--fg-rgb), 0.25)', letterSpacing: '0.08em', margin: 0 }}>
-                    Submit your score first to leave a review.
-                  </p>
-                )}
-
-                {/* New review form — only if current user has scored AND hasn't written a review */}
-                {!myReview && myRating?.score != null && (
-                  <div>
-                    <textarea
-                      value={reviewText}
-                      onChange={e => setReviewText(e.target.value)}
-                      placeholder="What did you think?"
-                      style={{
-                        width: '100%',
-                        background: 'rgba(var(--fg-rgb), 0.04)',
-                        border: '1px solid rgba(var(--fg-rgb), 0.1)',
-                        borderRadius: '8px',
-                        padding: '10px',
-                        color: 'var(--text-strong)',
-                        fontFamily: "'DM Sans', sans-serif",
-                        fontSize: '14px',
-                        minHeight: '80px',
-                        resize: 'vertical',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                      }}
-                    />
-                    {reviewError && (
-                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '12px', color: '#f87171', margin: '6px 0 0' }}>
-                        {reviewError}
-                      </p>
-                    )}
-                    <button
-                      onClick={handleSubmitReview}
-                      disabled={reviewSubmitting}
-                      style={{
-                        marginTop: '10px',
-                        background: 'var(--accent)',
-                        color: 'var(--text-strong)',
-                        fontFamily: "'DM Sans', sans-serif",
-                        fontWeight: 600,
-                        fontSize: '14px',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '8px 16px',
-                        cursor: reviewSubmitting ? 'not-allowed' : 'pointer',
-                        opacity: reviewSubmitting ? 0.6 : 1,
-                      }}
-                    >
-                      {reviewSubmitting ? 'Submitting…' : 'Submit Review'}
-                    </button>
-                  </div>
-                )}
               </div>
             </>
           )}
@@ -1935,20 +1731,86 @@ export function FilmDetailOverlay({ movie, onClose }) {
   )
 }
 
-// ─── AllFilms tab ─────────────────────────────────────────────────────────────
+// ─── Sorting (shared across AllFilms + BySeason) ──────────────────────────────
 
-const SORT_OPTIONS = [
-  { key: 'recent', label: 'Recent' },
+// Within a month, DB insertion order (id ASC) is WATCH order (earliest-watched
+// first). "Most recent" must surface the LATEST-watched film first, so months go
+// descending AND films within a month are reversed (id DESC). "Least recent" is
+// the exact inverse: months ascending, films id ASC.
+function idCompareAsc(a, b) {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+// Population standard deviation of a film's revealed scores — higher = more divisive.
+function filmStddev(movie) {
+  const scores = Array.isArray(movie._scores) ? movie._scores.filter(s => s != null) : []
+  if (scores.length < 2) return null
+  const mean = scores.reduce((s, v) => s + Number(v), 0) / scores.length
+  const variance = scores.reduce((s, v) => s + (Number(v) - mean) ** 2, 0) / scores.length
+  return Math.sqrt(variance)
+}
+
+export const SORT_OPTIONS = [
+  { key: 'recent', label: 'Most Recent' },
+  { key: 'oldest', label: 'Least Recent' },
   { key: 'high', label: 'Highest Rated' },
   { key: 'low', label: 'Lowest Rated' },
+  { key: 'divisive', label: 'Most Divisive' },
+  { key: 'unanimous', label: 'Least Divisive' },
   { key: 'picker', label: 'By Member', requiresReveal: true },
 ]
 
-function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
+// Sort a list of enriched movies by a SORT_OPTIONS key. Always returns a new array.
+export function sortMovies(movies, sort) {
+  const list = [...movies]
+  return list.sort((a, b) => {
+    if (sort === 'high') return (b.historical_avg_score ?? -1) - (a.historical_avg_score ?? -1)
+    if (sort === 'low') return (a.historical_avg_score ?? 999) - (b.historical_avg_score ?? 999)
+    if (sort === 'divisive' || sort === 'unanimous') {
+      const sa = filmStddev(a)
+      const sb = filmStddev(b)
+      // Films without enough data sink to the bottom of either ordering.
+      if (sa == null && sb == null) {
+        if ((b._monthOrder ?? 0) !== (a._monthOrder ?? 0)) return (b._monthOrder ?? 0) - (a._monthOrder ?? 0)
+        return -idCompareAsc(a, b)
+      }
+      if (sa == null) return 1
+      if (sb == null) return -1
+      return sort === 'divisive' ? sb - sa : sa - sb
+    }
+    if (sort === 'picker') {
+      // Group by picker; nulls last
+      const pa = a.picker_revealed ? (a.picked_by_user_id ?? '') : ''
+      const pb = b.picker_revealed ? (b.picked_by_user_id ?? '') : ''
+      if (pa < pb) return -1
+      if (pa > pb) return 1
+      return (a._monthOrder ?? 0) - (b._monthOrder ?? 0)
+    }
+    if (sort === 'oldest') {
+      // Least recent: months ascending, watch order (id ASC) within a month.
+      if ((a._monthOrder ?? 0) !== (b._monthOrder ?? 0)) return (a._monthOrder ?? 0) - (b._monthOrder ?? 0)
+      return idCompareAsc(a, b)
+    }
+    // recent: months descending, REVERSED watch order (id DESC) within a month so
+    // the latest-watched film in a month sits on top.
+    if ((b._monthOrder ?? 0) !== (a._monthOrder ?? 0)) return (b._monthOrder ?? 0) - (a._monthOrder ?? 0)
+    return -idCompareAsc(a, b)
+  })
+}
+
+// ─── AllFilms tab ─────────────────────────────────────────────────────────────
+
+function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenre = '' }) {
   const [sort, setSort] = useState('recent')
   const [filterSeason, setFilterSeason] = useState('all')
   const [filterMinScore, setFilterMinScore] = useState('')
   const [filterMaxScore, setFilterMaxScore] = useState('')
+  const [filterGenre, setFilterGenre] = useState(initialGenre || 'all')
+
+  // Apply an incoming genre filter (e.g. from clicking a genre tag in the overlay).
+  useEffect(() => {
+    if (initialGenre) setFilterGenre(initialGenre)
+  }, [initialGenre])
 
   // Determine if any picker is revealed (to show "By Picker" option)
   const anyPickerRevealed = movies.some(m => m.picker_revealed)
@@ -1956,10 +1818,22 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
   // Build season options from seasons prop
   const seasonOptions = seasons.map(s => ({ id: s.id, name: s.name }))
 
+  // Build the distinct genre list from the films present.
+  const genreOptions = (() => {
+    const set = new Set()
+    for (const m of movies) {
+      if (Array.isArray(m.genre)) for (const g of m.genre) if (g) set.add(g)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  })()
+
   // Apply filters first
   let filtered = [...movies]
   if (filterSeason !== 'all') {
     filtered = filtered.filter(m => m._seasonId === filterSeason)
+  }
+  if (filterGenre !== 'all') {
+    filtered = filtered.filter(m => Array.isArray(m.genre) && m.genre.includes(filterGenre))
   }
   const minScore = filterMinScore !== '' ? parseFloat(filterMinScore) : null
   const maxScore = filterMaxScore !== '' ? parseFloat(filterMaxScore) : null
@@ -1970,22 +1844,8 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
     filtered = filtered.filter(m => m.historical_avg_score != null && m.historical_avg_score <= maxScore)
   }
 
-  // Apply sort
-  const sorted = filtered.sort((a, b) => {
-    if (sort === 'high') return (b.historical_avg_score ?? -1) - (a.historical_avg_score ?? -1)
-    if (sort === 'low') return (a.historical_avg_score ?? 999) - (b.historical_avg_score ?? 999)
-    if (sort === 'picker') {
-      // Group by picker; nulls last
-      const pa = a.picker_revealed ? (a.picked_by_user_id ?? '') : ''
-      const pb = b.picker_revealed ? (b.picked_by_user_id ?? '') : ''
-      if (pa < pb) return -1
-      if (pa > pb) return 1
-      return (a._monthOrder ?? 0) - (b._monthOrder ?? 0)
-    }
-    // recent: descending month order, id asc within month
-    if ((b._monthOrder ?? 0) !== (a._monthOrder ?? 0)) return (b._monthOrder ?? 0) - (a._monthOrder ?? 0)
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-  })
+  // Apply sort (shared recency rule)
+  const sorted = sortMovies(filtered, sort)
 
   const selectStyle = {
     fontFamily: "'DM Mono', monospace",
@@ -2044,6 +1904,19 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
               ))}
             </select>
           )}
+          {/* Genre dropdown */}
+          {genreOptions.length > 0 && (
+            <select
+              value={filterGenre}
+              onChange={e => setFilterGenre(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="all">All genres</option>
+              {genreOptions.map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          )}
           {/* Score range */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <input
@@ -2069,9 +1942,9 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons }) {
             />
           </div>
           {/* Clear filters if any active */}
-          {(filterSeason !== 'all' || filterMinScore !== '' || filterMaxScore !== '') && (
+          {(filterSeason !== 'all' || filterGenre !== 'all' || filterMinScore !== '' || filterMaxScore !== '') && (
             <button
-              onClick={() => { setFilterSeason('all'); setFilterMinScore(''); setFilterMaxScore('') }}
+              onClick={() => { setFilterSeason('all'); setFilterGenre('all'); setFilterMinScore(''); setFilterMaxScore('') }}
               style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '9px',
@@ -2164,7 +2037,15 @@ function VaultTab({ movies, loading, onSelect, userById }) {
 
 // ─── BySeasonTab ──────────────────────────────────────────────────────────────
 
+// Sort options that read a film's average (and stddev) — only meaningful per season.
+const SEASON_FILM_SORTS = SORT_OPTIONS.filter(s => !s.requiresReveal)
+
 function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
+  // Film ordering within every season (same options + recency rule as All Films).
+  const [filmSort, setFilmSort] = useState('recent')
+  // Order of the seasons themselves: 'recent' (latest first) or 'oldest'.
+  const [seasonOrder, setSeasonOrder] = useState('recent')
+
   if (loading) {
     return (
       <div>
@@ -2182,11 +2063,17 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
     )
   }
 
-  // Group movies by season
-  const bySeason = seasons.map(season => {
-    const seasonMovies = movies
-      .filter(m => m._seasonId === season.id)
-      .sort((a, b) => (a._monthOrder !== b._monthOrder ? a._monthOrder - b._monthOrder : (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)))
+  // Order the seasons by start_date (recent = latest first).
+  const orderedSeasons = [...seasons].sort((a, b) => {
+    const da = a.start_date ?? ''
+    const db = b.start_date ?? ''
+    if (da === db) return 0
+    return seasonOrder === 'recent' ? (da < db ? 1 : -1) : (da < db ? -1 : 1)
+  })
+
+  // Group movies by season, applying the chosen film sort within each.
+  const bySeason = orderedSeasons.map(season => {
+    const seasonMovies = sortMovies(movies.filter(m => m._seasonId === season.id), filmSort)
     const scored = seasonMovies.filter(m => m.historical_avg_score != null)
     const avg = scored.length
       ? (scored.reduce((s, m) => s + Number(m.historical_avg_score), 0) / scored.length)
@@ -2204,6 +2091,22 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
 
   return (
     <div>
+      {/* Sort controls — film order (applies to every season) + season order */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: '2px' }}>
+          {SEASON_FILM_SORTS.map(s => (
+            <SortButton key={s.key} label={s.label} active={filmSort === s.key} onClick={() => setFilmSort(s.key)} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(var(--fg-rgb), 0.25)' }}>
+            Seasons
+          </span>
+          <SortButton label="Newest first" active={seasonOrder === 'recent'} onClick={() => setSeasonOrder('recent')} />
+          <SortButton label="Oldest first" active={seasonOrder === 'oldest'} onClick={() => setSeasonOrder('oldest')} />
+        </div>
+      </div>
+
       {bySeason.map(({ season, movies: sMovies, avg }) => (
         <div key={season.id} style={{ marginBottom: '36px' }}>
           {/* Season header */}
@@ -2270,7 +2173,7 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
       onClick={() => onSelect(movie)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', minWidth: 0 }}
     >
       {/* Poster */}
       <div style={{
@@ -2481,8 +2384,13 @@ function HistoryTab({ userById, onSelect }) {
                 className="history-grid"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  // minmax(0,1fr) lets columns shrink below their content width so the
+                  // nowrap titles (ellipsis) never force the grid past the viewport. A
+                  // 5-film month (April) now wraps cleanly instead of bleeding right.
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                   gap: '14px',
+                  width: '100%',
+                  boxSizing: 'border-box',
                 }}
               >
                 {selectedMovies.map(m => (
@@ -2508,12 +2416,22 @@ function HistoryTab({ userById, onSelect }) {
 const TABS = ['All Films', 'The Vault', 'By Season', 'History']
 
 export default function Films() {
-  const [activeTab, setActiveTab] = useState('All Films')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlTab = searchParams.get('tab')
+  const urlGenre = searchParams.get('genre') ?? ''
+  const [activeTab, setActiveTab] = useState(TABS.includes(urlTab) ? urlTab : 'All Films')
+  const [genreFilter, setGenreFilter] = useState(urlGenre)
   const [loading, setLoading] = useState(true)
   const [movies, setMovies] = useState([])
   const [seasons, setSeasons] = useState([])
   const [userById, setUserById] = useState({})
   const [selectedMovie, setSelectedMovie] = useState(null)
+
+  // Respond to URL changes (e.g. a genre tag / vault badge clicked in the overlay).
+  useEffect(() => {
+    if (TABS.includes(urlTab)) setActiveTab(urlTab)
+    setGenreFilter(urlGenre)
+  }, [urlTab, urlGenre])
 
   useEffect(() => {
     async function load() {
@@ -2522,13 +2440,15 @@ export default function Films() {
         { data: monthsData },
         { data: seasonsData },
         { data: usersData },
+        { data: ratingsData },
       ] = await Promise.all([
         supabase.from('movies_safe').select(
           'id, month_id, title, tmdb_id, poster_url, genre, director, runtime_minutes, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'
         ),
         supabase.from('months').select('id, month_year, season_id, status').order('month_year', { ascending: true }),
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: true }),
-        supabase.from('users').select('id, name'),
+        supabase.from('users').select('id, name, email'),
+        supabase.from('ratings').select('movie_id, user_id, score'),
       ])
 
       // Build a lookup: month_id → { order, season_id, month_year }
@@ -2541,6 +2461,18 @@ export default function Films() {
       const seasonById = {}
       ;(seasonsData ?? []).forEach(s => { seasonById[s.id] = s })
 
+      // Scores per movie (for stddev-based "divisive" sorting + computed fallback avg).
+      // Exclude the test account by user id.
+      const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+      const testUserId = (usersData ?? []).find(u => u.email === TEST_EMAIL)?.id ?? null
+      const scoresByMovie = {}
+      for (const r of (ratingsData ?? [])) {
+        if (r.user_id === testUserId) continue
+        if (r.score == null) continue
+        if (!scoresByMovie[r.movie_id]) scoresByMovie[r.movie_id] = []
+        scoresByMovie[r.movie_id].push(Number(r.score))
+      }
+
       const enriched = (moviesData ?? []).map(m => {
         const monthInfo = monthLookup[m.month_id] ?? {}
         const season = seasonById[monthInfo.seasonId] ?? null
@@ -2551,17 +2483,23 @@ export default function Films() {
           monthLabel = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
           if (season) monthLabel += ` · ${season.name}`
         }
+        const scores = scoresByMovie[m.id] ?? []
+        const avgScore = scores.length
+          ? scores.reduce((s, v) => s + v, 0) / scores.length
+          : null
         return {
           ...m,
           _monthOrder: monthInfo.order ?? 0,
           _seasonId: monthInfo.seasonId ?? null,
           _monthLabel: monthLabel,
+          _scores: scores,
+          _avgScore: avgScore,
         }
       })
 
-      // Build user lookup by id
+      // Build user lookup by id (exclude the test account — must be invisible in all UI)
       const userLookup = {}
-      ;(usersData ?? []).forEach(u => { userLookup[u.id] = u })
+      ;(usersData ?? []).forEach(u => { if (u.email !== TEST_EMAIL) userLookup[u.id] = u })
 
       setMovies(enriched)
       setSeasons(seasonsData ?? [])
@@ -2632,7 +2570,12 @@ export default function Films() {
               key={tab}
               label={tab}
               active={activeTab === tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => {
+                setActiveTab(tab)
+                // Switching tabs clears any genre deep-link so it doesn't linger.
+                if (searchParams.has('tab') || searchParams.has('genre')) setSearchParams({}, { replace: true })
+                if (tab !== 'All Films') setGenreFilter('')
+              }}
             />
           ))}
         </div>
@@ -2640,7 +2583,7 @@ export default function Films() {
         {/* Tab content */}
         <div style={{ minWidth: 0 }}>
           {activeTab === 'All Films' && (
-            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} seasons={seasons} />
+            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} seasons={seasons} initialGenre={genreFilter} />
           )}
           {activeTab === 'The Vault' && (
             <VaultTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} />
@@ -2659,9 +2602,9 @@ export default function Films() {
       <FilmDetailOverlay movie={selectedMovie} onClose={handleClose} />
 
       <style>{`
-        @media (min-width: 480px) { .films-grid { grid-template-columns: repeat(4, 1fr) !important; } }
-        @media (min-width: 768px) { .films-grid { grid-template-columns: repeat(5, 1fr) !important; } }
-        @media (min-width: 560px) { .history-grid { grid-template-columns: repeat(3, 1fr) !important; } }
+        @media (min-width: 480px) { .films-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; } }
+        @media (min-width: 768px) { .films-grid { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } }
+        @media (min-width: 560px) { .history-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } }
         div::-webkit-scrollbar { display: none; }
       `}</style>
     </div>

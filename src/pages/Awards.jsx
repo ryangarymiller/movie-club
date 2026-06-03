@@ -2197,12 +2197,19 @@ export default function Awards() {
         supabase.from('picker_guesses').select('movie_id, guessing_user_id, guessed_user_id'),
       ])
 
+      const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+      const filteredUsers = (usersData ?? []).filter(u => u.email !== TEST_EMAIL)
+      const testUserIds = new Set(
+        (usersData ?? []).filter(u => u.email === TEST_EMAIL).map(u => u.id)
+      )
+      const filteredRatings = (ratingsData ?? []).filter(r => !testUserIds.has(r.user_id))
+
       setSeasons(seasonsData ?? [])
       setMonths(monthsData ?? [])
       setMovies(moviesData ?? [])
-      setAllRatings(ratingsData ?? [])
-      setUsers(usersData ?? [])
-      setGuesses(guessesData ?? [])
+      setAllRatings(filteredRatings)
+      setUsers(filteredUsers)
+      setGuesses((guessesData ?? []).filter(g => !testUserIds.has(g.guessing_user_id)))
       setLoading(false)
     }
 

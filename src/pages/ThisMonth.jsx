@@ -4,16 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
 import MonthReveal from '../components/MonthReveal'
 import { FilmDetailOverlay } from './Films'
-
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const MEMBER_COLORS = {
-  'Ryan Miller':    '#6366f1',
-  'Ryan Bey':       '#f43f5e',
-  'Andrew Bond':    '#10b981',
-  'Zack Anjoorian': '#f59e0b',
-  'Chris Deschenes':'#3b82f6',
-}
+import { MEMBER_COLORS } from '../lib/colors'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -526,7 +517,7 @@ async function tmdbFetch(path) {
   return res.json()
 }
 
-function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
+function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) {
   // existing pick (may be pre-loaded by parent)
   const [existingPick, setExistingPick] = useState(null)
   const [pickLoading, setPickLoading] = useState(true)
@@ -665,6 +656,14 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
       }, { onConflict: 'user_id,month_target' })
 
       if (error) throw error
+
+      // If the target month is already active, materialize this pick into a film
+      // and re-split the month's scoring deadlines evenly by film count. SECURITY
+      // DEFINER RPC — idempotent per (month, picker). Deadlines are display-only (dev mode).
+      if (monthIsActive && nextMonth.id) {
+        const { error: rpcErr } = await supabase.rpc('materialize_and_split_month', { p_month_id: nextMonth.id })
+        if (rpcErr) throw rpcErr
+      }
 
       const { data: pick } = await supabase
         .from('upcoming_picks')
@@ -1151,34 +1150,21 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
 
 // ─── Pick Submission Modal ────────────────────────────────────────────────────
 
-function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
+function PickModal({ profile, nextMonth, monthIsActive, onClose, onPickSaved }) {
   return (
     <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 999,
-        background: 'rgba(0,0,0,0.75)',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      }}
+      className="mc-modal-backdrop"
+      style={{ background: 'rgba(0,0,0,0.75)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{
+      <div className="mc-modal-panel" style={{
         background: 'var(--surface-3)',
         border: '1px solid rgba(var(--fg-rgb), 0.08)',
-        borderRadius: '20px 20px 0 0',
-        width: '100%',
+        borderRadius: '20px',
         maxWidth: '600px',
-        maxHeight: '88vh',
-        overflowY: 'auto',
-        padding: '20px 16px 40px',
+        padding: '20px 16px 32px',
         boxSizing: 'border-box',
       }}>
-        {/* Drag handle */}
-        <div style={{
-          width: '36px', height: '4px', borderRadius: '2px',
-          background: 'rgba(var(--fg-rgb), 0.15)',
-          margin: '0 auto 20px',
-        }} />
-
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <h2 style={{
             fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.8rem',
@@ -1207,6 +1193,7 @@ function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
           <PickSubmissionFlow
             profile={profile}
             nextMonth={nextMonth}
+            monthIsActive={monthIsActive}
             onPickSaved={onPickSaved}
             onCancel={onClose}
           />
@@ -1222,12 +1209,14 @@ function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
 
 // ─── Picks Tab ────────────────────────────────────────────────────────────────
 
-function PicksTab({ profile, onOpenFilm }) {
+function PicksTab({ profile, onOpenFilm, onMaterialized }) {
   const [nextMonth, setNextMonth] = useState(null)
+  const [monthIsActive, setMonthIsActive] = useState(false)
   const [monthLoading, setMonthLoading] = useState(true)
   const [picks, setPicks] = useState([])
   const [picksLoading, setPicksLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [expandedPickId, setExpandedPickId] = useState(null) // pick whose justification is shown
   const [myOpenPicks, setMyOpenPicks] = useState([]) // films I picked that still need my score predictions
 
   // Predictions are picker-only and attach to the movie (which exists once the admin
@@ -1263,24 +1252,44 @@ function PicksTab({ profile, onOpenFilm }) {
     setMonthLoading(true)
     setPicksLoading(true)
 
-    const { data: month } = await supabase
+    // Target month for picking: the active month if one exists (picks materialize into
+    // films immediately), otherwise the next upcoming month (picks stay queued until the
+    // admin activates that month).
+    const { data: active } = await supabase
       .from('months')
       .select('id, month_year')
-      .eq('status', 'upcoming')
-      .order('month_year', { ascending: true })
+      .eq('status', 'active')
+      .order('month_year', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    setNextMonth(month ?? null)
+    let month = active ?? null
+    let isActive = !!active
+    if (!month) {
+      const { data: upcoming } = await supabase
+        .from('months')
+        .select('id, month_year')
+        .eq('status', 'upcoming')
+        .order('month_year', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      month = upcoming ?? null
+      isActive = false
+    }
+
+    setNextMonth(month)
+    setMonthIsActive(isActive)
     setMonthLoading(false)
 
     if (month) {
-      // Load all picks for next month joined with user info
+      // Picks readable here follow RLS: a regular member only sees their OWN upcoming pick;
+      // admins see all. The viewer's own pick is therefore always visible, while others stay
+      // hidden until reveal. Join user info for the picker label/color.
       const { data: picksData } = await supabase
         .from('upcoming_picks')
-        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, users(name, email)')
+        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, submitted_at, users(name, email)')
         .eq('month_target', month.month_year)
-        .order('created_at', { ascending: true })
+        .order('submitted_at', { ascending: true })
       // Test account must be invisible in all UI — filter by email.
       setPicks((picksData ?? []).filter(p => p.users?.email !== 'i.am.ryan.the.miller@gmail.com'))
     } else {
@@ -1295,6 +1304,11 @@ function PicksTab({ profile, onOpenFilm }) {
 
   const nextMonthLabel = nextMonth ? formatMonthLabel(nextMonth.month_year) : ''
   const loading = monthLoading || picksLoading
+
+  // The viewer's own pick is always visible (RLS guarantees it's readable). Other members'
+  // picks stay hidden until reveal — admins can read them all and they render below.
+  const myPick = profile ? picks.find(p => p.user_id === profile.id) ?? null : null
+  const otherPicks = profile ? picks.filter(p => p.user_id !== profile.id) : picks
 
   return (
     <div>
@@ -1317,31 +1331,33 @@ function PicksTab({ profile, onOpenFilm }) {
         </button>
       ))}
 
-      {/* CTA button */}
-      <button
-        onClick={() => setShowModal(true)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          width: '100%',
-          padding: '13px 16px',
-          borderRadius: '12px',
-          border: '1px solid rgba(var(--accent-rgb, 99,102,241),0.4)',
-          background: 'rgba(var(--accent-rgb, 99,102,241),0.08)',
-          color: 'var(--text-strong)',
-          fontFamily: "'DM Sans',sans-serif",
-          fontWeight: 600,
-          fontSize: '14px',
-          cursor: 'pointer',
-          marginBottom: '20px',
-          textAlign: 'left',
-          transition: 'background 0.15s ease',
-        }}
-      >
-        <span style={{ flex: 1 }}>Pick your next movie</span>
-        <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
-      </button>
+      {/* CTA button — only shown when the viewer has not yet picked for this month */}
+      {!loading && nextMonth && !myPick && (
+        <button
+          onClick={() => setShowModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '13px 16px',
+            borderRadius: '12px',
+            border: '1px solid rgba(var(--accent-rgb, 99,102,241),0.4)',
+            background: 'rgba(var(--accent-rgb, 99,102,241),0.08)',
+            color: 'var(--text-strong)',
+            fontFamily: "'DM Sans',sans-serif",
+            fontWeight: 600,
+            fontSize: '14px',
+            cursor: 'pointer',
+            marginBottom: '20px',
+            textAlign: 'left',
+            transition: 'background 0.15s ease',
+          }}
+        >
+          <span style={{ flex: 1 }}>Pick your next movie</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
+        </button>
+      )}
 
       {/* Picks list */}
       {loading ? (
@@ -1355,87 +1371,58 @@ function PicksTab({ profile, onOpenFilm }) {
         }}>
           No upcoming month configured yet.
         </div>
-      ) : picks.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '32px 0',
-          fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
-        }}>
-          No picks submitted yet for {nextMonthLabel}.
-        </div>
       ) : (
         <>
-          <p style={{
-            fontFamily: "'DM Mono',monospace", color: 'var(--hairline)',
-            fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
-            margin: '0 0 12px',
-          }}>
-            {nextMonthLabel} — {picks.length} of 5 picks submitted
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {picks.map(pick => {
-              const meta = pick.metadata ?? {}
-              const pickerName = pick.users?.name ?? 'Unknown'
-              const pickerColor = MEMBER_COLORS[pickerName]
-              return (
-                <div key={pick.id} style={{
-                  display: 'flex', gap: '12px',
-                  padding: '12px',
-                  borderRadius: '14px',
-                  background: 'rgba(var(--fg-rgb), 0.025)',
-                  border: '1px solid rgba(var(--fg-rgb), 0.07)',
-                  borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(var(--fg-rgb), 0.07)',
-                  boxSizing: 'border-box',
-                }}>
-                  {/* Poster */}
-                  <div style={{
-                    flexShrink: 0, width: '44px', height: '62px',
-                    borderRadius: '6px', overflow: 'hidden', background: 'var(--surface-2)',
-                  }}>
-                    {pick.poster_url ? (
-                      <img
-                        src={`https://image.tmdb.org/t/p/w185${pick.poster_url}`}
-                        alt={pick.title}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={e => { e.target.style.display = 'none' }}
-                      />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '11px' }}>
-                          {initials(pick.title)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+          {/* The viewer's own pick — always visible, inline justification + change affordance */}
+          {myPick ? (
+            <div style={{ marginBottom: otherPicks.length ? '24px' : 0 }}>
+              <p style={{
+                fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
+                fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
+                margin: '0 0 12px',
+              }}>
+                Your pick for {nextMonthLabel}
+              </p>
+              <PickRow
+                pick={myPick}
+                isOwn
+                expanded={expandedPickId === myPick.id}
+                onToggle={() => setExpandedPickId(id => id === myPick.id ? null : myPick.id)}
+                onChange={() => setShowModal(true)}
+              />
+            </div>
+          ) : (
+            <div style={{
+              textAlign: 'center', padding: '32px 0',
+              fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
+              marginBottom: otherPicks.length ? '24px' : 0,
+            }}>
+              You haven’t picked a film for {nextMonthLabel} yet.
+            </div>
+          )}
 
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{
-                      fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
-                      fontWeight: 500, fontSize: '14px',
-                      margin: '0 0 2px', lineHeight: 1.3,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {pick.title}
-                    </p>
-                    <p style={{
-                      fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
-                      fontSize: '11px', margin: '0 0 4px',
-                    }}>
-                      {[meta.year, meta.director].filter(Boolean).join(' · ')}
-                    </p>
-                    <p style={{
-                      fontFamily: "'DM Mono',monospace",
-                      fontSize: '10px',
-                      margin: 0,
-                      color: pickerColor ?? 'var(--text-dim)',
-                    }}>
-                      {pickerName}
-                    </p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          {/* Other members' picks — only present once the month has been revealed (or for admins) */}
+          {otherPicks.length > 0 && (
+            <>
+              <p style={{
+                fontFamily: "'DM Mono',monospace", color: 'var(--hairline)',
+                fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
+                margin: '0 0 12px',
+              }}>
+                Other picks
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {otherPicks.map(pick => (
+                  <PickRow
+                    key={pick.id}
+                    pick={pick}
+                    expanded={expandedPickId === pick.id}
+                    onToggle={() => setExpandedPickId(id => id === pick.id ? null : pick.id)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -1444,12 +1431,146 @@ function PicksTab({ profile, onOpenFilm }) {
         <PickModal
           profile={profile}
           nextMonth={nextMonth}
+          monthIsActive={monthIsActive}
           onClose={() => setShowModal(false)}
           onPickSaved={() => {
             loadNextMonthAndPicks()
+            // If the month is active, the pick just materialized into a film and the
+            // deadlines were re-split — refresh the parent so the Films/Deadlines tabs reflect it.
+            if (monthIsActive && onMaterialized) onMaterialized()
             setShowModal(false)
           }}
         />
+      )}
+    </div>
+  )
+}
+
+// ─── Pick Row (a single upcoming pick; expandable justification) ───────────────
+
+function PickRow({ pick, isOwn = false, expanded, onToggle, onChange }) {
+  const meta = pick.metadata ?? {}
+  const pickerName = pick.users?.name ?? 'Unknown'
+  const pickerColor = MEMBER_COLORS[pickerName]
+  const justification = meta.justification
+
+  return (
+    <div style={{
+      borderRadius: '14px',
+      background: 'rgba(var(--fg-rgb), 0.025)',
+      border: '1px solid rgba(var(--fg-rgb), 0.07)',
+      borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(var(--fg-rgb), 0.07)',
+      boxSizing: 'border-box',
+      overflow: 'hidden',
+    }}>
+      <button
+        onClick={onToggle}
+        style={{
+          display: 'flex', gap: '12px', width: '100%',
+          padding: '12px',
+          background: 'transparent', border: 'none',
+          textAlign: 'left', cursor: 'pointer', boxSizing: 'border-box',
+        }}
+      >
+        {/* Poster */}
+        <div style={{
+          flexShrink: 0, width: '44px', height: '62px',
+          borderRadius: '6px', overflow: 'hidden', background: 'var(--surface-2)',
+        }}>
+          {pick.poster_url ? (
+            <img
+              src={`https://image.tmdb.org/t/p/w185${pick.poster_url}`}
+              alt={pick.title}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={e => { e.target.style.display = 'none' }}
+            />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '11px' }}>
+                {initials(pick.title)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{
+            fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
+            fontWeight: 500, fontSize: '14px',
+            margin: '0 0 2px', lineHeight: 1.3,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {pick.title}
+          </p>
+          <p style={{
+            fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
+            fontSize: '11px', margin: '0 0 4px',
+          }}>
+            {[meta.year, meta.director].filter(Boolean).join(' · ')}
+          </p>
+          <p style={{
+            fontFamily: "'DM Mono',monospace",
+            fontSize: '10px',
+            margin: 0,
+            color: pickerColor ?? 'var(--text-dim)',
+          }}>
+            {isOwn ? 'You' : pickerName}
+          </p>
+        </div>
+
+        {/* Expand chevron (only when there's a justification to reveal) */}
+        {justification && (
+          <span style={{
+            flexShrink: 0, alignSelf: 'center',
+            color: 'var(--text-faint)', fontSize: '14px',
+            transform: expanded ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.15s ease',
+          }}>
+            ⌄
+          </span>
+        )}
+      </button>
+
+      {/* Expanded: justification + (own pick only) change affordance */}
+      {expanded && (
+        <div style={{
+          padding: '0 12px 12px',
+          borderTop: '1px solid rgba(var(--fg-rgb), 0.05)',
+        }}>
+          {justification ? (
+            <p style={{
+              fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)',
+              fontSize: '13px', lineHeight: 1.5, margin: '12px 0 0',
+            }}>
+              “{justification}”
+            </p>
+          ) : (
+            <p style={{
+              fontFamily: "'DM Sans',sans-serif", color: 'var(--text-faint)',
+              fontSize: '12px', fontStyle: 'italic', margin: '12px 0 0',
+            }}>
+              No justification given.
+            </p>
+          )}
+          {isOwn && onChange && (
+            <button
+              onClick={onChange}
+              style={{
+                marginTop: '12px',
+                padding: '9px 14px',
+                borderRadius: '10px',
+                border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                background: 'transparent',
+                color: 'var(--text-dim)',
+                fontFamily: "'DM Sans',sans-serif",
+                fontSize: '13px', cursor: 'pointer',
+              }}
+            >
+              Change pick
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
@@ -1632,7 +1753,7 @@ export default function ThisMonth() {
             <DeadlinesTab movies={movies} loading={loading} />
           )}
           {activeTab === 'Picks' && (
-            <PicksTab profile={profile} onOpenFilm={setSelectedMovie} />
+            <PicksTab profile={profile} onOpenFilm={setSelectedMovie} onMaterialized={loadData} />
           )}
           {activeTab === 'Reveal' && revealMonth && (
             <MonthReveal

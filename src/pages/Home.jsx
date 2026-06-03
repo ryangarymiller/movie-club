@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
 import { FilmDetailOverlay } from './Films'
+import { MEMBER_COLORS } from '../lib/colors'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -13,14 +15,6 @@ if (!document.getElementById('mc-fonts')) {
 }
 
 const FOUNDING = new Date('2026-01-05')
-
-const MEMBER_COLORS = {
-  'Ryan Miller':    '#6366f1',
-  'Ryan Bey':       '#f43f5e',
-  'Andrew Bond':    '#10b981',
-  'Zack Anjoorian': '#f59e0b',
-  'Chris Deschenes':'#3b82f6',
-}
 
 function daysSince(d) {
   return Math.floor((Date.now() - d.getTime()) / 86400000)
@@ -129,12 +123,18 @@ function ActionCard({ movie, existingRating, onScorePress }) {
   )
 }
 
-function StatCard({ label, value, sub }) {
+function StatCard({ label, value, sub, onClick }) {
   return (
-    <div className="p-3 rounded-xl border border-white/10 bg-white/[0.03] min-w-0">
+    <div
+      className="p-3 rounded-xl border border-white/10 bg-white/[0.03] min-w-0 transition-colors"
+      style={onClick ? { cursor: 'pointer' } : undefined}
+      onClick={onClick}
+      onMouseEnter={onClick ? e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.06)' } : undefined}
+      onMouseLeave={onClick ? e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.03)' } : undefined}
+    >
       <p className="text-gray-600 uppercase mb-1.5 truncate" style={{ fontSize: '9px', letterSpacing: '0.12em', fontFamily: "'DM Mono', monospace" }}>{label}</p>
       <p className="text-white font-black leading-none mb-1" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '1.5rem' }}>{value}</p>
-      {sub && <p className="text-gray-500 leading-tight line-clamp-2" style={{ fontSize: '10px' }}>{sub}</p>}
+      {sub && <p className="leading-tight line-clamp-2" style={{ fontSize: '10px', color: onClick ? 'var(--accent-light)' : 'var(--text-muted)' }}>{sub}</p>}
     </div>
   )
 }
@@ -175,6 +175,7 @@ function ActivityRow({ item, onFilmPress, isLast }) {
 
 export default function Home() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [activeMovies, setActiveMovies] = useState([])
   const [activeMonthYear, setActiveMonthYear] = useState(null)
@@ -298,12 +299,19 @@ export default function Home() {
           {loading ? (
             <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
           ) : pendingFilms.length === 0 ? (
-            <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10">
+            <div
+              onClick={() => navigate('/stats?tab=me')}
+              className="flex items-center gap-3 p-4 rounded-xl border border-white/10 transition-colors"
+              style={{ cursor: 'pointer', background: 'rgba(var(--fg-rgb),0.03)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.07)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.03)' }}
+            >
               <span style={{ fontSize: '20px' }}>✓</span>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-medium">You're all caught up</p>
                 <p className="text-gray-500 text-xs">All scores submitted for this month</p>
               </div>
+              <span style={{ color: 'var(--text-dim)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>View stats →</span>
             </div>
           ) : (
             <div className="space-y-2">
@@ -330,19 +338,66 @@ export default function Home() {
             <div className="flex gap-3 overflow-hidden">
               {[...Array(4)].map((_, i) => <Skeleton key={i} className="shrink-0 w-28 rounded-lg" style={{ aspectRatio: '2/3' }} />)}
             </div>
+          ) : activeMovies.length === 0 ? (
+            <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: 0 }}>
+              No picks yet for {activeMonthYear
+                ? new Date(activeMonthYear + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                : 'this month'}.
+            </p>
           ) : (
-            <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', scrollbarWidth: 'none' }}>
-              {activeMovies.map(m => {
-                const pickerName = m.picker_revealed
-                  ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
-                  : undefined
-                return (
-                  <div key={m.id} onClick={() => setSelectedMovie(m)} style={{ cursor: 'pointer' }}>
-                    <PosterCard movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} />
-                  </div>
-                )
-              })}
-            </div>
+            <>
+              <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', scrollbarWidth: 'none' }}>
+                {activeMovies.map(m => {
+                  const pickerName = m.picker_revealed
+                    ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
+                    : undefined
+                  return (
+                    <div key={m.id} onClick={() => setSelectedMovie(m)} style={{ cursor: 'pointer' }}>
+                      <PosterCard movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} />
+                    </div>
+                  )
+                })}
+              </div>
+              {/* Show submitted scores when all films are scored */}
+              {pendingFilms.length === 0 && activeMovies.length > 0 && (
+                <div className="mt-4 rounded-xl px-3 py-1" style={{ background: 'var(--surface)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
+                  {activeMovies.map((m, i) => {
+                    const r = ratingsMap[m.id]
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex items-center gap-3 py-2.5"
+                        style={{ borderBottom: i === activeMovies.length - 1 ? 'none' : '1px solid rgba(var(--fg-rgb),0.08)' }}
+                      >
+                        <div className="shrink-0 w-6 h-9 rounded overflow-hidden bg-gray-900">
+                          {m.poster_url ? (
+                            <img src={`https://image.tmdb.org/t/p/w92${m.poster_url}`} alt={m.title} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.3)', fontFamily: "'Bebas Neue',sans-serif" }}>{initials(m.title)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <p
+                          className="flex-1 min-w-0 truncate"
+                          style={{ color: 'var(--text)', fontSize: '13px', margin: 0, cursor: 'pointer', fontWeight: 400 }}
+                          onClick={() => setSelectedMovie(m)}
+                        >
+                          {m.title}
+                        </p>
+                        {r?.score != null ? (
+                          <span style={{ color: 'var(--accent)', fontSize: '13px', fontWeight: 700, fontFamily: "'DM Mono',monospace", whiteSpace: 'nowrap' }}>
+                            {Number(r.score).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-dim)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>—</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )}
         </section>
 
@@ -355,8 +410,18 @@ export default function Home() {
             <div className="grid grid-cols-3 gap-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              <StatCard label="Top Film" value={topFilm ? Number(topFilm.historical_avg_score).toFixed(2) : '—'} sub={topFilm?.title} />
-              <StatCard label="Films" value={allMovies.length} sub="watched" />
+              <StatCard
+                label="Top Film"
+                value={topFilm ? Number(topFilm.historical_avg_score).toFixed(2) : '—'}
+                sub={topFilm?.title}
+                onClick={topFilm ? () => setSelectedMovie(topFilm) : undefined}
+              />
+              <StatCard
+                label="Films"
+                value={allMovies.length}
+                sub={`watched`}
+                onClick={() => navigate('/films')}
+              />
               <StatCard label="Days" value={daysSince(FOUNDING)} sub="of club" />
             </div>
           )}

@@ -25,10 +25,8 @@ function expectedMemberCount(monthYear, allUsers) {
   return allUsers.filter(u => {
     if (!u.is_active) return false
     if (u.email === TEST_USER_EMAIL) return false
-    const joined = new Date(u.joined_at)
-    const [y, m] = monthYear.split('-').map(Number)
-    const filmMonth = new Date(y, m - 1, 1)
-    return joined <= filmMonth
+    if (isZackPreApril(u, monthYear)) return false
+    return joinedByMonth(u, monthYear)
   }).length
 }
 
@@ -36,6 +34,17 @@ function expectedMemberCount(monthYear, allUsers) {
 function isZackPreApril(user, monthYear) {
   if (user.name !== ZACK_NAME) return false
   return monthYear < ZACK_JOIN_MONTH
+}
+
+// Was a user a club member during a given film month?
+// Compares by year-month string (not raw Date objects) to avoid the UTC-vs-local
+// midnight skew that made same-month joiners (e.g. joined Jan 5 for a Jan film)
+// register as "not yet a member" and render as a dash. A user counts as expected
+// if the month they joined is <= the film's month.
+function joinedByMonth(user, monthYear) {
+  if (!user.joined_at || !monthYear) return false
+  const joinedMonth = String(user.joined_at).slice(0, 7) // 'YYYY-MM'
+  return joinedMonth <= monthYear
 }
 
 function Skeleton({ className = '' }) {
@@ -106,7 +115,128 @@ function SuccessBanner({ msg, onClose }) {
 // ─────────────────────────────────────────────
 // TAB 1 — Dashboard
 // ─────────────────────────────────────────────
-function DashboardTab({ movies, ratings, users, months }) {
+// Activate a month: set status='active', set active_date (default the 1st, editable),
+// and materialize its upcoming picks into movies + split deadlines via the RPC.
+// Deadlines are NOT enforced yet (dev mode) — they are just computed/shown.
+function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
+  const sortedMonths = [...months].sort((a, b) => b.month_year.localeCompare(a.month_year))
+  const [targetId, setTargetId] = useState('')
+  const [activeDate, setActiveDate] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const target = months.find(m => m.id === targetId) || null
+
+  // Default the active_date for a month: its existing active_date, or the 1st of that month
+  // (months.month_year is 'YYYY-MM').
+  function defaultActiveDate(mo) {
+    if (!mo) return ''
+    return mo.active_date ? String(mo.active_date).slice(0, 10) : `${mo.month_year}-01`
+  }
+
+  function onSelectMonth(id) {
+    setTargetId(id)
+    setActiveDate(defaultActiveDate(months.find(m => m.id === id)))
+  }
+
+  async function saveActiveDate() {
+    if (!target) return
+    setBusy(true)
+    const { error } = await supabase.from('months').update({ active_date: activeDate || null }).eq('id', target.id)
+    setBusy(false)
+    if (error) setError('Failed to save active date: ' + error.message)
+    else { setSuccess('Active date saved'); onRefresh() }
+  }
+
+  async function activateNow() {
+    if (!target) return
+    setBusy(true)
+    // 1) Set status + active_date.
+    const { error: updErr } = await supabase
+      .from('months')
+      .update({ status: 'active', active_date: activeDate || defaultActiveDate(target) })
+      .eq('id', target.id)
+    if (updErr) {
+      setBusy(false)
+      setError('Failed to activate month: ' + updErr.message)
+      return
+    }
+    // 2) Materialize upcoming picks into movies + split deadlines evenly by film count.
+    const { error: rpcErr } = await supabase.rpc('materialize_and_split_month', { p_month_id: target.id })
+    setBusy(false)
+    if (rpcErr) {
+      setError('Month set active, but materialize/split failed: ' + rpcErr.message)
+    } else {
+      setSuccess(`${target.month_year} is now active — picks materialized and deadlines split.`)
+    }
+    onRefresh()
+  }
+
+  const fieldStyle = {
+    display: 'block', width: '100%', marginTop: '6px', padding: '9px 10px', borderRadius: '8px',
+    background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+    color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", outline: 'none', boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <Label>Month Activation</Label>
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace" }}>
+        Sets the month active, records its active date, and materializes upcoming picks into films with deadlines split evenly. Deadlines are not enforced yet (dev mode).
+      </p>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+          <Label>Target month</Label>
+          <select value={targetId} onChange={e => onSelectMonth(e.target.value)} style={fieldStyle}>
+            <option value="">Select month…</option>
+            {sortedMonths.map(mo => (
+              <option key={mo.id} value={mo.id}>
+                {mo.month_year}{mo.status === 'active' ? ' (active)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ flex: '1 1 150px', minWidth: 0 }}>
+          <Label>Active date</Label>
+          <input
+            type="date"
+            value={activeDate}
+            disabled={!target}
+            onChange={e => setActiveDate(e.target.value)}
+            style={{ ...fieldStyle, fontFamily: "'DM Mono',monospace", opacity: target ? 1 : 0.5 }}
+          />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
+        <button
+          onClick={activateNow}
+          disabled={!target || busy}
+          style={{
+            padding: '9px 18px', borderRadius: '8px', border: 'none', background: 'var(--accent)',
+            color: 'var(--text-strong)', fontSize: '13px', fontWeight: 500,
+            cursor: (!target || busy) ? 'not-allowed' : 'pointer', opacity: (!target || busy) ? 0.6 : 1,
+            fontFamily: "'DM Sans',sans-serif",
+          }}
+        >
+          {busy ? 'Working…' : 'Activate / Trigger now'}
+        </button>
+        <button
+          onClick={saveActiveDate}
+          disabled={!target || busy}
+          title="Save the active date without re-running materialization"
+          style={{
+            padding: '9px 14px', borderRadius: '8px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
+            background: 'transparent', color: (!target || busy) ? 'var(--text-faint)' : 'var(--text-muted)',
+            fontSize: '12px', cursor: (!target || busy) ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono',monospace",
+          }}
+        >
+          Save active date only
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DashboardTab({ movies, ratings, users, months, onBackfillFilm, onRefresh, setError, setSuccess }) {
   const totalFilms = movies.length
   const totalRatings = ratings.length
   const vaultFilms = movies.filter(m => {
@@ -192,6 +322,14 @@ function DashboardTab({ movies, ratings, users, months }) {
         )}
       </div>
 
+      {/* Month activation (set active, edit active_date, materialize + split deadlines) */}
+      <MonthActivationPanel
+        months={months}
+        onRefresh={onRefresh}
+        setError={setError}
+        setSuccess={setSuccess}
+      />
+
       {/* Missing scores */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px' }}>
         <Label>Films with Missing Scores</Label>
@@ -200,13 +338,23 @@ function DashboardTab({ movies, ratings, users, months }) {
         ) : (
           <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {missingScoreFilms.map(f => (
-              <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+              <button
+                key={f.id}
+                onClick={() => onBackfillFilm?.(f.id)}
+                title="Open the Scores tab to backfill this film"
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
+                  width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: '8px',
+                  border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'rgba(var(--fg-rgb), 0.02)',
+                  cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                }}
+              >
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <p style={{ color: 'var(--text-strong)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
-                  <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>{f.month_year}</p>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>{f.month_year} · tap to backfill</p>
                 </div>
                 <Badge color="red">{f.actual}/{f.expected}</Badge>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -1125,13 +1273,20 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
     if (!trimmedName) { setError('Name is required'); return }
     if (!trimmedEmail || !trimmedEmail.includes('@')) { setError('Enter a valid email address'); return }
 
-    setSaving(true)
-    const { error } = await supabase.from('users').update({
+    const target = users.find(u => u.id === userId)
+    const updates = {
       name: trimmedName,
       email: trimmedEmail,
-      role: editForm.role,
       joined_at: editForm.joined_at || null,
-    }).eq('id', userId)
+    }
+    // Role changes are op-only (and never via this form for ops or yourself).
+    const canChangeRole = currentProfile?.is_op && !target?.is_op && userId !== currentProfile?.id
+    if (canChangeRole && (editForm.role === 'member' || editForm.role === 'admin')) {
+      updates.role = editForm.role
+    }
+
+    setSaving(true)
+    const { error } = await supabase.from('users').update(updates).eq('id', userId)
     setSaving(false)
     if (error) setError('Save failed: ' + error.message)
     else { setSuccess('Member updated'); setEditingId(null); onRefresh() }
@@ -1141,11 +1296,31 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
     if (user.email === PROTECTED_EMAIL || user.id === currentProfile?.id) return
     const { error } = await supabase.from('users').update({ is_active: !user.is_active }).eq('id', user.id)
     if (error) setError('Failed: ' + error.message)
-    else { setSuccess('Updated'); onRefresh() }
+    else { setSuccess(user.is_active ? 'Member deactivated' : 'Member activated'); onRefresh() }
   }
 
   function isProtected(user) {
     return user.email === PROTECTED_EMAIL || user.id === currentProfile?.id
+  }
+
+  // Op-only: only ops may grant/revoke admin. Ops can't be demoted here and you can't change your own role.
+  const viewerIsOp = !!currentProfile?.is_op
+
+  async function changeRole(user, newRole) {
+    if (!viewerIsOp) return
+    if (user.id === currentProfile?.id) { setError('You cannot change your own role.'); return }
+    if (user.is_op) { setError('Ops cannot be demoted from here.'); return }
+    setSaving(true)
+    const { error } = await supabase.from('users').update({ role: newRole }).eq('id', user.id)
+    setSaving(false)
+    if (error) setError('Failed: ' + error.message)
+    else { setSuccess(newRole === 'admin' ? 'Promoted to admin' : 'Demoted to member'); onRefresh() }
+  }
+
+  function roleLabel(user) {
+    if (user.is_op) return { text: 'Op', color: 'yellow' }
+    if (user.role === 'admin') return { text: 'Admin', color: 'yellow' }
+    return { text: 'Member', color: 'gray' }
   }
 
   return (
@@ -1168,7 +1343,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '14px', margin: 0 }}>{user.name}</p>
-                {user.role === 'admin' && <Badge color="yellow">admin</Badge>}
+                <Badge color={roleLabel(user).color}>{roleLabel(user).text}</Badge>
                 {!user.is_active && <Badge color="red">inactive</Badge>}
               </div>
               <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'DM Mono',monospace" }}>
@@ -1178,7 +1353,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
                 Joined: {user.joined_at ? new Date(user.joined_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => editingId === user.id ? setEditingId(null) : startEdit(user)}
                 style={{
@@ -1189,6 +1364,37 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
               >
                 {editingId === user.id ? 'Cancel' : 'Edit'}
               </button>
+              {/* Op-only: promote a member to admin, or demote an admin to member.
+                  Hidden for non-ops, for yourself, and for other ops (who can't be demoted here). */}
+              {viewerIsOp && user.id !== currentProfile?.id && !user.is_op && (
+                user.role === 'admin' ? (
+                  <button
+                    onClick={() => changeRole(user, 'member')}
+                    disabled={saving}
+                    title="Demote this admin to member"
+                    style={{
+                      padding: '5px 10px', borderRadius: '7px', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                      background: 'transparent', color: saving ? 'var(--text-faint)' : '#fbbf24',
+                      fontSize: '11px', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono',monospace"
+                    }}
+                  >
+                    Demote
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => changeRole(user, 'admin')}
+                    disabled={saving}
+                    title="Promote this member to admin"
+                    style={{
+                      padding: '5px 10px', borderRadius: '7px', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                      background: 'transparent', color: saving ? 'var(--text-faint)' : '#a5b4fc',
+                      fontSize: '11px', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono',monospace"
+                    }}
+                  >
+                    Promote
+                  </button>
+                )
+              )}
               <button
                 onClick={() => toggleActive(user)}
                 disabled={isProtected(user)}
@@ -1233,13 +1439,20 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
                   <div style={{ flex: '1 1 100px', minWidth: 0 }}>
                     <Label>Role</Label>
                     <select
-                      value={editForm.role}
+                      value={user.is_op ? 'op' : editForm.role}
                       onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
-                      style={fieldStyle}
+                      disabled={!viewerIsOp || user.is_op || user.id === currentProfile?.id}
+                      style={{ ...fieldStyle, opacity: (!viewerIsOp || user.is_op || user.id === currentProfile?.id) ? 0.5 : 1 }}
                     >
+                      {user.is_op && <option value="op">op</option>}
                       <option value="member">member</option>
                       <option value="admin">admin</option>
                     </select>
+                    {!viewerIsOp && (
+                      <p style={{ color: 'var(--text-faint)', fontSize: '9px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
+                        Only ops can change roles.
+                      </p>
+                    )}
                   </div>
                   <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                     <Label>Joined Date</Label>
@@ -1287,13 +1500,32 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
 // ─────────────────────────────────────────────
 // TAB 4 — Scores
 // ─────────────────────────────────────────────
-function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuccess }) {
+function ScoresTab({ movies, users, ratings, months, preselectFilmId, onConsumePreselect, onRefresh, setError, setSuccess }) {
   const [selectedMovie, setSelectedMovie] = useState('')
   const [selectedUser, setSelectedUser] = useState('')
   const [score, setScore] = useState('')
   const [excitement, setExcitement] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showAllFilms, setShowAllFilms] = useState(false)
+
+  // Deep-link in from the Dashboard's "missing scores" list: preselect that film once.
+  useEffect(() => {
+    if (preselectFilmId) {
+      setSelectedMovie(preselectFilmId)
+      onConsumePreselect?.()
+    }
+  }, [preselectFilmId, onConsumePreselect])
+
+  // Preselect a film+member in the backfill form (used by the matrix cells) and
+  // scroll the form into view so the admin can immediately enter/overwrite a score.
+  function preselect(movieId, userId) {
+    setSelectedMovie(movieId)
+    setSelectedUser(userId)
+    const existing = ratings.find(r => r.movie_id === movieId && r.user_id === userId)
+    setScore(existing?.score != null ? String(existing.score) : '')
+    setExcitement(existing?.pre_watch_excitement != null ? String(existing.pre_watch_excitement) : '')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const monthMap = {}
   months.forEach(mo => { monthMap[mo.id] = mo })
@@ -1303,6 +1535,11 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
 
   // Build set of existing ratings: "movieId:userId"
   const ratingSet = new Set(ratings.map(r => `${r.movie_id}:${r.user_id}`))
+
+  // The rating currently targeted by the form (if any) — drives overwrite messaging.
+  const existingRating = (selectedMovie && selectedUser)
+    ? ratings.find(r => r.movie_id === selectedMovie && r.user_id === selectedUser)
+    : null
 
   // Movies sorted by month desc
   const sortedMovies = [...movies].sort((a, b) => {
@@ -1317,10 +1554,7 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
     if (!mo) return false
     const expUsers = activeUsers.filter(u => {
       if (isZackPreApril(u, mo.month_year)) return false
-      const joined = new Date(u.joined_at)
-      const [y, month] = mo.month_year.split('-').map(Number)
-      const filmMonth = new Date(y, month - 1, 1)
-      return joined <= filmMonth
+      return joinedByMonth(u, mo.month_year)
     })
     const missing = expUsers.some(u => !ratingSet.has(`${m.id}:${u.id}`))
     return missing
@@ -1346,11 +1580,12 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
       if (!isNaN(eNum)) payload.pre_watch_excitement = eNum
     }
 
+    const wasOverwrite = ratingSet.has(`${selectedMovie}:${selectedUser}`)
     const { error } = await supabase.from('ratings').upsert(payload, { onConflict: 'movie_id,user_id' })
     setSubmitting(false)
     if (error) setError('Failed: ' + error.message)
     else {
-      setSuccess('Score submitted')
+      setSuccess(wasOverwrite ? 'Score overwritten' : 'Score submitted')
       setScore('')
       setExcitement('')
       onRefresh()
@@ -1372,7 +1607,12 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
     <div>
       {/* Score entry form */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
-        <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 14px' }}>Backfill Score</p>
+        <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 6px' }}>Backfill / Overwrite Score</p>
+        <p style={{ color: 'var(--text-faint)', fontSize: '10px', margin: '0 0 14px', fontFamily: "'DM Mono',monospace" }}>
+          {existingRating
+            ? `Overwriting existing score (${Number(existingRating.score).toFixed(2)}) for this member.`
+            : 'Fills a blank score, or overwrites an existing one if the member already has a score for this film.'}
+        </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
             <Label>Film</Label>
@@ -1423,7 +1663,7 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
               opacity: (submitting || !selectedMovie || !selectedUser || !score) ? 0.6 : 1, alignSelf: 'flex-start'
             }}
           >
-            {submitting ? 'Submitting…' : 'Submit Score'}
+            {submitting ? 'Submitting…' : (existingRating ? 'Overwrite Score' : 'Submit Score')}
           </button>
         </div>
       </div>
@@ -1467,35 +1707,46 @@ function ScoresTab({ movies, users, ratings, months, onRefresh, setError, setSuc
                       </td>
                       {activeUsers.map(u => {
                         const hasScore = ratingSet.has(`${m.id}:${u.id}`)
-                        // Zack on pre-April 2026 films → N/A
-                        if (isZackPreApril(u, monthYear)) {
-                          return (
-                            <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)' }}>
+                        const naForZack = isZackPreApril(u, monthYear)
+                        // Whether this user was a club member during this film's month.
+                        const isExpected = joinedByMonth(u, monthYear)
+                        // Every cell is clickable to preselect this film + member in the backfill
+                        // form above — including N/A cells, so an admin can still manually enter a
+                        // score for Zack on a pre-April film he actually watched.
+                        const cellTitle = naForZack
+                          ? `Backfill ${u.name} for "${m.title}" (N/A — not in club this month, but you can still enter a score)`
+                          : `Backfill ${u.name} for "${m.title}"`
+                        let mark
+                        if (naForZack || !isExpected) {
+                          // N/A (Zack pre-April) and not-yet-a-member both render the same way:
+                          // a crossed-out marker. Scored cells below override with a ✓.
+                          mark = hasScore
+                            ? <span style={{ color: '#4ade80', fontSize: '14px' }}>✓</span>
+                            : (
                               <span style={{
-                                color: 'var(--hairline)',
-                                fontSize: '11px',
-                                fontFamily: "'DM Mono',monospace",
-                                textDecoration: 'line-through',
+                                color: 'var(--hairline)', fontSize: naForZack ? '11px' : '12px',
+                                fontFamily: "'DM Mono',monospace", textDecoration: naForZack ? 'line-through' : 'none',
                               }}>
-                                N/A
+                                {naForZack ? 'N/A' : '–'}
                               </span>
-                            </td>
-                          )
+                            )
+                        } else if (hasScore) {
+                          mark = <span style={{ color: '#4ade80', fontSize: '14px' }}>✓</span>
+                        } else {
+                          mark = <span style={{ color: '#ef4444', fontSize: '14px' }}>✗</span>
                         }
-                        // Check if user was a member at this film's month
-                        const joined = new Date(u.joined_at)
-                        const [y, month] = monthYear.split('-').map(Number)
-                        const filmMonth = new Date(y, month - 1, 1)
-                        const isExpected = monthYear ? joined <= filmMonth : false
                         return (
-                          <td key={u.id} style={{ padding: '7px 8px', textAlign: 'center', borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)' }}>
-                            {!isExpected ? (
-                              <span style={{ color: 'var(--hairline)', fontSize: '12px' }}>–</span>
-                            ) : hasScore ? (
-                              <span style={{ color: '#4ade80', fontSize: '14px' }}>✓</span>
-                            ) : (
-                              <span style={{ color: '#ef4444', fontSize: '14px' }}>✗</span>
-                            )}
+                          <td key={u.id} style={{ padding: 0, textAlign: 'center', borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)' }}>
+                            <button
+                              onClick={() => preselect(m.id, u.id)}
+                              title={cellTitle}
+                              style={{
+                                width: '100%', padding: '7px 8px', background: 'none', border: 'none',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >
+                              {mark}
+                            </button>
                           </td>
                         )
                       })}
@@ -1522,6 +1773,14 @@ export default function Admin() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  // Deep-link target for the Scores tab (set when an admin clicks a missing-score row).
+  const [preselectFilmId, setPreselectFilmId] = useState('')
+
+  // Jump from the Dashboard's "missing scores" list straight to the Scores backfill form.
+  const goToScoresForFilm = useCallback((movieId) => {
+    setPreselectFilmId(movieId)
+    setActiveTab('Scores')
+  }, [])
 
   // Data
   const [movies, setMovies] = useState([])
@@ -1539,8 +1798,8 @@ export default function Admin() {
     ] = await Promise.all([
       supabase.from('movies').select('*, picked_by:users!picked_by_user_id(name)').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-      supabase.from('users').select('id, name, email, role, joined_at, is_active, admin_mode_enabled').order('joined_at'),
-      supabase.from('months').select('id, season_id, month_year, status').order('month_year'),
+      supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, admin_mode_enabled').order('joined_at'),
+      supabase.from('months').select('id, season_id, month_year, status, active_date').order('month_year'),
     ])
 
     if (moviesErr || ratingsErr || usersErr || monthsErr) {
@@ -1631,6 +1890,10 @@ export default function Admin() {
                 ratings={ratings}
                 users={users}
                 months={months}
+                onBackfillFilm={goToScoresForFilm}
+                onRefresh={fetchAll}
+                setError={setError}
+                setSuccess={setSuccess}
               />
             )}
             {activeTab === 'Films' && (
@@ -1659,6 +1922,8 @@ export default function Admin() {
                 users={users}
                 ratings={ratings}
                 months={months}
+                preselectFilmId={preselectFilmId}
+                onConsumePreselect={() => setPreselectFilmId('')}
                 onRefresh={fetchAll}
                 setError={setError}
                 setSuccess={setSuccess}

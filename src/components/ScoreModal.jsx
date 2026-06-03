@@ -13,7 +13,12 @@ function validateScore(val) {
 export default function ScoreModal({ movie, existingRating, onClose, onSaved }) {
   const { profile } = useAuth()
   const [scoreInput, setScoreInput] = useState('')
-  const [recommendOutside, setRecommendOutside] = useState(false)
+  // null = unanswered, true = yes, false = no. Seeded from any existing rating.
+  const [recommendOutside, setRecommendOutside] = useState(
+    existingRating?.recommend_outside_club != null
+      ? !!existingRating.recommend_outside_club
+      : null
+  )
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [confirmBold, setConfirmBold] = useState(false)
@@ -25,13 +30,6 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   const finalScoreAlreadySubmitted = existingRating?.score != null
   const isExcitementMode = !finalScoreAlreadySubmitted && !existingRating?.pre_watch_excitement
   const isFinalMode = !finalScoreAlreadySubmitted && existingRating?.pre_watch_excitement && !existingRating?.score
-
-  // Pre-populate recommend checkbox from existing rating
-  useEffect(() => {
-    if (existingRating?.recommend_outside_club != null) {
-      setRecommendOutside(!!existingRating.recommend_outside_club)
-    }
-  }, [existingRating])
 
   // Animate in
   useEffect(() => {
@@ -86,6 +84,8 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
         )
 
       if (dbErr) throw dbErr
+      // Fire onSaved so the parent film page refetches (revealing the
+      // review/discussion section) before the modal unmounts.
       onSaved()
       handleClose()
     } catch (e) {
@@ -100,38 +100,39 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
 
   return (
     <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 50,
-        display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-      }}
+      className="mc-modal-backdrop"
+      // Inline position:fixed kept so the backdrop is always pinned to the
+      // viewport even if the global class is unavailable; the class also adds
+      // overflow-y:auto + align-items:flex-start so a focused input stays in
+      // view above the mobile keyboard instead of being pushed off the top.
+      style={{ position: 'fixed', zIndex: 50 }}
     >
-      {/* Backdrop */}
+      {/* Backdrop (click-to-close) */}
       <div
         onClick={handleClose}
         style={{
-          position: 'absolute', inset: 0,
+          position: 'fixed', inset: 0,
           background: 'rgba(0,0,0,0.72)',
           transition: 'opacity 0.25s ease',
           opacity: visible ? 1 : 0,
         }}
       />
 
-      {/* Sheet */}
+      {/* Panel */}
       <div
+        className="mc-modal-panel"
         style={{
           position: 'relative',
           background: 'var(--surface)',
-          borderTop: '1px solid rgba(var(--fg-rgb), 0.08)',
-          borderRadius: '20px 20px 0 0',
-          padding: '0 1rem 2rem',
-          width: '100%',
+          border: '1px solid rgba(var(--fg-rgb), 0.08)',
+          borderRadius: '20px',
+          padding: '0 1rem 1.5rem',
           boxSizing: 'border-box',
-          transition: 'transform 0.26s cubic-bezier(0.32,0.72,0,1)',
-          transform: visible ? 'translateY(0)' : 'translateY(100%)',
-          maxWidth: '560px',
-          marginLeft: 'auto',
-          marginRight: 'auto',
-          willChange: 'transform',
+          transition: 'transform 0.26s cubic-bezier(0.32,0.72,0,1), opacity 0.26s ease',
+          transform: visible ? 'translateY(0)' : 'translateY(12px)',
+          opacity: visible ? 1 : 0,
+          maxWidth: '480px',
+          willChange: 'transform, opacity',
         }}
       >
         {/* Handle */}
@@ -308,32 +309,53 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               </p>
             )}
 
-            {/* Recommend checkbox (final mode only) */}
+            {/* Recommend outside the club — Yes / No toggle (final mode only) */}
             {isFinalMode && (
               <label
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  marginBottom: '20px', cursor: 'pointer',
+                  display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px',
+                  marginBottom: '20px', cursor: 'default',
                 }}
               >
-                <div
-                  onClick={() => setRecommendOutside(v => !v)}
+                {/* Yes pill is the label's firstChild so its checkmark reflects state */}
+                <button
+                  type="button"
+                  onClick={() => { setRecommendOutside(true); setError(null) }}
                   style={{
-                    width: '20px', height: '20px', flexShrink: 0,
-                    borderRadius: '6px', border: `2px solid ${recommendOutside ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.15)'}`,
-                    background: recommendOutside ? 'var(--accent)' : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.15s ease',
+                    flex: '1 1 0', minWidth: '90px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    padding: '11px', borderRadius: '10px',
+                    border: `1px solid ${recommendOutside === true ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.12)'}`,
+                    background: recommendOutside === true ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.04)',
+                    color: recommendOutside === true ? 'white' : 'var(--text-muted)',
+                    fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: '14px',
+                    cursor: 'pointer', transition: 'all 0.15s ease',
                   }}
                 >
-                  {recommendOutside && (
+                  {recommendOutside === true && (
                     <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
                       <path d="M1 5L4.5 8.5L11 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   )}
-                </div>
-                <span style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)', fontSize: '13px', userSelect: 'none' }}>
-                  I'd recommend this outside the club
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRecommendOutside(false); setError(null) }}
+                  style={{
+                    flex: '1 1 0', minWidth: '90px',
+                    padding: '11px', borderRadius: '10px',
+                    border: `1px solid ${recommendOutside === false ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.12)'}`,
+                    background: recommendOutside === false ? 'rgba(var(--fg-rgb), 0.12)' : 'rgba(var(--fg-rgb), 0.04)',
+                    color: recommendOutside === false ? 'var(--text-strong)' : 'var(--text-muted)',
+                    fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: '14px',
+                    cursor: 'pointer', transition: 'all 0.15s ease',
+                  }}
+                >
+                  No
+                </button>
+                <span style={{ flexBasis: '100%', fontFamily: "'DM Sans',sans-serif", color: 'var(--text-faint)', fontSize: '12px', userSelect: 'none' }}>
+                  Would you recommend this outside the club?
                 </span>
               </label>
             )}

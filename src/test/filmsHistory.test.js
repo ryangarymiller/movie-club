@@ -5,7 +5,7 @@ import { MEMBER_COLORS, pickerColor, sortMonthsDescending } from '../pages/Films
 
 describe('MEMBER_COLORS', () => {
   it('returns correct color for Ryan Miller', () => {
-    expect(MEMBER_COLORS['Ryan Miller']).toBe('#6366f1')
+    expect(MEMBER_COLORS['Ryan Miller']).toBe('#a855f7')
   })
 
   it('returns correct color for Ryan Bey', () => {
@@ -83,6 +83,6 @@ describe('picker border', () => {
     const movie = { picker_revealed: true, picked_by_user_id: 'user-1' }
     const pickerName = movie.picker_revealed ? 'Ryan Miller' : null
     const borderColor = pickerName ? pickerColor(pickerName) : undefined
-    expect(borderColor).toBe('#6366f1')
+    expect(borderColor).toBe('#a855f7')
   })
 })

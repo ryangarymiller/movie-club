@@ -1,20 +1,19 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { memberColor } from '../lib/colors'
 
-// --- Shared helpers (inlined verbatim for consistency) ---
+// --- Shared helpers ---
 function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-}
-const AVATAR_COLORS = ['#e11d48', '#db2777', '#9333ea', '#7c3aed', '#4f46e5', '#2563eb', '#0891b2', '#0d9488', '#16a34a', '#ca8a04']
-function avatarColor(name = '') {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
 }
 
 const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 const EDIT_WINDOW_MS = 15 * 60 * 1000
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '👀']
+const MAX_DEPTH = 6 // cap visual nesting indentation
+
+const MONO = "'DM Mono', monospace"
+const BODY_FONT = "'DM Sans', sans-serif"
 
 // Relative timestamp helper
 function timeAgo(iso) {
@@ -45,12 +44,21 @@ function mentionHandle(name = '') {
   return name.split(/\s+/).filter(Boolean).join('')
 }
 
-const MONO = "'DM Mono', monospace"
-const BODY_FONT = "'DM Sans', sans-serif"
+// Avatar background: member color if known, else a deterministic hash fallback.
+const AVATAR_FALLBACK = ['#e11d48', '#db2777', '#9333ea', '#7c3aed', '#4f46e5', '#2563eb', '#0891b2', '#0d9488', '#16a34a', '#ca8a04']
+function avatarColor(name = '') {
+  const mc = memberColor(name)
+  if (mc) return mc
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
+  return AVATAR_FALLBACK[Math.abs(h) % AVATAR_FALLBACK.length]
+}
 
 export default function CommentThread({ movieId, currentUserId, isAdmin, users = [], canParticipate }) {
+  const [reviews, setReviews] = useState([])
   const [comments, setComments] = useState([])
   const [reactions, setReactions] = useState([])
+  const [votes, setVotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   // Ticks every 30s so the 15-min edit window can expire without a manual refresh.
@@ -66,6 +74,13 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
     for (const u of safeUsers) m[u.id] = u
     return m
   }, [safeUsers])
+  // Email lookup so we can hide content authored by the test account.
+  const emailById = useMemo(() => {
+    const m = {}
+    for (const u of users || []) if (u) m[u.id] = u.email
+    return m
+  }, [users])
+  const isTestAuthor = useCallback(uid => emailById[uid] === TEST_EMAIL, [emailById])
 
   // Members eligible to be @mentioned, with their handle.
   const mentionable = useMemo(
@@ -75,41 +90,60 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
 
   const fetchAll = useCallback(async () => {
     if (!movieId) return
-    const { data: cData, error: cErr } = await supabase
-      .from('comments')
-      .select('id, movie_id, user_id, parent_comment_id, body, reaction_counts, created_at, updated_at')
-      .eq('movie_id', movieId)
-      .order('created_at', { ascending: true })
+    const [revRes, comRes] = await Promise.all([
+      supabase
+        .from('reviews')
+        .select('id, movie_id, user_id, body, created_at, updated_at')
+        .eq('movie_id', movieId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('comments')
+        .select('id, movie_id, user_id, review_id, parent_comment_id, body, created_at, updated_at')
+        .eq('movie_id', movieId)
+        .order('created_at', { ascending: true }),
+    ])
 
-    if (cErr) {
-      setError(cErr.message || 'Could not load discussion.')
+    if (revRes.error || comRes.error) {
+      setError((revRes.error || comRes.error).message || 'Could not load discussion.')
+      setReviews([])
       setComments([])
       setReactions([])
+      setVotes([])
       setLoading(false)
       return
     }
 
-    const list = cData || []
-    setComments(list)
+    const revList = (revRes.data || []).filter(r => !isTestAuthor(r.user_id))
+    const comList = (comRes.data || []).filter(c => !isTestAuthor(c.user_id))
+    setReviews(revList)
+    setComments(comList)
     setError(null)
 
-    const ids = list.map(c => c.id)
-    if (ids.length) {
-      const { data: rData, error: rErr } = await supabase
-        .from('reactions')
-        .select('id, comment_id, user_id, emoji')
-        .in('comment_id', ids)
-      if (rErr) {
-        // Reactions are non-critical; degrade gracefully.
-        setReactions([])
-      } else {
-        setReactions(rData || [])
-      }
+    // Targets across both reviews and comments for reactions + votes.
+    const reviewIds = revList.map(r => r.id)
+    const commentIds = comList.map(c => c.id)
+    const allTargetIds = [...reviewIds, ...commentIds]
+
+    if (allTargetIds.length) {
+      const [reacRes, voteRes] = await Promise.all([
+        supabase
+          .from('reactions')
+          .select('id, target_type, target_id, user_id, emoji')
+          .in('target_id', allTargetIds),
+        supabase
+          .from('votes')
+          .select('id, target_type, target_id, user_id, value')
+          .in('target_id', allTargetIds),
+      ])
+      // Reactions/votes are non-critical; degrade gracefully on error.
+      setReactions(reacRes.error ? [] : (reacRes.data || []))
+      setVotes(voteRes.error ? [] : (voteRes.data || []))
     } else {
       setReactions([])
+      setVotes([])
     }
     setLoading(false)
-  }, [movieId])
+  }, [movieId, isTestAuthor])
 
   useEffect(() => {
     let alive = true
@@ -126,53 +160,66 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
     return () => clearInterval(id)
   }, [])
 
-  // Aggregate reactions per comment id -> { emoji: { count, mine } }
-  const reactionsByComment = useMemo(() => {
+  // Aggregate reactions per (target_type:target_id) -> { emoji: { count, mine } }
+  const reactionsByTarget = useMemo(() => {
     const map = {}
     for (const r of reactions) {
-      if (!map[r.comment_id]) map[r.comment_id] = {}
-      if (!map[r.comment_id][r.emoji]) map[r.comment_id][r.emoji] = { count: 0, mine: false }
-      map[r.comment_id][r.emoji].count += 1
-      if (r.user_id === currentUserId) map[r.comment_id][r.emoji].mine = true
+      const key = `${r.target_type}:${r.target_id}`
+      if (!map[key]) map[key] = {}
+      if (!map[key][r.emoji]) map[key][r.emoji] = { count: 0, mine: false }
+      map[key][r.emoji].count += 1
+      if (r.user_id === currentUserId) map[key][r.emoji].mine = true
     }
     return map
   }, [reactions, currentUserId])
 
-  // Build a 2-level tree: top-level comments + flat list of replies under each.
-  const tree = useMemo(() => {
-    const topLevel = []
-    const repliesByParent = {}
-    const byId = {}
-    for (const c of comments) byId[c.id] = c
+  // Aggregate votes per (target_type:target_id) -> { score, mine: -1|0|1 }
+  const votesByTarget = useMemo(() => {
+    const map = {}
+    for (const v of votes) {
+      const key = `${v.target_type}:${v.target_id}`
+      if (!map[key]) map[key] = { score: 0, mine: 0 }
+      map[key].score += (v.value || 0)
+      if (v.user_id === currentUserId) map[key].mine = v.value || 0
+    }
+    return map
+  }, [votes, currentUserId])
 
+  // Build nested comment trees keyed by review_id.
+  // commentsByReview[reviewId] = array of top-level comment nodes (each with .children).
+  const commentsByReview = useMemo(() => {
+    const nodes = {}
+    for (const c of comments) nodes[c.id] = { ...c, children: [] }
+    const roots = {} // reviewId -> [top-level comment nodes]
     for (const c of comments) {
-      if (!c.parent_comment_id) {
-        topLevel.push(c)
+      const node = nodes[c.id]
+      const parent = c.parent_comment_id ? nodes[c.parent_comment_id] : null
+      if (parent) {
+        parent.children.push(node)
       } else {
-        // Resolve to the top-level ancestor so deeper replies render flat under it.
-        let anchor = c.parent_comment_id
-        let guard = 0
-        while (byId[anchor] && byId[anchor].parent_comment_id && guard < 10) {
-          anchor = byId[anchor].parent_comment_id
-          guard += 1
-        }
-        if (!repliesByParent[anchor]) repliesByParent[anchor] = []
-        repliesByParent[anchor].push(c)
+        const rid = c.review_id
+        if (!roots[rid]) roots[rid] = []
+        roots[rid].push(node)
       }
     }
-    return topLevel.map(c => ({
-      ...c,
-      replies: (repliesByParent[c.id] || []).sort(
-        (a, b) => new Date(a.created_at) - new Date(b.created_at)
-      ),
-    }))
+    // Sort children/roots chronologically.
+    const byTime = (a, b) => new Date(a.created_at) - new Date(b.created_at)
+    const sortDeep = arr => {
+      arr.sort(byTime)
+      for (const n of arr) sortDeep(n.children)
+    }
+    for (const rid of Object.keys(roots)) sortDeep(roots[rid])
+    return roots
   }, [comments])
 
-  // --- Reaction toggle ---
-  async function toggleReaction(commentId, emoji) {
-    if (!currentUserId) return
+  const totalCount = reviews.length + comments.length
+
+  // --- Reaction toggle (polymorphic) ---
+  async function toggleReaction(targetType, targetId, emoji) {
+    if (!currentUserId || !canParticipate) return
     const existing = reactions.find(
-      r => r.comment_id === commentId && r.user_id === currentUserId && r.emoji === emoji
+      r => r.target_type === targetType && r.target_id === targetId &&
+        r.user_id === currentUserId && r.emoji === emoji
     )
     try {
       if (existing) {
@@ -181,7 +228,7 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
       } else {
         const { error: insErr } = await supabase
           .from('reactions')
-          .insert({ comment_id: commentId, user_id: currentUserId, emoji })
+          .insert({ target_type: targetType, target_id: targetId, user_id: currentUserId, emoji })
         if (insErr) throw insErr
       }
       await fetchAll()
@@ -190,9 +237,52 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
     }
   }
 
-  // --- Delete (admin only) ---
-  async function handleDelete(commentId) {
-    if (!isAdmin) return
+  // --- Vote toggle (up/down, one per user per target) ---
+  async function castVote(targetType, targetId, value) {
+    if (!currentUserId || !canParticipate) return
+    const existing = votes.find(
+      v => v.target_type === targetType && v.target_id === targetId && v.user_id === currentUserId
+    )
+    try {
+      if (existing && existing.value === value) {
+        // Clicking the active arrow again removes the vote.
+        const { error: delErr } = await supabase.from('votes').delete().eq('id', existing.id)
+        if (delErr) throw delErr
+      } else if (existing) {
+        // Switch direction.
+        const { error: upErr } = await supabase
+          .from('votes')
+          .update({ value, updated_at: new Date().toISOString() })
+          .eq('id', existing.id)
+        if (upErr) throw upErr
+      } else {
+        const { error: insErr } = await supabase
+          .from('votes')
+          .insert({ target_type: targetType, target_id: targetId, user_id: currentUserId, value })
+        if (insErr) throw insErr
+      }
+      await fetchAll()
+    } catch (e) {
+      setError(e.message || 'Could not record vote.')
+    }
+  }
+
+  // --- Delete a review (and cascade its comments client-side) ---
+  async function deleteReview(reviewId, authorId) {
+    if (!(isAdmin || authorId === currentUserId)) return
+    if (!window.confirm('Delete this review and its replies? This cannot be undone.')) return
+    try {
+      const { error: delErr } = await supabase.from('reviews').delete().eq('id', reviewId)
+      if (delErr) throw delErr
+      await fetchAll()
+    } catch (e) {
+      setError(e.message || 'Could not delete review.')
+    }
+  }
+
+  // --- Delete a comment ---
+  async function deleteComment(commentId, authorId) {
+    if (!(isAdmin || authorId === currentUserId)) return
     if (!window.confirm('Delete this comment? This cannot be undone.')) return
     try {
       const { error: delErr } = await supabase.from('comments').delete().eq('id', commentId)
@@ -203,13 +293,21 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
     }
   }
 
+  const shared = {
+    userById, mentionable, reactionsByTarget, votesByTarget,
+    currentUserId, isAdmin, canParticipate, now,
+    onToggleReaction: toggleReaction, onVote: castVote,
+    onDeleteComment: deleteComment, onError: setError,
+    movieId, onMutated: fetchAll,
+  }
+
   return (
     <div style={{ fontFamily: BODY_FONT, color: 'var(--text)' }}>
       <p style={{
         fontFamily: MONO, fontSize: '10px', textTransform: 'uppercase',
         letterSpacing: '0.1em', color: 'var(--text-dim)', margin: '0 0 16px',
       }}>
-        Discussion{comments.length ? ` · ${comments.length}` : ''}
+        Discussion{totalCount ? ` · ${totalCount}` : ''}
       </p>
 
       {error && (
@@ -222,17 +320,17 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
         </div>
       )}
 
-      {/* Top-level composer */}
+      {/* New review (thread root) composer */}
       {canParticipate ? (
         <Composer
           movieId={movieId}
           currentUserId={currentUserId}
-          parentId={null}
+          target="review"
           mentionable={mentionable}
           onPosted={fetchAll}
           onError={setError}
-          placeholder="Add to the discussion…"
-          submitLabel="Post"
+          placeholder="Write a review to start a thread…"
+          submitLabel="Post review"
         />
       ) : (
         <div style={{
@@ -244,33 +342,24 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
         </div>
       )}
 
-      {/* Thread */}
+      {/* Threads */}
       {loading ? (
         <p style={{ color: 'var(--text-faint)', fontSize: '13px', padding: '8px 0' }}>
           Loading discussion…
         </p>
-      ) : tree.length === 0 ? (
+      ) : reviews.length === 0 ? (
         <p style={{ color: 'var(--text-faint)', fontSize: '13px', padding: '8px 0' }}>
-          No comments yet. {canParticipate ? 'Be the first to say something.' : ''}
+          No reviews yet. {canParticipate ? 'Be the first to write one.' : ''}
         </p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '8px' }}>
-          {tree.map(c => (
-            <TopLevelComment
-              key={c.id}
-              comment={c}
-              userById={userById}
-              mentionable={mentionable}
-              reactionsByComment={reactionsByComment}
-              currentUserId={currentUserId}
-              isAdmin={isAdmin}
-              canParticipate={canParticipate}
-              movieId={movieId}
-              now={now}
-              onToggleReaction={toggleReaction}
-              onDelete={handleDelete}
-              onMutated={fetchAll}
-              onError={setError}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', marginTop: '8px' }}>
+          {reviews.map(rev => (
+            <ReviewThread
+              key={rev.id}
+              review={rev}
+              childComments={commentsByReview[rev.id] || []}
+              onDeleteReview={deleteReview}
+              {...shared}
             />
           ))}
         </div>
@@ -279,30 +368,126 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
   )
 }
 
-// ---------- Top-level comment with its replies ----------
-function TopLevelComment({
-  comment, userById, mentionable, reactionsByComment, currentUserId, isAdmin,
-  canParticipate, movieId, now, onToggleReaction, onDelete, onMutated, onError,
-}) {
+// ---------- A review thread root + its nested comments ----------
+function ReviewThread({ review, childComments, onDeleteReview, ...shared }) {
+  const {
+    userById, mentionable, reactionsByTarget, votesByTarget, currentUserId,
+    isAdmin, canParticipate, now, onToggleReaction, onVote,
+    onError, movieId, onMutated,
+  } = shared
   const [replying, setReplying] = useState(false)
 
   return (
-    <div>
-      <CommentCard
-        comment={comment}
+    <div style={{
+      border: '1px solid rgba(var(--fg-rgb),0.1)', borderRadius: '14px',
+      padding: '16px', background: 'rgba(var(--fg-rgb),0.02)',
+    }}>
+      <PostCard
+        post={review}
+        targetType="review"
         userById={userById}
         mentionable={mentionable}
-        reactionsByComment={reactionsByComment}
+        reactionsByTarget={reactionsByTarget}
+        votesByTarget={votesByTarget}
         currentUserId={currentUserId}
         isAdmin={isAdmin}
+        canParticipate={canParticipate}
         now={now}
         onToggleReaction={onToggleReaction}
-        onDelete={onDelete}
+        onVote={onVote}
+        onDelete={() => onDeleteReview(review.id, review.user_id)}
+        onMutated={onMutated}
+        onError={onError}
+        isReviewRoot
+      />
+
+      {/* Reply to the review */}
+      {canParticipate && (
+        <div style={{ marginTop: '8px', marginLeft: '44px' }}>
+          <button
+            onClick={() => setReplying(v => !v)}
+            aria-expanded={replying}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0',
+              fontFamily: MONO, fontSize: '10px', textTransform: 'uppercase',
+              letterSpacing: '0.1em', color: 'var(--text-dim)',
+            }}
+          >
+            {replying ? 'Cancel' : 'Reply'}
+          </button>
+        </div>
+      )}
+      {canParticipate && replying && (
+        <div style={{ marginLeft: '44px', marginTop: '10px' }}>
+          <Composer
+            movieId={movieId}
+            currentUserId={currentUserId}
+            target="comment"
+            reviewId={review.id}
+            parentId={null}
+            mentionable={mentionable}
+            placeholder={`Reply to ${userById[review.user_id]?.name || 'review'}…`}
+            submitLabel="Reply"
+            compact
+            onPosted={() => { setReplying(false); onMutated() }}
+            onError={onError}
+          />
+        </div>
+      )}
+
+      {/* Nested comment tree */}
+      {childComments.length > 0 && (
+        <div style={{ marginTop: '16px', marginLeft: '8px' }}>
+          {childComments.map(node => (
+            <CommentNode
+              key={node.id}
+              node={node}
+              reviewId={review.id}
+              depth={0}
+              {...shared}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- A recursive nested comment node ----------
+function CommentNode({ node, reviewId, depth, ...shared }) {
+  const {
+    userById, mentionable, reactionsByTarget, votesByTarget, currentUserId,
+    isAdmin, canParticipate, now, onToggleReaction, onVote, onDeleteComment,
+    onError, movieId, onMutated,
+  } = shared
+  const [replying, setReplying] = useState(false)
+  const indent = depth < MAX_DEPTH
+
+  return (
+    <div style={{
+      marginTop: depth === 0 ? 0 : '14px',
+      paddingLeft: indent ? '14px' : 0,
+      marginLeft: indent ? '4px' : 0,
+      borderLeft: indent ? '2px solid rgba(var(--fg-rgb),0.08)' : 'none',
+    }}>
+      <PostCard
+        post={node}
+        targetType="comment"
+        userById={userById}
+        mentionable={mentionable}
+        reactionsByTarget={reactionsByTarget}
+        votesByTarget={votesByTarget}
+        currentUserId={currentUserId}
+        isAdmin={isAdmin}
+        canParticipate={canParticipate}
+        now={now}
+        onToggleReaction={onToggleReaction}
+        onVote={onVote}
+        onDelete={() => onDeleteComment(node.id, node.user_id)}
         onMutated={onMutated}
         onError={onError}
       />
 
-      {/* Reply affordance (only when the viewer can participate) */}
       {canParticipate && (
         <div style={{ marginTop: '6px', marginLeft: '44px' }}>
           <button
@@ -318,16 +503,16 @@ function TopLevelComment({
           </button>
         </div>
       )}
-
-      {/* Inline reply composer */}
       {canParticipate && replying && (
         <div style={{ marginLeft: '44px', marginTop: '10px' }}>
           <Composer
             movieId={movieId}
             currentUserId={currentUserId}
-            parentId={comment.id}
+            target="comment"
+            reviewId={reviewId}
+            parentId={node.id}
             mentionable={mentionable}
-            placeholder={`Reply to ${userById[comment.user_id]?.name || 'comment'}…`}
+            placeholder={`Reply to ${userById[node.user_id]?.name || 'comment'}…`}
             submitLabel="Reply"
             compact
             onPosted={() => { setReplying(false); onMutated() }}
@@ -336,27 +521,15 @@ function TopLevelComment({
         </div>
       )}
 
-      {/* Replies (rendered flat, indented) */}
-      {comment.replies.length > 0 && (
-        <div style={{
-          marginLeft: '44px', marginTop: '14px',
-          paddingLeft: '14px', borderLeft: '2px solid rgba(var(--fg-rgb),0.08)',
-          display: 'flex', flexDirection: 'column', gap: '16px',
-        }}>
-          {comment.replies.map(r => (
-            <CommentCard
-              key={r.id}
-              comment={r}
-              userById={userById}
-              mentionable={mentionable}
-              reactionsByComment={reactionsByComment}
-              currentUserId={currentUserId}
-              isAdmin={isAdmin}
-              now={now}
-              onToggleReaction={onToggleReaction}
-              onDelete={onDelete}
-              onMutated={onMutated}
-              onError={onError}
+      {node.children.length > 0 && (
+        <div style={{ marginTop: '6px' }}>
+          {node.children.map(child => (
+            <CommentNode
+              key={child.id}
+              node={child}
+              reviewId={reviewId}
+              depth={depth + 1}
+              {...shared}
             />
           ))}
         </div>
@@ -365,37 +538,42 @@ function TopLevelComment({
   )
 }
 
-// ---------- A single comment (used for both top-level and replies) ----------
-function CommentCard({
-  comment, userById, mentionable, reactionsByComment, currentUserId, isAdmin,
-  now, onToggleReaction, onDelete, onMutated, onError,
+// ---------- A single review or comment card (vote rail + body + actions) ----------
+function PostCard({
+  post, targetType, userById, mentionable, reactionsByTarget, votesByTarget,
+  currentUserId, isAdmin, canParticipate, now, onToggleReaction, onVote,
+  onDelete, onMutated, onError, isReviewRoot,
 }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(comment.body)
+  const [draft, setDraft] = useState(post.body)
   const [saving, setSaving] = useState(false)
 
-  const author = userById[comment.user_id]
+  const author = userById[post.user_id]
   const name = author?.name || 'Unknown member'
-  const isOwn = comment.user_id === currentUserId
-  const edited = comment.updated_at && comment.created_at &&
-    new Date(comment.updated_at).getTime() > new Date(comment.created_at).getTime() + 1000
+  const isOwn = post.user_id === currentUserId
+  const edited = post.updated_at && post.created_at &&
+    new Date(post.updated_at).getTime() > new Date(post.created_at).getTime() + 1000
 
-  // Edit allowed only for own comment within 15 min of creation.
-  // `now` is supplied by the parent (ticked on an interval) to keep render pure.
-  const withinEditWindow = isOwn &&
-    now - new Date(comment.created_at).getTime() < EDIT_WINDOW_MS
+  // Edit allowed only for own post within 15 min of creation.
+  const withinEditWindow = isOwn && canParticipate &&
+    now - new Date(post.created_at).getTime() < EDIT_WINDOW_MS
 
-  const counts = reactionsByComment[comment.id] || {}
+  const canDelete = isAdmin || isOwn
+
+  const key = `${targetType}:${post.id}`
+  const counts = reactionsByTarget[key] || {}
+  const vote = votesByTarget[key] || { score: 0, mine: 0 }
 
   async function saveEdit() {
     const trimmed = draft.trim()
     if (!trimmed) return
     setSaving(true)
     try {
+      const table = targetType === 'review' ? 'reviews' : 'comments'
       const { error: upErr } = await supabase
-        .from('comments')
+        .from(table)
         .update({ body: trimmed, updated_at: new Date().toISOString() })
-        .eq('id', comment.id)
+        .eq('id', post.id)
       if (upErr) throw upErr
       setEditing(false)
       await onMutated()
@@ -407,28 +585,64 @@ function CommentCard({
   }
 
   return (
-    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-      {/* Avatar */}
-      <div
-        aria-hidden="true"
-        style={{
-          flexShrink: 0, width: '32px', height: '32px', borderRadius: '50%',
-          background: avatarColor(name), display: 'flex', alignItems: 'center',
-          justifyContent: 'center', color: '#fff', fontFamily: BODY_FONT,
-          fontWeight: 700, fontSize: '12px', letterSpacing: '0.02em',
-        }}
-      >
-        {initials(name)}
+    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+      {/* Vote rail */}
+      <div style={{
+        flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+        gap: '2px', paddingTop: '2px', width: '28px',
+      }}>
+        <VoteArrow
+          dir="up"
+          active={vote.mine === 1}
+          disabled={!canParticipate}
+          onClick={() => onVote(targetType, post.id, 1)}
+        />
+        <span style={{
+          fontFamily: MONO, fontSize: '12px', fontWeight: 600, lineHeight: 1,
+          color: vote.mine === 1 ? '#86efac' : vote.mine === -1 ? '#f87171' : 'var(--text-muted)',
+        }}>
+          {vote.score}
+        </span>
+        <VoteArrow
+          dir="down"
+          active={vote.mine === -1}
+          disabled={!canParticipate}
+          onClick={() => onVote(targetType, post.id, -1)}
+        />
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ color: 'var(--text-strong)', fontWeight: 600, fontSize: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div
+            aria-hidden="true"
+            style={{
+              flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%',
+              background: avatarColor(name), display: 'flex', alignItems: 'center',
+              justifyContent: 'center', color: '#fff', fontFamily: BODY_FONT,
+              fontWeight: 700, fontSize: '10px', letterSpacing: '0.02em',
+            }}
+          >
+            {initials(name)}
+          </div>
+          <span style={{
+            color: 'var(--text-strong)', fontWeight: 600,
+            fontSize: isReviewRoot ? '14px' : '13px',
+          }}>
             {name}
           </span>
+          {isReviewRoot && (
+            <span style={{
+              fontFamily: MONO, fontSize: '9px', textTransform: 'uppercase',
+              letterSpacing: '0.1em', color: 'var(--accent-light)',
+              border: '1px solid rgba(var(--fg-rgb),0.12)', borderRadius: '999px',
+              padding: '1px 7px',
+            }}>
+              Review
+            </span>
+          )}
           <span style={{ fontFamily: MONO, fontSize: '10px', color: 'var(--text-faint)', letterSpacing: '0.04em' }}>
-            {timeAgo(comment.created_at)}
+            {timeAgo(post.created_at)}
           </span>
           {edited && (
             <span style={{ fontFamily: MONO, fontSize: '10px', color: 'var(--text-faint)', fontStyle: 'italic' }}>
@@ -468,7 +682,7 @@ function CommentCard({
                 {saving ? 'Saving…' : 'Save'}
               </button>
               <button
-                onClick={() => { setEditing(false); setDraft(comment.body) }}
+                onClick={() => { setEditing(false); setDraft(post.body) }}
                 style={{
                   padding: '7px 16px', borderRadius: '8px',
                   background: 'rgba(var(--fg-rgb),0.06)', border: '1px solid rgba(var(--fg-rgb),0.1)',
@@ -482,16 +696,16 @@ function CommentCard({
           </div>
         ) : (
           <p style={{
-            margin: '4px 0 0', fontSize: '14px', lineHeight: 1.55,
+            margin: '4px 0 0', fontSize: isReviewRoot ? '14px' : '13px', lineHeight: 1.55,
             color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>
-            {renderBody(comment.body, mentionable)}
+            {renderBody(post.body, mentionable)}
           </p>
         )}
 
-        {/* Reactions row */}
+        {/* Reactions + actions row */}
         {!editing && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '10px' }}>
             {REACTION_EMOJIS.map(emoji => {
               const info = counts[emoji]
               const has = !!info && info.count > 0
@@ -499,17 +713,19 @@ function CommentCard({
               return (
                 <button
                   key={emoji}
-                  onClick={() => onToggleReaction(comment.id, emoji)}
+                  onClick={() => onToggleReaction(targetType, post.id, emoji)}
+                  disabled={!canParticipate}
                   aria-label={`React with ${emoji}${mine ? ' (selected)' : ''}`}
                   aria-pressed={mine}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: '4px',
                     padding: has ? '3px 8px' : '3px 7px',
-                    borderRadius: '999px', cursor: 'pointer',
+                    borderRadius: '999px',
+                    cursor: canParticipate ? 'pointer' : 'default',
                     border: `1px solid ${mine ? 'var(--accent)' : 'rgba(var(--fg-rgb),0.1)'}`,
                     background: mine ? 'rgba(var(--fg-rgb),0.06)' : 'transparent',
                     fontSize: '13px', lineHeight: 1.2, fontFamily: BODY_FONT,
-                    opacity: has || mine ? 1 : 0.5,
+                    opacity: has || mine ? 1 : (canParticipate ? 0.5 : 0.35),
                     transition: 'opacity 0.12s ease, border-color 0.12s ease',
                   }}
                 >
@@ -529,7 +745,7 @@ function CommentCard({
             {/* Edit (own, within window) */}
             {withinEditWindow && (
               <button
-                onClick={() => { setDraft(comment.body); setEditing(true) }}
+                onClick={() => { setDraft(post.body); setEditing(true) }}
                 style={{
                   marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
                   padding: '3px 4px', fontFamily: MONO, fontSize: '10px',
@@ -540,11 +756,11 @@ function CommentCard({
               </button>
             )}
 
-            {/* Delete (admin only) */}
-            {isAdmin && (
+            {/* Delete (own or admin) */}
+            {canDelete && (
               <button
-                onClick={() => onDelete(comment.id)}
-                aria-label="Delete comment"
+                onClick={onDelete}
+                aria-label={`Delete ${targetType}`}
                 style={{
                   marginLeft: withinEditWindow ? 0 : 'auto',
                   background: 'none', border: 'none', cursor: 'pointer',
@@ -562,7 +778,34 @@ function CommentCard({
   )
 }
 
-// Render a comment body, highlighting @FirstLast mentions that match a known member.
+// ---------- Up/down vote arrow ----------
+function VoteArrow({ dir, active, disabled, onClick }) {
+  const up = dir === 'up'
+  const color = active ? (up ? '#86efac' : '#f87171') : 'var(--text-faint)'
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={up ? 'Upvote' : 'Downvote'}
+      aria-pressed={active}
+      style={{
+        background: 'none', border: 'none', padding: '1px',
+        cursor: disabled ? 'default' : 'pointer', lineHeight: 0,
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        {up ? (
+          <path d="M8 3l5 6H3z" fill={color} />
+        ) : (
+          <path d="M8 13L3 7h10z" fill={color} />
+        )}
+      </svg>
+    </button>
+  )
+}
+
+// Render a post body, highlighting @FirstLast mentions that match a known member.
 function renderBody(body = '', mentionable = []) {
   if (!body) return null
   const handles = new Set(mentionable.map(m => m.handle))
@@ -583,10 +826,10 @@ function renderBody(body = '', mentionable = []) {
   })
 }
 
-// ---------- Composer with @mention autocomplete ----------
+// ---------- Composer with @mention autocomplete (posts a review or a comment) ----------
 function Composer({
-  movieId, currentUserId, parentId, mentionable, onPosted, onError,
-  placeholder, submitLabel, compact,
+  movieId, currentUserId, target, reviewId = null, parentId = null,
+  mentionable, onPosted, onError, placeholder, submitLabel, compact,
 }) {
   const [body, setBody] = useState('')
   const [posting, setPosting] = useState(false)
@@ -678,18 +921,28 @@ function Composer({
     if (!trimmed || !currentUserId) return
     setPosting(true)
     try {
-      const { error: insErr } = await supabase.from('comments').insert({
-        movie_id: movieId,
-        user_id: currentUserId,
-        parent_comment_id: parentId,
-        body: trimmed,
-      })
-      if (insErr) throw insErr
+      if (target === 'review') {
+        const { error: insErr } = await supabase.from('reviews').insert({
+          movie_id: movieId,
+          user_id: currentUserId,
+          body: trimmed,
+        })
+        if (insErr) throw insErr
+      } else {
+        const { error: insErr } = await supabase.from('comments').insert({
+          movie_id: movieId,
+          user_id: currentUserId,
+          review_id: reviewId,
+          parent_comment_id: parentId,
+          body: trimmed,
+        })
+        if (insErr) throw insErr
+      }
       setBody('')
       setMentionQuery(null)
       await onPosted()
     } catch (e) {
-      onError(e.message || 'Could not post comment.')
+      onError(e.message || 'Could not post.')
     } finally {
       setPosting(false)
     }

@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
 /*
+ * Override Tailwind v4's default dark-mode strategy (prefers-color-scheme media query)
+ * so that `dark:` utilities respond to the `.dark` class on <html> instead.
+ * ThemeContext toggles this class on documentElement in sync with data-theme.
+ */
+@variant dark (&:where(.dark, .dark *));
+
+/*
  * Theme tokens. Dark is the default and its token values equal the original
  * hardcoded colors, so dark mode is unchanged. Light mode flips the same tokens.
  * --fg-rgb is the base for every rgba(var(--fg-rgb), a) — white on dark, near-black
@@ -96,3 +103,25 @@ body {
 [data-theme="light"] .border-white\/10      { border-color: rgba(var(--fg-rgb), 0.1) !important; }
 [data-theme="light"] .border-white\/20      { border-color: rgba(var(--fg-rgb), 0.2) !important; }
 [data-theme="light"] .border-gray-800       { border-color: var(--hairline) !important; }
+
+/*
+ * Modal safety: prevents any modal/overlay from overflowing the viewport top.
+ * Use .mc-modal-backdrop as the fixed full-screen container and .mc-modal-panel
+ * as the inner panel wrapper so that tall modals scroll inside the viewport.
+ */
+.mc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow-y: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0.75rem;
+  box-sizing: border-box;
+}
+
+.mc-modal-panel {
+  width: 100%;
+  margin: auto;
+}

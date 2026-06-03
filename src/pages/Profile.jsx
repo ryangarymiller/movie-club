@@ -4,15 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
-
-// ─── Constants ─────────────────────────────────────────────────────────────────
-
-const USER_COLORS = [
-  '#ef4444','#f97316','#f59e0b','#84cc16','#22c55e',
-  '#10b981','#06b6d4','#3b82f6','#6366f1','#8b5cf6',
-  '#a855f7','#ec4899','#f43f5e','#0ea5e9','#14b8a6',
-  '#64748b','#78716c','#fbbf24','#4ade80','#c084fc',
-]
+import { USER_COLOR_PALETTE } from '../lib/colors'
 
 const ACCENT_SWATCHES = [
   { name: 'crimson',    hex: '#dc2626', label: 'Crimson'    },
@@ -253,6 +245,26 @@ export default function Profile() {
   const [signingOut, setSigningOut] = useState(false)
   const [adminToggling, setAdminToggling] = useState(false)
   const [userAwards, setUserAwards] = useState([])
+  // Colors already claimed by other members (one-per-member rule)
+  const [takenColors, setTakenColors] = useState(new Set())
+
+  // ── Fetch other members' colors ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!isOwnProfile || !profile) return
+    let alive = true
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('id, user_color, email')
+          .neq('id', profile.id)
+          .neq('email', 'i.am.ryan.the.miller@gmail.com')
+        if (!alive) return
+        setTakenColors(new Set((data ?? []).map(u => u.user_color).filter(Boolean)))
+      } catch { /* ignore — transient/test mock */ }
+    })()
+    return () => { alive = false }
+  }, [isOwnProfile, profile])
 
   // ── Fetch stats + recent scores ──────────────────────────────────────────────
   useEffect(() => {
@@ -485,32 +497,57 @@ export default function Profile() {
               gridTemplateColumns: 'repeat(5, 36px)',
               gap: '10px',
             }}>
-              {USER_COLORS.map(color => {
+              {USER_COLOR_PALETTE.map(color => {
                 const active = displayProfile?.user_color === color
+                const taken = takenColors.has(color) && !active
                 return (
-                  <button
+                  <div
                     key={color}
-                    onClick={async () => {
-                      await supabase.from('users').update({ user_color: color }).eq('id', profile.id)
-                      await fetchProfile(profile.id)
-                    }}
-                    title={color}
-                    aria-label={color}
-                    aria-pressed={active}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      background: color,
-                      border: 'none',
-                      padding: 0,
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      outline: active ? '2px solid white' : 'none',
-                      outlineOffset: active ? '2px' : undefined,
-                      transition: 'outline 0.15s',
-                    }}
-                  />
+                    style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}
+                  >
+                    <button
+                      onClick={async () => {
+                        if (taken) return
+                        await supabase.from('users').update({ user_color: color }).eq('id', profile.id)
+                        await fetchProfile(profile.id)
+                      }}
+                      title={taken ? `${color} (taken)` : color}
+                      aria-label={taken ? `${color} taken` : color}
+                      aria-pressed={active}
+                      disabled={taken}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: '50%',
+                        background: color,
+                        border: 'none',
+                        padding: 0,
+                        cursor: taken ? 'not-allowed' : 'pointer',
+                        flexShrink: 0,
+                        outline: active ? '2px solid white' : 'none',
+                        outlineOffset: active ? '2px' : undefined,
+                        transition: 'outline 0.15s',
+                        opacity: taken ? 0.35 : 1,
+                      }}
+                    />
+                    {taken && (
+                      /* strikethrough diagonal line */
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%) rotate(-45deg)',
+                          width: '120%',
+                          height: '2px',
+                          background: 'rgba(255,255,255,0.75)',
+                          borderRadius: '1px',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    )}
+                  </div>
                 )
               })}
             </div>
@@ -521,7 +558,7 @@ export default function Profile() {
               color: 'var(--text-dim)',
               margin: '12px 0 0',
             }}>
-              This color appears next to your picks
+              This color appears next to your picks. Dimmed colors are taken by other members.
             </p>
           </div>
         </section>}
