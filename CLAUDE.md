@@ -26,8 +26,13 @@ A private web app for a 5-person movie club. Each month every member picks one f
 
 ## Engineering Principles (always on)
 
-Apply these to every task, scaled to its size — **right altitude first**: match the depth of the
-response to the request. A one-line fix gets a one-line fix, not a system-design essay. Don't
+**Per-prompt routing (do this first, silently, on every prompt):** triage the request and decide
+*which* of the principles below and *which* Working Mode (if any) are relevant to **this** task,
+then apply exactly those — no more, no less. Most prompts need only a few; some need none beyond
+"right altitude." Don't recite the list or announce the routing — just act on the relevant ones.
+
+Apply the chosen principles scaled to the task's size — **right altitude first**: match the depth of
+the response to the request. A one-line fix gets a one-line fix, not a system-design essay. Don't
 over-produce; don't under-investigate.
 
 - **Understand before you change.** In unfamiliar code, trace the architecture and data flow first. Read the surrounding code and match its idioms, naming, and patterns.
