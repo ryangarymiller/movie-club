@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useMemberOverlay } from '../context/MemberOverlayContext'
 import ScoreModal from '../components/ScoreModal'
 import { FilmDetailOverlay } from './Films'
 import { MEMBER_COLORS, memberColor } from '../lib/colors'
@@ -176,6 +177,7 @@ function ActivityRow({ item, onFilmPress, isLast }) {
 export default function Home() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const { openMember } = useMemberOverlay()
   const [loading, setLoading] = useState(true)
   const [activeMovies, setActiveMovies] = useState([])
   const [activeMonthYear, setActiveMonthYear] = useState(null)
@@ -483,7 +485,7 @@ export default function Home() {
                 return (
                   <button
                     key={u.id}
-                    onClick={() => navigate(`/profile/${u.id}`)}
+                    onClick={() => openMember(u.id)}
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                   >
                     <div

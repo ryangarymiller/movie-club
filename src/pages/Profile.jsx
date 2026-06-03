@@ -211,8 +211,11 @@ function formatMemberSince(dateStr) {
 
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
-export default function Profile() {
-  const { userId } = useParams()
+export default function Profile({ overlayUserId = null } = {}) {
+  const params = useParams()
+  // In the member-overlay, the user id comes from a prop; on the /profile/:id
+  // route it comes from the URL. The bottom-bar /profile (no id) = own profile.
+  const userId = overlayUserId ?? params.userId
   const navigate = useNavigate()
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, toggleMode } = useTheme()

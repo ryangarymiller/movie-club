@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { FilmDetailOverlay } from './Films.jsx'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -2277,7 +2278,6 @@ const SCOPE_TO_TAB = {
 const TABS = ['Monthly', 'Season', 'Annual', 'All-Time']
 
 export default function Awards() {
-  const navigate = useNavigate()
   const location = useLocation()
 
   // Parse deep-link params once on mount
@@ -2300,8 +2300,9 @@ export default function Awards() {
 
   // Clicking a film title/poster opens the shared film overlay.
   const onFilm = (movie) => { if (movie?.id) setSelectedMovie(movie) }
-  // Clicking a member name navigates to the profile page.
-  const onMember = (user) => { if (user?.id) navigate(`/profile/${user.id}`) }
+  const { openMember } = useMemberOverlay()
+  // Clicking a member name opens their profile as an overlay.
+  const onMember = (user) => { if (user?.id) openMember(user.id) }
 
   const [loading, setLoading] = useState(true)
   const [seasons, setSeasons] = useState([])

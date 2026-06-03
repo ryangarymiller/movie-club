@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { FilmDetailOverlay } from './Films'
 import { memberColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt } from '../lib/colors'
 import {
@@ -3638,7 +3638,6 @@ const TABS = ['Overview', 'Me', 'Members', 'Club', 'Head to Head']
 
 export default function Stats() {
   const { profile } = useAuth()
-  const navigate = useNavigate()
   // Honor a ?tab= deep link (e.g. Home's "all caught up" box → ?tab=me), matched case-insensitively.
   const initialTab = (() => {
     const t = new URLSearchParams(window.location.search).get('tab')
@@ -3650,7 +3649,8 @@ export default function Stats() {
   // Spec: films are clickable everywhere in Stats (open the film overlay) and
   // member names navigate to that member's profile.
   const onFilm = useCallback((movie) => { if (movie) setSelectedMovie(movie) }, [])
-  const onMember = useCallback((userId) => { if (userId) navigate(`/profile/${userId}`) }, [navigate])
+  const { openMember } = useMemberOverlay()
+  const onMember = useCallback((userId) => { if (userId) openMember(userId) }, [openMember])
 
   const TEST_USER_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 

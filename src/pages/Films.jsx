@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useMemberOverlay } from '../context/MemberOverlayContext'
 import ScoreModal from '../components/ScoreModal'
 import CommentThread from '../components/CommentThread'
 import GuessThePicker from '../components/GuessThePicker'
@@ -267,7 +268,7 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor, showStdd
 // ─── PickerLegend ─────────────────────────────────────────────────────────────
 
 function PickerLegend({ movies, userById }) {
-  const navigate = useNavigate()
+  const { openMember } = useMemberOverlay()
   // Collect unique pickers that are revealed
   const seen = new Set()
   const entries = []
@@ -300,7 +301,7 @@ function PickerLegend({ movies, userById }) {
         {entries.map(({ id, name, color }) => (
           <button
             key={id}
-            onClick={() => navigate(`/profile/${id}`)}
+            onClick={() => openMember(id)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1126,12 +1127,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
     setTimeout(onClose, 300)
   }
 
-  // Navigate to a member's profile, closing the overlay first.
+  const { openMember } = useMemberOverlay()
+  // Open a member's profile overlay, closing the film overlay first.
   const goToProfile = useCallback((userId) => {
     if (!userId) return
     setVisible(false)
-    setTimeout(() => { onClose(); navigate(`/profile/${userId}`) }, 240)
-  }, [navigate, onClose])
+    setTimeout(() => { onClose(); openMember(userId) }, 240)
+  }, [openMember, onClose])
 
   // Navigate to a tab on the Films page (genre filter / vault), closing the overlay.
   const goToFilms = useCallback((params) => {

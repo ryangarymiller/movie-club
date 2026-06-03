@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { MemberOverlayProvider, useMemberOverlay } from './context/MemberOverlayContext'
 import { ThemeProvider } from './context/ThemeContext'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/Login'
@@ -89,12 +90,43 @@ function AppRoutes() {
   )
 }
 
+// Renders another member's profile as an overlay on top of the current page.
+// Lives here (not in the context module) so it can import Profile without a cycle.
+function MemberOverlayHost() {
+  const { memberId, close } = useMemberOverlay()
+  if (!memberId) return null
+  return (
+    <div
+      className="mc-modal-backdrop"
+      style={{ zIndex: 60, background: 'rgba(0,0,0,0.72)' }}
+      onClick={e => { if (e.target === e.currentTarget) close() }}
+    >
+      <div
+        className="mc-modal-panel"
+        style={{ position: 'relative', background: 'var(--bg)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '18px', maxWidth: '560px', width: '100%' }}
+      >
+        <button
+          onClick={close}
+          aria-label="Close"
+          style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 1, width: '32px', height: '32px', borderRadius: '999px', border: '1px solid rgba(var(--fg-rgb), 0.12)', background: 'var(--surface)', color: 'var(--text-muted)', fontSize: '15px', cursor: 'pointer', lineHeight: 1 }}
+        >
+          ✕
+        </button>
+        <Profile overlayUserId={memberId} key={memberId} />
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <AppRoutes />
+          <MemberOverlayProvider>
+            <AppRoutes />
+            <MemberOverlayHost />
+          </MemberOverlayProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
