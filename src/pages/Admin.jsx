@@ -118,6 +118,97 @@ function SuccessBanner({ msg, onClose }) {
 // Activate a month: set status='active', set active_date (default the 1st, editable),
 // and materialize its upcoming picks into movies + split deadlines via the RPC.
 // Deadlines are NOT enforced yet (dev mode) — they are just computed/shown.
+// Admin oversight: members' UNRELEASED upcoming picks are secret in the member-facing
+// UI (even to admins, so the surprise isn't spoiled there). Admins can still read them
+// via RLS — this panel surfaces them ONLY here, behind an explicit "Reveal" toggle so an
+// admin who's also a player has to opt in to seeing them.
+function fmtPickMonth(my) {
+  const [y, m] = (my || '').split('-')
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return m ? `${names[+m - 1]} ${y}` : my
+}
+
+function UpcomingPicksPanel({ months }) {
+  const [picks, setPicks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [show, setShow] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      // Only months whose picks are still secret (not yet revealed).
+      const secretMonths = months.filter(m => m.status !== 'revealed').map(m => m.month_year)
+      if (!secretMonths.length) { if (alive) { setPicks([]); setLoading(false) } return }
+      const { data } = await supabase
+        .from('upcoming_picks')
+        .select('id, user_id, title, month_target, metadata, users(name, email)')
+        .in('month_target', secretMonths)
+        .order('month_target', { ascending: true })
+      if (!alive) return
+      setPicks((data ?? []).filter(p => p.users?.email !== TEST_USER_EMAIL))
+      setLoading(false)
+    })()
+    return () => { alive = false }
+  }, [months])
+
+  const byMonth = {}
+  for (const p of picks) { (byMonth[p.month_target] ||= []).push(p) }
+  const monthKeys = Object.keys(byMonth).sort()
+
+  return (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+        <Label>Upcoming Picks · admin preview</Label>
+        <button
+          onClick={() => setShow(s => !s)}
+          style={{
+            padding: '6px 12px', borderRadius: '8px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
+            background: show ? 'var(--accent)' : 'transparent', color: show ? 'var(--text-strong)' : 'var(--text-muted)',
+            fontSize: '12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
+          }}
+        >
+          {show ? 'Hide' : 'Reveal picks'}
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 0', fontFamily: "'DM Mono',monospace", lineHeight: 1.5 }}>
+        Members can't see each other's picks until the reveal. As an admin you can preview the secret picks here — only when you choose to.
+      </p>
+      {show && (
+        loading ? (
+          <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '12px' }}>Loading…</p>
+        ) : monthKeys.length === 0 ? (
+          <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '12px' }}>No upcoming picks submitted yet.</p>
+        ) : (
+          <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {monthKeys.map(mk => (
+              <div key={mk}>
+                <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em', margin: '0 0 8px' }}>
+                  {fmtPickMonth(mk)} · {byMonth[mk].length} pick{byMonth[mk].length === 1 ? '' : 's'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {byMonth[mk].map(p => (
+                    <div key={p.id} style={{ padding: '10px 12px', borderRadius: '10px', background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
+                      <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-strong)', margin: 0 }}>
+                        <strong>{p.users?.name ?? 'Unknown'}</strong>
+                        <span style={{ color: 'var(--text-muted)' }}> → {p.title}</span>
+                      </p>
+                      {p.metadata?.justification && (
+                        <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '12px', fontStyle: 'italic', color: 'var(--text-muted)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                          "{p.metadata.justification}"
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  )
+}
+
 function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
   const sortedMonths = [...months].sort((a, b) => b.month_year.localeCompare(a.month_year))
   const [targetId, setTargetId] = useState('')
@@ -375,6 +466,9 @@ function DashboardTab({ movies, ratings, users, months, onBackfillFilm, onRefres
         setError={setError}
         setSuccess={setSuccess}
       />
+
+      {/* Admin-only preview of members' still-secret upcoming picks */}
+      <UpcomingPicksPanel months={months} />
 
       {/* Missing scores */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px' }}>
