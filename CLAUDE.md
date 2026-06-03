@@ -336,7 +336,7 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
   - Zack is backfillable for pre-join months via the matrix
 - Trigger by month: bulk-reveal scores or pickers for all films in a month
 - **Activate / Trigger now:** runs `materialize_and_split_month` for a month, materializing picks into films and splitting deadlines
-- **Op-only (Ryan Miller):** Admin Members tab shows Op / Admin / Member tiers; op can promote members to admin or demote admins to member. No other admin can change roles.
+- **Op-only (Ryan Miller):** Admin Members tab shows Op / Admin / Member tiers; op can promote members to admin or demote admins to member. No other admin can change roles. **DB-enforced:** the `trg_enforce_op_role` trigger rejects any `role`/`is_op` change by a non-op, so it can't be bypassed via the API (the `materialize_and_split_month` RPC is likewise authorization-gated).
 
 ---
 

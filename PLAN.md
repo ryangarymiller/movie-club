@@ -66,7 +66,14 @@
 - [x] **Score matrix** missing-only rendering fixed; Zack backfillable for pre-join months.
 
 ### DB state after session 8
-Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `ratings`, `upcoming_picks`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `reviews` (multi/film), `comments` (+`review_id`, `parent_comment_id`), `reactions` (polymorphic `target_type`/`target_id`), `votes` (new). RPC: `materialize_and_split_month(uuid)`. All tracked in `supabase/migrations/`.
+Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `ratings`, `upcoming_picks`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `reviews` (multi/film), `comments` (+`review_id`, `parent_comment_id`), `reactions` (polymorphic `target_type`/`target_id`, NOT NULL), `votes` (new). RPC: `materialize_and_split_month(uuid)`. All tracked in `supabase/migrations/`.
+
+### Security hardening & adversarial review (post-build)
+- [x] **Op-role enforced at the DB layer** — `trg_enforce_op_role` trigger blocks any non-op from changing `role`/`is_op` (was UI-only; a regular admin could self-promote via the API).
+- [x] **`materialize_and_split_month` locked down** — admin anytime, else a member only for an active month where they have a pick (was callable by any authenticated user on any month).
+- [x] **Comment delete policy → own-or-admin** (Reddit redesign lets members delete their own comments; was admin-only and silently failed).
+- [x] **6-agent adversarial review** of the parallel build → fixed: Stats UUID month-sort (corrupted trend chart/streaks), picker-reveal guard on the Stats picker map (pre-reveal leak), zombie-film-on-repick (RPC now updates the materialized film), reactions NOT NULL, InviteCard admin-option gated on `is_op`, dup recommend line, real last-day-of-month, CommentThread reaction target-type filter + null-thread comments.
+- [ ] **Noted, not blocking** (low risk for a trusted club): member emails in client state (RLS already exposes them to members); 15-min edit window is UI-only (no DB time-check).
 
 ---
 
