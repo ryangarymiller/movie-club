@@ -563,11 +563,14 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
   useEffect(() => {
     if (!query.trim()) {
       setSearchResults([])
+      setSearching(false)
       return
     }
+    // Enter the searching state immediately so "No films found" can't flash
+    // during the debounce window (before the fetch has actually run).
+    setSearching(true)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
-      setSearching(true)
       try {
         const data = await tmdbFetch(`/search/movie?query=${encodeURIComponent(query.trim())}&page=1`)
         setSearchResults(data.results ?? [])
