@@ -15,6 +15,13 @@ export function memberColor(name) {
   return name ? (MEMBER_COLORS[name] ?? undefined) : undefined
 }
 
+// Prefer the user's DB-stored color (user_color) over the hardcoded fallback.
+// Use this wherever a full user object is in scope; fall back to memberColor(name)
+// when only a name string is available.
+export function userColor(user) {
+  return user?.user_color || memberColor(user?.name) || undefined
+}
+
 // 20 distinct options for the user-color picker (one-per-member enforced). Spread across
 // the hue wheel with enough separation that none are easily mistaken for another.
 export const USER_COLOR_PALETTE = [

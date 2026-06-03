@@ -10,7 +10,7 @@ import VetoControl from '../components/VetoControl'
 import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
-import { memberColor, MEMBER_COLORS } from '../lib/colors'
+import { memberColor, userColor, MEMBER_COLORS } from '../lib/colors'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -1971,7 +1971,7 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
 
   // Accent the member select with the selected member's color when one is chosen.
   const activeMemberColor = filterMember !== 'all'
-    ? memberColor(userById[filterMember]?.name ?? '')
+    ? userColor(userById[filterMember])
     : null
   const memberSelectStyle = {
     ...selectStyle,
@@ -2589,7 +2589,7 @@ export default function Films() {
         ),
         supabase.from('months').select('id, month_year, season_id, status').order('month_year', { ascending: true }),
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: true }),
-        supabase.from('users').select('id, name, email'),
+        supabase.from('users').select('id, name, email, user_color'),
         supabase.from('ratings').select('movie_id, user_id, score'),
       ])
 

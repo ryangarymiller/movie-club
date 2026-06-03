@@ -48,7 +48,10 @@ or committing, `dispatching-parallel-agents` for fan-out, `requesting-code-revie
 brainstorming, TDD) whenever they sharpen the approach — the user values **forethought over raw
 speed**, so don't skip them just to move fast; reserve them only when they'd genuinely add nothing to
 a trivial change. When a process skill *is* relevant, follow it properly. (Ask to recalibrate if this
-balance feels off.)
+balance feels off.) **Installed plugins relevant to this app:** reach for `frontend-design`
+on UI/design work (components, pages, theme/color, layout — this app is design-sensitive),
+and fold its guidance into UI-building agents' briefs; the `agentforce-adlc` skills are out
+of scope (Salesforce, not this React/Supabase stack).
 
 Apply the chosen principles scaled to the task's size — **right altitude first**: match the depth of
 the response to the request. A one-line fix gets a one-line fix, not a system-design essay. Don't

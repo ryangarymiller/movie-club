@@ -66,6 +66,20 @@
 [data-accent="indigo"]    { --accent: #4338ca; --accent-light: #a5b4fc; --accent-dark: #312e81; }
 [data-accent="violet"]    { --accent: #7c3aed; --accent-light: #c4b5fd; --accent-dark: #4c1d95; }
 
+/* Light-mode accent overrides. The base (dark-mode) values use a bright pastel
+   --accent-light that is used as TEXT — unreadable on a white background — and a
+   muted --accent that looks duller than the picker swatch. In light mode: make
+   --accent the vibrant swatch color, and --accent-light a DARK shade so accent text
+   stays legible on white. (Dark mode is unchanged.) Two attributes => higher
+   specificity than the base [data-accent] rule, so these win in light mode. */
+[data-theme="light"][data-accent="crimson"]    { --accent: #dc2626; --accent-light: #b91c1c; }
+[data-theme="light"][data-accent="ember"]      { --accent: #ea580c; --accent-light: #c2410c; }
+[data-theme="light"][data-accent="amber"]      { --accent: #d97706; --accent-light: #b45309; }
+[data-theme="light"][data-accent="sage"]       { --accent: #16a34a; --accent-light: #15803d; }
+[data-theme="light"][data-accent="slate-blue"] { --accent: #2563eb; --accent-light: #1d4ed8; }
+[data-theme="light"][data-accent="indigo"]     { --accent: #4f46e5; --accent-light: #4338ca; }
+[data-theme="light"][data-accent="violet"]     { --accent: #7c3aed; --accent-light: #6d28d9; }
+
 body {
   margin: 0;
   min-height: 100svh;

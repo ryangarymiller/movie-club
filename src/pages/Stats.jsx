@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { FilmDetailOverlay } from './Films'
-import { memberColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt } from '../lib/colors'
+import { userColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt } from '../lib/colors'
 import {
   ResponsiveContainer,
   BarChart, Bar,
@@ -973,7 +973,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
         id: r.user_id,
         name: firstLast(byUser[r.user_id].name),
         value: Number(r.score),
-        fill: memberColor(byUser[r.user_id].name),
+        fill: userColor(byUser[r.user_id]),
       }))
       .sort((a, b) => b.value - a.value)
     if (rows.length === 0) return null
@@ -1149,7 +1149,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
           <SectionLabel>Member Averages</SectionLabel>
           <GlassCard style={{ padding: '14px 10px' }}>
             <ComparisonBar
-              data={stats.memberAvgs.map(u => ({ name: firstLast(u.name), value: u.avgScore, _fill: memberColor(u.name) }))}
+              data={stats.memberAvgs.map(u => ({ name: firstLast(u.name), value: u.avgScore, _fill: userColor(u) }))}
               keys={[{ key: 'value', name: 'Avg' }]}
               layout="vertical"
               height={Math.max(120, stats.memberAvgs.length * 30 + 20)}
@@ -1319,7 +1319,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
         ) : (
           <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
             {stats.memberAvgs.map(u => {
-              const ring = memberColor(u.name) || 'var(--accent)'
+              const ring = userColor(u) || 'var(--accent)'
               return (
               <GlassCard key={u.id} onClick={() => onMember?.(u.id)} style={{ flexShrink: 0, padding: '14px 16px', textAlign: 'center', minWidth: '90px' }}>
                 {/* Avatar */}
@@ -2164,7 +2164,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
           granularity,
           distBins,
           overTime,
-          color: memberColor(u.name) || 'var(--accent)',
+          color: userColor(u) || 'var(--accent)',
         }
       })
       .filter(u => u.avgScore != null)
@@ -2906,7 +2906,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     // regardless of theme/accent, and can't be confused with any member colour.
     const trendSeries = [
       { key: 'club', name: 'Club avg', color: CHART_NEUTRAL, emphasize: true, dashed: true },
-      ...trendMembers.map((u, i) => ({ key: `u_${u.id}`, name: firstLast(u.name), color: memberColor(u.name) || chartColorAt(i) })),
+      ...trendMembers.map((u, i) => ({ key: `u_${u.id}`, name: firstLast(u.name), color: userColor(u) || chartColorAt(i) })),
       // Neutral grey dotted reference line for the wider TMDB community rating.
       // Distinct from the (strong, solid, thick) club line and the saturated
       // per-member colours; rendered thin + dotless via the `reference` flag.
@@ -3047,7 +3047,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     const percentileData = corrMembers
       .map(u => {
         const a = avg(scoresByUser[u.id])
-        return { id: u.id, name: firstLast(u.name), value: percentileRank(memberAvgArr, a), avgScore: a, _fill: memberColor(u.name) }
+        return { id: u.id, name: firstLast(u.name), value: percentileRank(memberAvgArr, a), avgScore: a, _fill: userColor(u) }
       })
       .sort((a, b) => b.value - a.value)
 
@@ -3075,7 +3075,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         id: u.id,
         name: firstLast(u.name),
         granularity: scoringGranularity(scoresByUser[u.id]),
-        color: memberColor(u.name) || accentColor(),
+        color: userColor(u) || accentColor(),
       }))
       .filter(d => d.granularity != null)
       .sort((a, b) => a.granularity - b.granularity)
@@ -3087,7 +3087,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         id: u.id,
         name: firstLast(u.name),
         value: stddev(scoresByUser[u.id]),
-        _fill: memberColor(u.name) || accentColor(),
+        _fill: userColor(u) || accentColor(),
       }))
       .filter(d => d.value != null)
       .sort((a, b) => b.value - a.value)
@@ -4174,7 +4174,7 @@ export default function Stats() {
           .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
         supabase
           .from('users')
-          .select('id, name, email, role, joined_at, is_active')
+          .select('id, name, email, role, joined_at, is_active, user_color')
           .eq('is_active', true),
         supabase
           .from('ratings')

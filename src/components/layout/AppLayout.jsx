@@ -10,7 +10,7 @@ function NavIcon({ children, active }) {
       height="22"
       viewBox="0 0 24 24"
       fill="none"
-      stroke={active ? 'var(--text-strong)' : 'var(--text-dim)'}
+      stroke={active ? 'var(--accent)' : 'var(--text-dim)'}
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -122,7 +122,7 @@ function NavItem({ to, label, end }) {
           <Icon active={isActive} />
           <span
             className="whitespace-nowrap text-center transition-colors"
-            style={{ fontSize: '10px', color: isActive ? 'var(--text-strong)' : 'var(--text-dim)' }}
+            style={{ fontSize: '10px', color: isActive ? 'var(--accent)' : 'var(--text-dim)' }}
           >
             {label}
           </span>
