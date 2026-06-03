@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext'
 import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
 import { USER_COLOR_PALETTE } from '../lib/colors'
 import AwardsBadges from '../components/AwardsBadges'
+import { deliberateSignOut } from '../lib/authLog'
 import { FilmDetailOverlay } from './Films.jsx'
 
 const ACCENT_SWATCHES = [
@@ -467,7 +468,7 @@ export default function Profile() {
   // ── Sign out ─────────────────────────────────────────────────────────────────
   async function handleSignOut() {
     setSigningOut(true)
-    await supabase.auth.signOut()
+    await deliberateSignOut() // tags the sign-out as user-initiated, then signs out
   }
 
   // ── Admin mode toggle ────────────────────────────────────────────────────────

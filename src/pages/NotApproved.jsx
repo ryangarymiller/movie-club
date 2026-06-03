@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { deliberateSignOut } from '../lib/authLog'
 
 export default function NotApproved() {
   const [email, setEmail] = useState(null)
@@ -11,7 +12,7 @@ export default function NotApproved() {
   }, [])
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
+    await deliberateSignOut() // tags the sign-out as user-initiated, then signs out
     window.location.href = '/login'
   }
 

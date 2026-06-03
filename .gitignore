@@ -23,6 +23,9 @@ MOVIE_CLUB_SPEC.md
 # Agent skills (local tooling, not app code)
 .agents/
 
+# Claude Code project tooling config (personal, not app code)
+.claude/
+
 # One-off maintenance scripts (may contain env references)
 scripts/
 dist-ssr

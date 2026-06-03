@@ -15,7 +15,7 @@ import Admin from './pages/Admin'
 import WelcomeDialog from './components/WelcomeDialog'
 
 function RequireAuth({ children }) {
-  const { session, profile, profileLoaded, loading } = useAuth()
+  const { session, profile, profileLoaded, profileError, loading } = useAuth()
 
   if (loading) {
     return (
@@ -32,6 +32,27 @@ function RequireAuth({ children }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
         <div className="text-gray-600 text-sm">Loading…</div>
+      </div>
+    )
+  }
+
+  // Transient profile-load failure (network/DB blip) — do NOT treat this as
+  // "not approved" / sign the user out. Offer a retry instead. This is the fix
+  // for the intermittent "your account is pending" bounce-outs.
+  if (profileError && !profile) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: '1.5rem', fontFamily: "'DM Sans', sans-serif" }}>
+        <div style={{ textAlign: 'center', maxWidth: '320px' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '14px', lineHeight: 1.6, margin: '0 0 1.25rem' }}>
+            We couldn't load your profile just now — usually a brief network hiccup.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ padding: '10px 22px', borderRadius: '10px', border: 'none', background: 'var(--accent, #b91c1c)', color: 'var(--text-strong)', fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
