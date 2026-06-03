@@ -563,107 +563,6 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile, a
   )
 }
 
-// ─── Deadlines Tab ───────────────────────────────────────────────────────────
-
-function DeadlinesTab({ movies, loading }) {
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {[...Array(4)].map((_, i) => <Skeleton key={i} style={{ height: '72px' }} />)}
-      </div>
-    )
-  }
-
-  if (!movies.length) {
-    return (
-      <div style={{
-        textAlign: 'center', padding: '48px 0',
-        fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
-      }}>
-        No deadlines to show.
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {movies.map(m => {
-        const cd = countdownLabel(m.scoring_deadline)
-        // Determine past-deadline status label
-        let pastLabel = null
-        if (cd?.past) {
-          if (m.scores_revealed) {
-            pastLabel = { text: 'Scores revealed', color: '#4ade80', bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.2)' }
-          } else {
-            pastLabel = { text: 'Awaiting reveal', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.2)' }
-          }
-        }
-        return (
-          <div key={m.id} style={{
-            padding: '14px',
-            borderRadius: '14px',
-            background: 'rgba(var(--fg-rgb), 0.025)',
-            border: `1px solid ${cd?.past ? 'rgba(var(--fg-rgb), 0.05)' : 'rgba(var(--fg-rgb), 0.07)'}`,
-            width: '100%', boxSizing: 'border-box',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{
-                  fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
-                  fontWeight: 500, fontSize: '14px', margin: '0 0 4px',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {m.title}
-                </p>
-                <p style={{
-                  fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
-                  fontSize: '11px', margin: 0, lineHeight: 1.4,
-                }}>
-                  {formatDeadline(m.scoring_deadline)}
-                </p>
-              </div>
-              {cd && (
-                pastLabel ? (
-                  <span style={{
-                    flexShrink: 0,
-                    fontFamily: "'DM Mono',monospace",
-                    fontSize: '11px',
-                    letterSpacing: '0.05em',
-                    padding: '4px 8px',
-                    borderRadius: '6px',
-                    background: pastLabel.bg,
-                    border: `1px solid ${pastLabel.border}`,
-                    color: pastLabel.color,
-                    whiteSpace: 'nowrap',
-                    marginTop: '2px',
-                  }}>
-                    {pastLabel.text}
-                  </span>
-                ) : (
-                  <span style={{
-                    flexShrink: 0,
-                    fontFamily: "'DM Mono',monospace",
-                    fontSize: '11px',
-                    letterSpacing: '0.05em',
-                    padding: '4px 8px',
-                    borderRadius: '6px',
-                    background: 'rgba(var(--fg-rgb), 0.05)',
-                    color: 'var(--text-dim)',
-                    whiteSpace: 'nowrap',
-                    marginTop: '2px',
-                  }}>
-                    {cd.text}
-                  </span>
-                )
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 // ─── Pick Submission Flow (used inside modal) ─────────────────────────────────
 
 const TMDB_TOKEN = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
@@ -1740,23 +1639,14 @@ function PickRow({ pick, isOwn = false, expanded, onToggle, onChange }) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const TABS = ['Films', 'Deadlines', 'Picks']
-
 export default function ThisMonth() {
   const { profile } = useAuth()
-  const [activeTab, setActiveTab] = useState('Films')
   const [loading, setLoading] = useState(true)
   const [movies, setMovies] = useState([])
   const [ratingsMap, setRatingsMap] = useState({}) // movie_id → rating row
   const [activeMonth, setActiveMonth] = useState(null)
-  const [revealMonth, setRevealMonth] = useState(null) // latest fully-revealed month (for the Reveal tab)
+  const [revealMonth, setRevealMonth] = useState(null) // latest fully-revealed month
   const [users, setUsers] = useState([])
-
-  // Pick modal — shared between Films tab CTA and Picks tab
-  const [showPickModal, setShowPickModal] = useState(false)
-  const [pickTargetMonth, setPickTargetMonth] = useState(null)   // month the pick is for
-  const [pickMonthIsActive, setPickMonthIsActive] = useState(false)
-  const [ownPick, setOwnPick] = useState(null) // viewer's own upcoming_pick for the pick-target month
 
   // Score modal state
   const [modalMovie, setModalMovie] = useState(null)
@@ -1800,37 +1690,6 @@ export default function ThisMonth() {
       map[r.movie_id] = r
     }
     setRatingsMap(map)
-
-    // Determine which month picks target and load the viewer's own pick for the
-    // Films-tab CTA. Mirrors the same logic used inside PicksTab/loadNextMonthAndPicks.
-    const activeResult = month
-    let pickMonth = activeResult ? { id: activeResult.id, month_year: activeResult.month_year } : null
-    let isActive = !!activeResult
-    if (!pickMonth) {
-      const { data: upcoming } = await supabase
-        .from('months')
-        .select('id, month_year')
-        .eq('status', 'upcoming')
-        .order('month_year', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      pickMonth = upcoming ?? null
-      isActive = false
-    }
-    setPickTargetMonth(pickMonth)
-    setPickMonthIsActive(isActive)
-
-    if (pickMonth) {
-      const { data: pick } = await supabase
-        .from('upcoming_picks')
-        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata')
-        .eq('user_id', profile.id)
-        .eq('month_target', pickMonth.month_year)
-        .maybeSingle()
-      setOwnPick(pick ?? null)
-    } else {
-      setOwnPick(null)
-    }
 
     setLoading(false)
   }, [profile])
@@ -1877,8 +1736,6 @@ export default function ThisMonth() {
     : ''
 
   // Reveal tab is active only once a month's end-of-month reveal has happened.
-  const tabs = revealMonth ? [...TABS, 'Reveal'] : TABS
-
   return (
     <div style={{
       background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
@@ -1908,62 +1765,38 @@ export default function ThisMonth() {
           </h1>
         </div>
 
-        {/* Tab Bar */}
-        <div style={{
-          display: 'flex', gap: '4px',
-          background: 'rgba(var(--fg-rgb), 0.04)',
-          border: '1px solid rgba(var(--fg-rgb), 0.07)',
-          borderRadius: '12px', padding: '4px',
-          marginBottom: '24px',
-        }}>
-          {tabs.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                flex: 1, padding: '8px 0',
-                borderRadius: '9px', border: 'none',
-                background: activeTab === tab ? 'rgba(var(--fg-rgb), 0.09)' : 'transparent',
-                color: activeTab === tab ? 'var(--text-strong)' : 'var(--text-faint)',
-                fontFamily: "'DM Sans',sans-serif",
-                fontWeight: activeTab === tab ? 600 : 400,
-                fontSize: '13px', cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        {/* Single consolidated view: this month's films (with inline deadlines +
+            picker reveal), then your next pick, then the end-of-month reveal. */}
+        <div style={{ animation: 'fadeUp 0.3s ease both', display: 'flex', flexDirection: 'column', gap: '34px' }}>
+          <FilmsTab
+            movies={movies}
+            ratingsMap={ratingsMap}
+            loading={loading}
+            onScorePress={openModal}
+            users={users}
+            profile={profile}
+            activeMonth={activeMonth}
+          />
 
-        {/* Tab Content */}
-        <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-          {activeTab === 'Films' && (
-            <FilmsTab
-              movies={movies}
-              ratingsMap={ratingsMap}
-              loading={loading}
-              onScorePress={openModal}
-              users={users}
-              profile={profile}
-              activeMonth={activeMonth}
-              ownPick={ownPick}
-              onOpenPickModal={() => setShowPickModal(true)}
-            />
-          )}
-          {activeTab === 'Deadlines' && (
-            <DeadlinesTab movies={movies} loading={loading} />
-          )}
-          {activeTab === 'Picks' && (
+          <section>
+            <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.18em', margin: '0 0 14px' }}>
+              Your Pick
+            </p>
             <PicksTab profile={profile} onOpenFilm={setSelectedMovie} onMaterialized={loadData} />
-          )}
-          {activeTab === 'Reveal' && revealMonth && (
-            <MonthReveal
-              monthId={revealMonth.id}
-              monthLabel={revealMonthLabel}
-              users={users}
-              currentUserId={profile?.id}
-            />
+          </section>
+
+          {revealMonth && (
+            <section>
+              <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.18em', margin: '0 0 14px' }}>
+                Reveal · {revealMonthLabel}
+              </p>
+              <MonthReveal
+                monthId={revealMonth.id}
+                monthLabel={revealMonthLabel}
+                users={users}
+                currentUserId={profile?.id}
+              />
+            </section>
           )}
         </div>
       </div>
@@ -1980,20 +1813,6 @@ export default function ThisMonth() {
 
       {/* Film overlay — opened by the picker-predict nudge */}
       <FilmDetailOverlay movie={selectedMovie} onClose={() => setSelectedMovie(null)} />
-
-      {/* Shared pick modal — reachable from Films tab CTA and Picks tab */}
-      {showPickModal && (
-        <PickModal
-          profile={profile}
-          nextMonth={pickTargetMonth}
-          monthIsActive={pickMonthIsActive}
-          onClose={() => setShowPickModal(false)}
-          onPickSaved={() => {
-            loadData()
-            setShowPickModal(false)
-          }}
-        />
-      )}
 
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
