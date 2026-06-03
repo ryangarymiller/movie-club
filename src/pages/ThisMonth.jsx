@@ -349,6 +349,42 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
         </button>
       </div>
 
+      {/* Deadline + picker meta row */}
+      {(movie.scoring_deadline || pickerName) && (() => {
+        const cd = countdownLabel(movie.scoring_deadline)
+        return (
+          <div style={{
+            marginTop: '8px',
+            display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+          }}>
+            {movie.scoring_deadline && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                fontFamily: "'DM Mono',monospace", fontSize: '10px',
+                letterSpacing: '0.04em',
+                color: cd?.past ? 'var(--text-faint)' : 'var(--text-dim)',
+              }}>
+                <span style={{ opacity: 0.5, fontSize: '9px' }}>⏱</span>
+                {cd?.past
+                  ? formatDeadline(movie.scoring_deadline)
+                  : `${cd?.text ?? ''} · ${formatDeadline(movie.scoring_deadline)}`}
+              </span>
+            )}
+            {pickerName && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                fontFamily: "'DM Mono',monospace", fontSize: '10px',
+                letterSpacing: '0.04em',
+                color: pickerColor ?? 'var(--text-dim)',
+              }}>
+                <span style={{ opacity: 0.6, fontSize: '9px' }}>◆</span>
+                Picked by {pickerName}
+              </span>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Guess the Picker */}
       {profile && (
         <GuessThePicker movie={movie} profile={profile} allUsers={allUsers} />

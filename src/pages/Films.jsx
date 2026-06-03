@@ -40,8 +40,20 @@ function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
+// The group average to DISPLAY for a film on the Films page (All Films / By Season).
+// Imported historical months carry an authoritative `historical_avg_score`. Real
+// (non-imported) revealed months — like May 2026 — leave it NULL, so fall back to the
+// average computed from the film's actual ratings (`_avgScore`, already test-filtered
+// and loaded in the page query). Never surface an average before the scores reveal.
+function displayAvg(movie) {
+  if (movie.historical_avg_score != null) return Number(movie.historical_avg_score)
+  if (movie.scores_revealed && movie._avgScore != null) return Number(movie._avgScore)
+  return null
+}
+
 function isVault(movie) {
-  return movie.historical_avg_score != null && movie.historical_avg_score >= 8.5
+  const avg = displayAvg(movie)
+  return avg != null && avg >= 8.5
 }
 
 function formatRuntime(mins) {
@@ -132,12 +144,13 @@ function SortButton({ label, active, onClick }) {
 
 // ─── PosterCard ───────────────────────────────────────────────────────────────
 
-function PosterCard({ movie, vault = false, onClick, pickerBorderColor, showStddev = false }) {
-  const score = movie.historical_avg_score
+function PosterCard({ movie, vault = false, onClick, pickerBorderColor, showStddev = false, hideScores = false }) {
+  const score = displayAvg(movie)
   const [hovered, setHovered] = useState(false)
   const scored = score != null
   // In divisive/unanimous context, surface the film's score spread (σ) on the card.
-  const stddev = showStddev ? filmStddev(movie) : null
+  // Suppressed when the hide-scores toggle is on so posters/titles aren't obscured.
+  const stddev = showStddev && !hideScores ? filmStddev(movie) : null
 
   return (
     <div
@@ -196,34 +209,36 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor, showStdd
           </p>
         </div>
 
-        {/* Score badge */}
-        <div style={{ position: 'absolute', bottom: '6px', right: '6px' }}>
-          {scored ? (
-            <span style={{
-              fontFamily: "'DM Mono', monospace",
-              fontSize: '10px',
-              fontWeight: 600,
-              padding: '2px 6px',
-              borderRadius: '999px',
-              background: 'var(--accent)',
-              color: 'var(--text-strong)',
-              display: 'block',
-            }}>
-              {Number(score).toFixed(2)}
-            </span>
-          ) : (
-            <span style={{
-              fontSize: '10px',
-              padding: '2px 6px',
-              borderRadius: '999px',
-              background: 'rgba(0,0,0,0.65)',
-              color: 'rgba(var(--fg-rgb), 0.35)',
-              border: '1px solid rgba(var(--fg-rgb), 0.1)',
-              display: 'block',
-              fontFamily: "'DM Mono', monospace",
-            }}>?</span>
-          )}
-        </div>
+        {/* Score badge — hidden when the hide-scores toggle is on */}
+        {!hideScores && (
+          <div style={{ position: 'absolute', bottom: '6px', right: '6px' }}>
+            {scored ? (
+              <span style={{
+                fontFamily: "'DM Mono', monospace",
+                fontSize: '10px',
+                fontWeight: 600,
+                padding: '2px 6px',
+                borderRadius: '999px',
+                background: 'var(--accent)',
+                color: 'var(--text-strong)',
+                display: 'block',
+              }}>
+                {Number(score).toFixed(2)}
+              </span>
+            ) : (
+              <span style={{
+                fontSize: '10px',
+                padding: '2px 6px',
+                borderRadius: '999px',
+                background: 'rgba(0,0,0,0.65)',
+                color: 'rgba(var(--fg-rgb), 0.35)',
+                border: '1px solid rgba(var(--fg-rgb), 0.1)',
+                display: 'block',
+                fontFamily: "'DM Mono', monospace",
+              }}>?</span>
+            )}
+          </div>
+        )}
 
         {/* Stddev (σ) badge — shown only in the divisive/unanimous sort context */}
         {stddev != null && (
@@ -244,8 +259,8 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor, showStdd
           </div>
         )}
 
-        {/* Vault star badge */}
-        {vault && (
+        {/* Vault star badge — hidden when the hide-scores toggle is on */}
+        {vault && !hideScores && (
           <div style={{ position: 'absolute', top: '6px', right: '6px' }}>
             <span style={{
               fontSize: '13px',
@@ -261,6 +276,27 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor, showStdd
           </div>
         )}
       </div>
+
+      {/* Title label underneath the poster — always legible, never covered by the
+          score overlay. Fixed two-line height so every card stays the same height
+          and the grid rows stay aligned. */}
+      <p style={{
+        fontFamily: "'DM Sans', sans-serif",
+        fontSize: '11px',
+        fontWeight: 500,
+        lineHeight: 1.25,
+        color: 'var(--text-muted)',
+        margin: '6px 0 0',
+        height: '28px',
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        wordBreak: 'break-word',
+      }}>
+        {movie.title}
+      </p>
     </div>
   )
 }
@@ -336,7 +372,7 @@ function PickerLegend({ movies, userById }) {
 
 // ─── PosterGrid ───────────────────────────────────────────────────────────────
 
-function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSelect, userById = {}, showStddev = false }) {
+function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSelect, userById = {}, showStddev = false, hideScores = false }) {
   return (
     <div>
       <div
@@ -349,7 +385,10 @@ function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSele
       >
         {loading
           ? [...Array(skeletonCount)].map((_, i) => (
-              <Skeleton key={i} style={{ aspectRatio: '2/3', borderRadius: '8px' }} />
+              <div key={i}>
+                <Skeleton style={{ aspectRatio: '2/3', borderRadius: '8px' }} />
+                <Skeleton style={{ height: '12px', width: '80%', borderRadius: '4px', marginTop: '8px' }} />
+              </div>
             ))
           : movies.map(m => {
               const name = m.picker_revealed ? (userById[m.picked_by_user_id]?.name ?? null) : null
@@ -362,6 +401,7 @@ function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSele
                   onClick={onSelect}
                   pickerBorderColor={borderColor}
                   showStddev={showStddev}
+                  hideScores={hideScores}
                 />
               )
             })
@@ -1714,11 +1754,12 @@ export function FilmDetailOverlay({ movie, onClose }) {
             </>
           )}
 
-          {/* ── DISCUSSION (threaded comments + reactions + @mentions) ── */}
+          {/* ── DISCUSSION (threaded comments + reactions + @mentions) ──
+              The CommentThread renders its own "Discussion · N" header, so no
+              SectionLabel here (avoids a duplicate "Discussion" label). */}
           {profile && (
             <>
               <Divider />
-              <SectionLabel>Discussion</SectionLabel>
               <div style={{ marginTop: '4px' }}>
                 <CommentThread
                   movieId={m.id}
@@ -1783,8 +1824,8 @@ export const SORT_OPTIONS = [
 export function sortMovies(movies, sort) {
   const list = [...movies]
   return list.sort((a, b) => {
-    if (sort === 'high') return (b.historical_avg_score ?? -1) - (a.historical_avg_score ?? -1)
-    if (sort === 'low') return (a.historical_avg_score ?? 999) - (b.historical_avg_score ?? 999)
+    if (sort === 'high') return (displayAvg(b) ?? -1) - (displayAvg(a) ?? -1)
+    if (sort === 'low') return (displayAvg(a) ?? 999) - (displayAvg(b) ?? 999)
     if (sort === 'divisive' || sort === 'unanimous') {
       const sa = filmStddev(a)
       const sb = filmStddev(b)
@@ -1819,7 +1860,7 @@ export function sortMovies(movies, sort) {
 
 // ─── AllFilms tab ─────────────────────────────────────────────────────────────
 
-function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenre = '' }) {
+function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenre = '', hideScores = false }) {
   const [sort, setSort] = useState('recent')
   const [filterSeason, setFilterSeason] = useState('all')
   const [filterMinScore, setFilterMinScore] = useState('')
@@ -1857,10 +1898,10 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
   const minScore = filterMinScore !== '' ? parseFloat(filterMinScore) : null
   const maxScore = filterMaxScore !== '' ? parseFloat(filterMaxScore) : null
   if (minScore != null && !isNaN(minScore)) {
-    filtered = filtered.filter(m => m.historical_avg_score != null && m.historical_avg_score >= minScore)
+    filtered = filtered.filter(m => { const a = displayAvg(m); return a != null && a >= minScore })
   }
   if (maxScore != null && !isNaN(maxScore)) {
-    filtered = filtered.filter(m => m.historical_avg_score != null && m.historical_avg_score <= maxScore)
+    filtered = filtered.filter(m => { const a = displayAvg(m); return a != null && a <= maxScore })
   }
 
   // Apply sort (shared recency rule)
@@ -1989,6 +2030,7 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
         onSelect={onSelect}
         userById={userById}
         showStddev={sort === 'divisive' || sort === 'unanimous'}
+        hideScores={hideScores}
       />
     </div>
   )
@@ -1996,10 +2038,10 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
 
 // ─── VaultTab ─────────────────────────────────────────────────────────────────
 
-function VaultTab({ movies, loading, onSelect, userById }) {
+function VaultTab({ movies, loading, onSelect, userById, hideScores = false }) {
   const vaultMovies = [...movies]
     .filter(isVault)
-    .sort((a, b) => b.historical_avg_score - a.historical_avg_score)
+    .sort((a, b) => (displayAvg(b) ?? 0) - (displayAvg(a) ?? 0))
 
   return (
     <div>
@@ -2054,6 +2096,7 @@ function VaultTab({ movies, loading, onSelect, userById }) {
           skeletonCount={4}
           onSelect={onSelect}
           userById={userById}
+          hideScores={hideScores}
         />
       )}
     </div>
@@ -2065,7 +2108,7 @@ function VaultTab({ movies, loading, onSelect, userById }) {
 // Sort options that read a film's average (and stddev) — only meaningful per season.
 const SEASON_FILM_SORTS = SORT_OPTIONS.filter(s => !s.requiresReveal)
 
-function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
+function BySeasonTab({ movies, seasons, loading, onSelect, userById, hideScores = false }) {
   // Film ordering within every season (same options + recency rule as All Films).
   const [filmSort, setFilmSort] = useState('recent')
   // Order of the seasons themselves: 'recent' (latest first) or 'oldest'.
@@ -2099,9 +2142,9 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
   // Group movies by season, applying the chosen film sort within each.
   const bySeason = orderedSeasons.map(season => {
     const seasonMovies = sortMovies(movies.filter(m => m._seasonId === season.id), filmSort)
-    const scored = seasonMovies.filter(m => m.historical_avg_score != null)
+    const scored = seasonMovies.map(displayAvg).filter(a => a != null)
     const avg = scored.length
-      ? (scored.reduce((s, m) => s + Number(m.historical_avg_score), 0) / scored.length)
+      ? (scored.reduce((s, a) => s + a, 0) / scored.length)
       : null
     return { season, movies: seasonMovies, avg }
   }).filter(g => g.movies.length > 0)
@@ -2153,7 +2196,7 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
             }}>
               {sMovies.length} film{sMovies.length !== 1 ? 's' : ''}
             </span>
-            {avg != null && (
+            {avg != null && !hideScores && (
               <span style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '10px',
@@ -2172,6 +2215,7 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
             onSelect={onSelect}
             userById={userById}
             showStddev={filmSort === 'divisive' || filmSort === 'unanimous'}
+            hideScores={hideScores}
           />
         </div>
       ))}
@@ -2181,14 +2225,14 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
 
 // ─── HistoryTab ───────────────────────────────────────────────────────────────
 
-function HistoryFilmCard({ movie, userById, onSelect }) {
+function HistoryFilmCard({ movie, userById, onSelect, hideScores = false }) {
   const [hovered, setHovered] = useState(false)
 
   // historical_avg_score is the authoritative complete average for historical films;
   // individual ratings are an incomplete backfill, so prefer it. Fall back to the
   // computed average only for films with no historical avg (live/current films).
   const computedScore = movie.historical_avg_score ?? movie._avgScore
-  const scored = computedScore != null
+  const scored = computedScore != null && !hideScores
 
   const pickerName = movie.picker_revealed && movie.picked_by_user_id
     ? (userById[movie.picked_by_user_id]?.name ?? null)
@@ -2287,7 +2331,7 @@ function HistoryFilmCard({ movie, userById, onSelect }) {
   )
 }
 
-function HistoryTab({ userById, onSelect }) {
+function HistoryTab({ userById, onSelect, hideScores = false }) {
   const [months, setMonths] = useState([])
   const [moviesByMonth, setMoviesByMonth] = useState({})
   const [selectedMonthId, setSelectedMonthId] = useState(null)
@@ -2430,6 +2474,7 @@ function HistoryTab({ userById, onSelect }) {
                     movie={m}
                     userById={userById}
                     onSelect={onSelect}
+                    hideScores={hideScores}
                   />
                 ))}
               </div>
@@ -2457,6 +2502,10 @@ export default function Films() {
   const [seasons, setSeasons] = useState([])
   const [userById, setUserById] = useState({})
   const [selectedMovie, setSelectedMovie] = useState(null)
+  // Hide-scores toggle: suppresses score numbers, σ (divisive sort) and the vault star
+  // on poster cards so posters/titles stay unobscured. Floating control, persists state
+  // across tab switches within the page.
+  const [hideScores, setHideScores] = useState(false)
 
   // Respond to URL changes (e.g. a genre tag / vault badge clicked in the overlay).
   useEffect(() => {
@@ -2482,10 +2531,10 @@ export default function Films() {
         supabase.from('ratings').select('movie_id, user_id, score'),
       ])
 
-      // Build a lookup: month_id → { order, season_id, month_year }
+      // Build a lookup: month_id → { order, season_id, month_year, status }
       const monthLookup = {}
       ;(monthsData ?? []).forEach((m, idx) => {
-        monthLookup[m.id] = { order: idx, seasonId: m.season_id, monthYear: m.month_year }
+        monthLookup[m.id] = { order: idx, seasonId: m.season_id, monthYear: m.month_year, status: m.status }
       })
 
       // Season lookup by id
@@ -2504,7 +2553,12 @@ export default function Films() {
         scoresByMovie[r.movie_id].push(Number(r.score))
       }
 
-      const enriched = (moviesData ?? []).map(m => {
+      const enriched = (moviesData ?? [])
+        // Exclude films from months that are still 'upcoming' (not yet activated/
+        // revealed) — showing them on the Films page would leak picks before activation.
+        // Only films from active/revealed months should appear here.
+        .filter(m => monthLookup[m.month_id]?.status && monthLookup[m.month_id].status !== 'upcoming')
+        .map(m => {
         const monthInfo = monthLookup[m.month_id] ?? {}
         const season = seasonById[monthInfo.seasonId] ?? null
         // Format a human-readable month label e.g. "Feb 2026 · Season 1"
@@ -2526,7 +2580,7 @@ export default function Films() {
           _scores: scores,
           _avgScore: avgScore,
         }
-      })
+        })
 
       // Build user lookup by id (exclude the test account — must be invisible in all UI)
       const userLookup = {}
@@ -2614,20 +2668,69 @@ export default function Films() {
         {/* Tab content */}
         <div style={{ minWidth: 0 }}>
           {activeTab === 'All Films' && (
-            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} seasons={seasons} initialGenre={genreFilter} />
+            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} seasons={seasons} initialGenre={genreFilter} hideScores={hideScores} />
           )}
           {activeTab === 'The Vault' && (
-            <VaultTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} />
+            <VaultTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} hideScores={hideScores} />
           )}
           {activeTab === 'By Season' && (
-            <BySeasonTab movies={movies} seasons={seasons} loading={loading} onSelect={handleSelect} userById={userById} />
+            <BySeasonTab movies={movies} seasons={seasons} loading={loading} onSelect={handleSelect} userById={userById} hideScores={hideScores} />
           )}
           {activeTab === 'History' && (
-            <HistoryTab userById={userById} onSelect={handleSelect} />
+            <HistoryTab userById={userById} onSelect={handleSelect} hideScores={hideScores} />
           )}
         </div>
 
       </div>
+
+      {/* Floating hide-scores toggle — stays visible while scrolling. Hidden while the
+          film overlay is open (it covers the page). Eye / eye-off affordance. */}
+      {!selectedMovie && (
+        <button
+          onClick={() => setHideScores(h => !h)}
+          aria-pressed={hideScores}
+          aria-label={hideScores ? 'Show scores' : 'Hide scores'}
+          title={hideScores ? 'Show scores' : 'Hide scores'}
+          style={{
+            position: 'fixed',
+            right: '16px',
+            bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))',
+            zIndex: 90,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '9px 14px',
+            borderRadius: '999px',
+            border: hideScores ? '1px solid var(--accent)' : '1px solid var(--hairline)',
+            background: hideScores ? 'rgba(var(--accent-rgb), 0.15)' : 'var(--surface)',
+            color: hideScores ? 'var(--accent)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
+            fontFamily: "'DM Mono', monospace",
+            fontSize: '10px',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          {hideScores ? (
+            /* eye-off */
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+              <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+              <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+              <line x1="2" y1="2" x2="22" y2="22" />
+            </svg>
+          ) : (
+            /* eye */
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          )}
+          <span>{hideScores ? 'Scores Off' : 'Scores On'}</span>
+        </button>
+      )}
 
       {/* Film detail overlay */}
       <FilmDetailOverlay movie={selectedMovie} onClose={handleClose} />

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { FilmDetailOverlay } from './Films.jsx'
@@ -329,17 +329,24 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick, awardId
 
 // ─── Stat Mini Card ──────────────────────────────────────────────────────────
 
-function StatMiniCard({ label, value }) {
+function StatMiniCard({ label, value, onClick }) {
   return (
-    <div style={{
-      background: 'rgba(var(--fg-rgb), 0.025)',
-      border: '1px solid rgba(var(--fg-rgb), 0.07)',
-      borderRadius: '14px',
-      padding: '16px',
-      flex: '1 1 calc(50% - 5px)',
-      minWidth: 0,
-      boxSizing: 'border-box',
-    }}>
+    <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e => { if (e.key === 'Enter') onClick() }) : undefined}
+      style={{
+        background: 'rgba(var(--fg-rgb), 0.025)',
+        border: '1px solid rgba(var(--fg-rgb), 0.07)',
+        borderRadius: '14px',
+        padding: '16px',
+        flex: '1 1 calc(50% - 5px)',
+        minWidth: 0,
+        boxSizing: 'border-box',
+        cursor: onClick ? 'pointer' : 'default',
+      }}
+    >
       <p style={{
         fontFamily: "'DM Mono',monospace",
         fontSize: '9px',
@@ -1935,6 +1942,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
 // ─── Annual Tab ────────────────────────────────────────────────────────────────
 
 function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, onFilm, onMember, deepLink }) {
+  const navigate = useNavigate()
   // Group movies by year via their month's month_year
   const monthYearById = useMemo(() => {
     const map = {}
@@ -2070,8 +2078,8 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
       }}>
         <StatMiniCard label="Films Watched" value={awards.totalFilms} />
         <StatMiniCard label="Scores Cast" value={awards.totalScoresCast} />
-        <StatMiniCard label="Club Avg" value={fmt(awards.clubAvg)} />
-        <StatMiniCard label="In the Vault" value={awards.vaultCount} />
+        <StatMiniCard label="Club Avg" value={fmt(awards.clubAvg)} onClick={() => navigate('/stats?tab=club')} />
+        <StatMiniCard label="In the Vault" value={awards.vaultCount} onClick={() => navigate('/films?tab=The Vault')} />
       </div>
 
       {/* Note if partial year */}

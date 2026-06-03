@@ -292,6 +292,41 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               {isExcitementMode ? 'Pre-watch excitement' : 'Your score'}
             </p>
 
+            {/* Large live echo — always visible above the keyboard on mobile */}
+            <div style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'center',
+              minHeight: '72px', marginBottom: '12px',
+              borderRadius: '14px',
+              background: scoreInput ? 'rgba(var(--accent-rgb), 0.08)' : 'rgba(var(--fg-rgb), 0.03)',
+              border: `1px solid ${scoreInput ? 'rgba(var(--accent-rgb), 0.25)' : 'rgba(var(--fg-rgb), 0.06)'}`,
+              transition: 'background 0.15s ease, border-color 0.15s ease',
+              padding: '12px 16px',
+            }}>
+              {scoreInput ? (
+                <span style={{
+                  fontFamily: "'Bebas Neue',sans-serif",
+                  fontSize: 'clamp(3rem, 18vw, 5rem)',
+                  lineHeight: 1,
+                  color: 'var(--accent)',
+                  letterSpacing: '0.04em',
+                  userSelect: 'none',
+                }}>
+                  {scoreInput}
+                </span>
+              ) : (
+                <span style={{
+                  fontFamily: "'Bebas Neue',sans-serif",
+                  fontSize: 'clamp(2rem, 12vw, 3.5rem)',
+                  lineHeight: 1,
+                  color: 'rgba(var(--fg-rgb), 0.18)',
+                  letterSpacing: '0.04em',
+                  userSelect: 'none',
+                }}>
+                  0.00 – 10.00
+                </span>
+              )}
+            </div>
+
             {/* Score input */}
             <div style={{ position: 'relative', marginBottom: error ? '8px' : '20px' }}>
               <input
@@ -304,26 +339,24 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                 value={scoreInput}
                 onChange={handleInput}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                placeholder="0.00 – 10.00"
+                placeholder="e.g. 7.50"
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  background: 'rgba(var(--fg-rgb), 0.04)', border: `1px solid ${error ? '#ef4444' : 'rgba(var(--fg-rgb), 0.1)'}`,
+                  background: 'rgba(var(--fg-rgb), 0.05)', border: `1.5px solid ${error ? '#ef4444' : 'rgba(var(--fg-rgb), 0.15)'}`,
                   borderRadius: '12px', padding: '14px 16px',
-                  // Use DM Mono at a legible size for mobile — Bebas Neue at 2rem
-                  // is hard to read while typing numerals on a virtual keyboard.
-                  fontFamily: "'DM Mono','DM Sans',monospace", fontSize: '1.4rem', letterSpacing: '0.04em',
-                  color: 'var(--text-strong)', outline: 'none',
+                  fontFamily: "'DM Mono','DM Sans',monospace", fontSize: '1.25rem', letterSpacing: '0.06em',
+                  color: 'var(--text-strong)',
+                  caretColor: 'var(--accent)',
+                  outline: 'none',
                   transition: 'border-color 0.15s ease',
                   WebkitAppearance: 'none', MozAppearance: 'textfield',
                 }}
                 onFocus={e => {
                   if (!error) e.target.style.borderColor = 'var(--accent)'
-                  // Ensure the input stays visible above the mobile keyboard.
-                  // Optional-chain the method: not all environments implement it
-                  // (jsdom in tests, older browsers) — no-op there instead of throwing.
-                  e.target.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+                  // Keep input above the mobile keyboard.
+                  e.target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
                 }}
-                onBlur={e => { if (!error) e.target.style.borderColor = 'rgba(var(--fg-rgb), 0.1)' }}
+                onBlur={e => { if (!error) e.target.style.borderColor = 'rgba(var(--fg-rgb), 0.15)' }}
               />
             </div>
 

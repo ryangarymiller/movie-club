@@ -8,6 +8,7 @@ import { USER_COLOR_PALETTE } from '../lib/colors'
 import AwardsBadges from '../components/AwardsBadges'
 import { deliberateSignOut } from '../lib/authLog'
 import { FilmDetailOverlay } from './Films.jsx'
+import { useMemberOverlay } from '../context/MemberOverlayContext'
 
 const ACCENT_SWATCHES = [
   { name: 'crimson',    hex: '#dc2626', label: 'Crimson'    },
@@ -89,7 +90,7 @@ function StatCard({ label, value, sub }) {
   )
 }
 
-function RecentRow({ rating, loading }) {
+function RecentRow({ rating, loading, onFilmClick, isLast }) {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0' }}>
@@ -104,15 +105,26 @@ function RecentRow({ rating, loading }) {
   }
 
   const { movie, score } = rating
+  const clickable = !!(onFilmClick && movie)
+
   return (
-    <div
+    <button
+      onClick={clickable ? () => onFilmClick(movie) : undefined}
+      disabled={!clickable}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
         padding: '10px 0',
-        borderBottom: '1px solid rgba(var(--fg-rgb), 0.05)',
+        width: '100%',
+        background: 'none',
+        border: 'none',
+        borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb), 0.05)',
+        cursor: clickable ? 'pointer' : 'default',
+        textAlign: 'left',
+        fontFamily: 'inherit',
       }}
+      aria-label={clickable ? `Open ${movie?.title}` : undefined}
     >
       {/* Poster */}
       <div
@@ -190,7 +202,7 @@ function RecentRow({ rating, loading }) {
       >
         {score != null ? Number(score).toFixed(2) : '—'}
       </p>
-    </div>
+    </button>
   )
 }
 
@@ -219,6 +231,8 @@ export default function Profile({ overlayUserId = null } = {}) {
   const navigate = useNavigate()
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, toggleMode } = useTheme()
+  const { close: closeMemberOverlay } = useMemberOverlay()
+  const isOverlayMode = !!overlayUserId
 
   // If viewing another member's profile, load their data
   const isOwnProfile = !userId || userId === profile?.id
@@ -255,6 +269,8 @@ export default function Profile({ overlayUserId = null } = {}) {
   const [awardsLoading, setAwardsLoading] = useState(true)
   // Colors already claimed by other members (one-per-member rule)
   const [takenColors, setTakenColors] = useState(new Set())
+  // Color picker expand/collapse
+  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   // Picks section
   const [pickedFilms, setPickedFilms] = useState([])  // [{movie, monthYear, avgScore}]
   const [picksLoading, setPicksLoading] = useState(true)
@@ -586,74 +602,131 @@ export default function Profile({ overlayUserId = null } = {}) {
           <span style={SECTION_LABEL}>Your Color</span>
 
           <div style={{ ...CARD, padding: '16px' }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(5, 36px)',
-              gap: '10px',
-            }}>
-              {USER_COLOR_PALETTE.map(color => {
-                const active = displayProfile?.user_color === color
-                const taken = takenColors.has(color) && !active
-                return (
-                  <div
-                    key={color}
-                    style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}
-                  >
-                    <button
-                      onClick={async () => {
-                        if (taken) return
-                        await supabase.from('users').update({ user_color: color }).eq('id', profile.id)
-                        await fetchProfile(profile.id)
-                      }}
-                      title={taken ? `${color} (taken)` : color}
-                      aria-label={taken ? `${color} taken` : color}
-                      aria-pressed={active}
-                      disabled={taken}
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '50%',
-                        background: color,
-                        border: 'none',
-                        padding: 0,
-                        cursor: taken ? 'not-allowed' : 'pointer',
-                        flexShrink: 0,
-                        outline: active ? '2px solid white' : 'none',
-                        outlineOffset: active ? '2px' : undefined,
-                        transition: 'outline 0.15s',
-                        opacity: taken ? 0.35 : 1,
-                      }}
-                    />
-                    {taken && (
-                      /* strikethrough diagonal line */
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          position: 'absolute',
-                          top: '50%',
-                          left: '50%',
-                          transform: 'translate(-50%, -50%) rotate(-45deg)',
-                          width: '120%',
-                          height: '2px',
-                          background: 'rgba(255,255,255,0.75)',
-                          borderRadius: '1px',
-                          pointerEvents: 'none',
-                        }}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            {/* Collapsed view: show chosen swatch + "Change" button */}
+            {!colorPickerOpen ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {/* Current color swatch */}
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: displayProfile?.user_color ?? 'var(--accent)',
+                    outline: '2px solid white',
+                    outlineOffset: '2px',
+                    flexShrink: 0,
+                  }}
+                />
+                <button
+                  onClick={() => setColorPickerOpen(true)}
+                  style={{
+                    fontFamily: "'DM Mono', monospace",
+                    fontSize: '11px',
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: 'var(--accent)',
+                    background: 'none',
+                    border: '1px solid var(--accent)',
+                    borderRadius: '100px',
+                    padding: '4px 14px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              /* Expanded picker */
+              <>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(5, 36px)',
+                  gap: '10px',
+                }}>
+                  {USER_COLOR_PALETTE.map(color => {
+                    const active = displayProfile?.user_color === color
+                    const taken = takenColors.has(color) && !active
+                    return (
+                      <div
+                        key={color}
+                        style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}
+                      >
+                        <button
+                          onClick={async () => {
+                            if (taken) return
+                            await supabase.from('users').update({ user_color: color }).eq('id', profile.id)
+                            await fetchProfile(profile.id)
+                            setColorPickerOpen(false)
+                          }}
+                          title={taken ? `${color} (taken)` : color}
+                          aria-label={taken ? `${color} taken` : color}
+                          aria-pressed={active}
+                          disabled={taken}
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            background: color,
+                            border: 'none',
+                            padding: 0,
+                            cursor: taken ? 'not-allowed' : 'pointer',
+                            flexShrink: 0,
+                            outline: active ? '2px solid white' : 'none',
+                            outlineOffset: active ? '2px' : undefined,
+                            transition: 'outline 0.15s',
+                            opacity: taken ? 0.35 : 1,
+                          }}
+                        />
+                        {taken && (
+                          /* strikethrough diagonal line */
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: 'absolute',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%) rotate(-45deg)',
+                              width: '120%',
+                              height: '2px',
+                              background: 'rgba(255,255,255,0.75)',
+                              borderRadius: '1px',
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
 
-            <p style={{
-              fontFamily: "'DM Mono', monospace",
-              fontSize: '10px',
-              color: 'var(--text-dim)',
-              margin: '12px 0 0',
-            }}>
-              This color appears next to your picks. Dimmed colors are taken by other members.
-            </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
+                  <p style={{
+                    fontFamily: "'DM Mono', monospace",
+                    fontSize: '10px',
+                    color: 'var(--text-dim)',
+                    margin: 0,
+                  }}>
+                    Dimmed colors are taken by other members.
+                  </p>
+                  <button
+                    onClick={() => setColorPickerOpen(false)}
+                    style={{
+                      fontFamily: "'DM Mono', monospace",
+                      fontSize: '10px',
+                      letterSpacing: '0.06em',
+                      color: 'var(--text-dim)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '0 0 0 8px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </section>}
 
@@ -706,12 +779,13 @@ export default function Profile({ overlayUserId = null } = {}) {
               </p>
             ) : (
               recentRatings.map((r, i) => (
-                <div
+                <RecentRow
                   key={r.id}
-                  style={i === recentRatings.length - 1 ? { borderBottom: 'none' } : undefined}
-                >
-                  <RecentRow rating={r} loading={false} />
-                </div>
+                  rating={r}
+                  loading={false}
+                  onFilmClick={r.movie ? (m) => setOverlayMovie(m) : undefined}
+                  isLast={i === recentRatings.length - 1}
+                />
               ))
             )}
           </div>
@@ -726,10 +800,43 @@ export default function Profile({ overlayUserId = null } = {}) {
               const key = award.award_key || award.key || ''
               const ref = award.period_ref || award.periodRef || ''
               const scope = award.scope || ''
+              if (isOverlayMode) closeMemberOverlay()
               navigate(`/awards?scope=${encodeURIComponent(scope)}&key=${encodeURIComponent(key)}&ref=${encodeURIComponent(ref)}`)
             }}
           />
         </section>
+
+        {/* ── Popup-only: View full stats link ── */}
+        {isOverlayMode && (
+          <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.22s ease both' }}>
+            <button
+              onClick={() => {
+                closeMemberOverlay()
+                navigate('/stats?tab=members')
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                background: 'rgba(var(--accent-rgb), 0.08)',
+                border: '1px solid rgba(var(--accent-rgb), 0.2)',
+                color: 'var(--accent)',
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                letterSpacing: '0.01em',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+            >
+              View full stats
+              <span style={{ fontSize: '16px', lineHeight: 1 }}>&#8594;</span>
+            </button>
+          </section>
+        )}
 
         {/* ── Section 3c: Picks ── */}
         <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.22s ease both' }}>

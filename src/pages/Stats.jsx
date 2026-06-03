@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
@@ -113,8 +114,10 @@ function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = n
               key={i}
               fill={c}
               fillOpacity={selectedIndex == null || selectedIndex === i ? 1 : 0.32}
-              stroke={selectedIndex === i ? c : 'none'}
-              strokeWidth={selectedIndex === i ? 1.5 : 0}
+              stroke={selectedIndex === i ? 'var(--text-strong)' : 'none'}
+              strokeWidth={selectedIndex === i ? 2 : 0}
+              // Subtle glow so the selected bar is clearly distinguished.
+              style={selectedIndex === i ? { filter: `drop-shadow(0 0 5px ${c})` } : undefined}
             />
           ))}
         </Bar>
@@ -126,25 +129,31 @@ function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = n
 // Per-member score bar chart for a single film, with mean + ±1 std-dev
 // reference lines. data: [{ name, value, fill }]; mean/sd annotate the spread.
 // Used when a film stat (highest / lowest / divisive / unanimous) is expanded.
-function MemberScoreBars({ data, mean, sd, height }) {
+function MemberScoreBars({ data, mean, sd, height, onMember }) {
   const accent = accentColor()
   const h = height || Math.max(130, data.length * 30 + 40)
+  const memberTick = makeMemberTick(data.map(d => d.id), onMember)
   return (
     <ResponsiveContainer width="100%" height={h}>
       {/* Extra top margin so the μ ReferenceLine label (position:top) isn't clipped. */}
       <BarChart data={data} layout="vertical" margin={{ top: 18, right: 30, left: 4, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
         <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-        <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
+        <YAxis type="category" dataKey="name" width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
         <Tooltip content={<ChartTooltip />} cursor={false} />
+        {/* Club mean: a solid, bright line (distinct from the dashed gridlines)
+            with a numeric μ label so the value is readable at a glance. */}
         {mean != null && (
-          <ReferenceLine x={mean} stroke={CHART.muted} strokeDasharray="4 4"
-            label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} />
+          <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={2}
+            label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 10, fill: 'var(--text-strong)', fontFamily: 'DM Mono', fontWeight: 600 }} />
         )}
+        {/* ±1 std-dev band: solid accent-colored lines (not faint dashes that
+            match the gridlines), with the σ value labelled on the upper line. */}
         {mean != null && sd != null && sd > 0 && (
           <>
-            <ReferenceLine x={Math.max(0, mean - sd)} stroke="rgba(var(--fg-rgb), 0.12)" strokeDasharray="2 4" />
-            <ReferenceLine x={Math.min(10, mean + sd)} stroke="rgba(var(--fg-rgb), 0.12)" strokeDasharray="2 4" />
+            <ReferenceLine x={Math.max(0, mean - sd)} stroke="var(--accent)" strokeWidth={1.5} strokeOpacity={0.85} />
+            <ReferenceLine x={Math.min(10, mean + sd)} stroke="var(--accent)" strokeWidth={1.5} strokeOpacity={0.85}
+              label={{ value: `σ ${sd.toFixed(2)}`, position: 'top', fontSize: 9, fill: 'var(--accent)', fontFamily: 'DM Mono', fontWeight: 600 }} />
           </>
         )}
         <Bar dataKey="value" name="Score" radius={[0, 3, 3, 0]} isAnimationActive={false}>
@@ -164,26 +173,31 @@ function MemberScoreBars({ data, mean, sd, height }) {
 // chooses what the tooltip headline shows (e.g. the film title).
 function MonthLineChart({
   data, height = 170, series, color,
-  xKey = 'month', sparseTicks = false, tooltipLabelKey,
+  xKey = 'month', sparseTicks = false, tooltipLabelKey, xLabelKey,
 }) {
   const c = color || accentColor()
   const lines = series || [{ key: 'value', name: 'Avg', color: c }]
+  // The label shown under each tick. When `xLabelKey` is given the x-axis values
+  // are unique (so each datum is distinct and clicks/tooltips map to the right
+  // point), and the human-readable month label is recovered from xLabelKey.
+  const labelKey = xLabelKey || xKey
 
   // When sparse, show the group label only at its first occurrence so each
-  // month/season is labelled once instead of once per film.
+  // month/season is labelled once instead of once per film. Keyed by the LABEL
+  // (month), not the unique x value, so a month appears exactly once.
   const firstSeen = useMemo(() => {
     if (!sparseTicks) return null
     const seen = new Set()
     const set = new Set()
     data.forEach((d, i) => {
-      const k = d[xKey]
+      const k = d[labelKey]
       if (!seen.has(k)) { seen.add(k); set.add(i) }
     })
     return set
-  }, [data, xKey, sparseTicks])
+  }, [data, labelKey, sparseTicks])
 
   const tickFormatter = sparseTicks
-    ? (val, idx) => (firstSeen && firstSeen.has(idx) ? val : '')
+    ? (_val, idx) => (firstSeen && firstSeen.has(idx) ? (data[idx]?.[labelKey] ?? '') : '')
     : undefined
 
   return (
@@ -192,10 +206,13 @@ function MonthLineChart({
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
         <XAxis
           dataKey={xKey}
+          type={xLabelKey ? 'number' : 'category'}
+          domain={xLabelKey ? ['dataMin', 'dataMax'] : undefined}
           tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
           axisLine={{ stroke: CHART.axisLine }}
           tickLine={false}
           interval={sparseTicks ? 0 : 'preserveStartEnd'}
+          ticks={xLabelKey ? data.map(d => d[xKey]) : undefined}
           tickFormatter={tickFormatter}
           minTickGap={sparseTicks ? 0 : 5}
         />
@@ -244,28 +261,56 @@ function ExcitementScatter({ data, height = 220, color }) {
   )
 }
 
+// Factory for a clickable Recharts category-axis tick. `ids` is aligned with the
+// chart data by index; clicking a member's name fires onMember(id). Rendered as
+// an SVG <text> (Recharts ticks live inside the SVG, so no DOM button here).
+function makeMemberTick(ids, onMember) {
+  if (!onMember || !ids) return undefined
+  const MemberTick = ({ x, y, payload }) => {
+    const id = ids[payload?.index]
+    return (
+      <text
+        x={x} y={y} dy={4} textAnchor="end"
+        onClick={id ? (e) => { e.stopPropagation(); onMember(id) } : undefined}
+        style={{
+          fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans',
+          cursor: id ? 'pointer' : 'default',
+        }}
+      >
+        {payload?.value}
+      </text>
+    )
+  }
+  return MemberTick
+}
+
 // Horizontal/vertical comparison bar chart. data: [{ name, ...keys }]
 // When `cellFill` is given and there is exactly one series, each bar is coloured
 // per-datum from data[i][cellFill] (used to apply member colours).
 // `domain` overrides the value-axis range (default [0,10]); pass a tight,
 // data-driven domain so small-magnitude series (e.g. std dev) aren't flattened.
-function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name', cellFill, domain = [0, 10] }) {
+// `valueTickFormatter` formats the number-axis ticks; `memberIds` + `onMember`
+// make the category-axis (name) ticks clickable into member profiles.
+function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name', cellFill, domain = [0, 10], valueTickFormatter, memberIds, onMember }) {
   const accent = accentColor()
   const resolved = keys.map((k, i) => ({ ...k, color: k.color || (i === 0 ? accent : CAT_PALETTE[i % CAT_PALETTE.length]) }))
   const perCell = cellFill && resolved.length === 1
+  const memberTick = makeMemberTick(memberIds, onMember)
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout={layout} margin={{ top: 14, right: 14, left: layout === 'vertical' ? 4 : -20, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={layout === 'horizontal'} vertical={layout === 'vertical'} />
         {layout === 'vertical' ? (
           <>
-            <XAxis type="number" domain={domain} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-            <YAxis type="category" dataKey={labelKey} width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
+            <XAxis type="number" domain={domain} tickFormatter={valueTickFormatter} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+            <YAxis type="category" dataKey={labelKey} width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
           </>
         ) : (
           <>
             <XAxis dataKey={labelKey} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false} interval={0} />
-            <YAxis domain={domain} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
+            {/* Explicit, data-driven Y ticks so values are labelled and the
+                domain isn't pinned to 0–10 (which flattens member differences). */}
+            <YAxis domain={domain} tickCount={5} allowDecimals tickFormatter={(v) => Number(v).toFixed(1)} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={34} />
           </>
         )}
         <Tooltip content={<ChartTooltip />} cursor={false} />
@@ -298,42 +343,81 @@ function ActiveDonutSlice(props) {
   )
 }
 
-// Donut chart. data: [{ name, value }]. Clicking a slice emphasises just that
-// slice (expand + stroke); clicking it again clears the selection.
-function DonutChart({ data, height = 200 }) {
-  const [activeIndex, setActiveIndex] = useState(null)
+// Donut chart. data: [{ name, value }]. Clicking a slice SINGLE-selects it
+// (expand + stroke) and updates the info line below; clicking it again clears.
+// The legend is custom-rendered so each genre links to the Films page filtered
+// by that genre via `onLegendClick(name)`.
+function DonutChart({ data, height = 200, onLegendClick }) {
+  // selectedIndex is the single source of truth for which slice is highlighted,
+  // so exactly one slice ever lights up and the info line always matches it.
+  const [selectedIndex, setSelectedIndex] = useState(null)
+  const total = useMemo(() => data.reduce((s, d) => s + (Number(d.value) || 0), 0), [data])
+  const sel = selectedIndex != null ? data[selectedIndex] : null
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          cx="50%"
-          cy="50%"
-          innerRadius={48}
-          outerRadius={78}
-          paddingAngle={2}
-          stroke="none"
-          isAnimationActive={false}
-          activeIndex={activeIndex == null ? [] : [activeIndex]}
-          activeShape={(props) => <ActiveDonutSlice {...props} />}
-          onClick={(_, i) => setActiveIndex(prev => (prev === i ? null : i))}
-          style={{ cursor: 'pointer', outline: 'none' }}
-        >
-          {data.map((_, i) => (
-            <Cell
-              key={i}
-              fill={chartColorAt(i)}
-              fillOpacity={activeIndex == null || activeIndex === i ? 1 : 0.4}
-              style={{ outline: 'none' }}
-            />
-          ))}
-        </Pie>
-        <Tooltip content={<ChartTooltip />} />
-        <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />
-      </PieChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={height}>
+        <PieChart>
+          <Pie
+            data={data}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            innerRadius={48}
+            outerRadius={78}
+            paddingAngle={2}
+            stroke="none"
+            isAnimationActive={false}
+            activeIndex={selectedIndex == null ? [] : [selectedIndex]}
+            activeShape={(props) => <ActiveDonutSlice {...props} />}
+            onClick={(_, i) => setSelectedIndex(prev => (prev === i ? null : i))}
+            style={{ cursor: 'pointer', outline: 'none' }}
+          >
+            {data.map((_, i) => (
+              <Cell
+                key={i}
+                fill={chartColorAt(i)}
+                fillOpacity={selectedIndex == null || selectedIndex === i ? 1 : 0.35}
+                style={{ outline: 'none' }}
+              />
+            ))}
+          </Pie>
+          <Tooltip content={<ChartTooltip />} />
+        </PieChart>
+      </ResponsiveContainer>
+
+      {/* Selected-slice info line — always reflects the current single selection. */}
+      <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--text-dim)', margin: '4px 0 10px', minHeight: '14px' }}>
+        {sel
+          ? `${sel.name}: ${sel.value} film${sel.value !== 1 ? 's' : ''}${total ? ` · ${Math.round((sel.value / total) * 100)}%` : ''}`
+          : 'Tap a slice to see its share'}
+      </p>
+
+      {/* Custom legend — each genre links to the Films page filtered by genre. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', justifyContent: 'center' }}>
+        {data.map((d, i) => {
+          const active = selectedIndex === i
+          const linkable = !!onLegendClick
+          return (
+            <button
+              key={d.name}
+              onClick={linkable ? () => onLegendClick(d.name) : () => setSelectedIndex(prev => (prev === i ? null : i))}
+              title={linkable ? `View ${d.name} films` : d.name}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                background: 'none', border: 'none', padding: '2px 0',
+                cursor: 'pointer',
+                fontFamily: "'DM Mono',monospace", fontSize: '10px',
+                color: active ? 'var(--text-strong)' : 'var(--text-dim)',
+              }}
+            >
+              <span style={{ width: '9px', height: '9px', borderRadius: '2px', background: chartColorAt(i), flexShrink: 0 }} />
+              {d.name}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -474,15 +558,17 @@ function CorrelationHeatmap({ names, matrix }) {
 
 // Percentile chart: a horizontal bar per member showing their avg-score
 // percentile rank vs the whole club. data: [{ name, value (0-100), avgScore }]
-function PercentileBar({ data, height }) {
+// memberIds (aligned with data) + onMember make the name ticks clickable.
+function PercentileBar({ data, height, memberIds, onMember }) {
   const c = accentColor()
   const h = height || Math.max(120, data.length * 34 + 24)
+  const memberTick = makeMemberTick(memberIds, onMember)
   return (
     <ResponsiveContainer width="100%" height={h}>
       <BarChart data={data} layout="vertical" margin={{ top: 6, right: 36, left: 4, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
         <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} unit="%" />
-        <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
+        <YAxis type="category" dataKey="name" width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
         <Tooltip content={<ChartTooltip suffix="%" />} cursor={false} />
         <Bar dataKey="value" name="Percentile" fill={c} radius={[0, 3, 3, 0]}>
           {data.map((d, i) => <Cell key={i} fill={d._fill || c} />)}
@@ -823,7 +909,7 @@ function FilmRowCard({ movie, label, sublabel, onClick, reserveRight = false }) 
 // The row stays clickable into the film overlay; a separate chevron toggles an
 // inline per-member score bar chart (with mean + std-dev annotation).
 
-function ExpandableFilmStat({ movie, label, sublabel, onFilm, expanded, onToggle, chartData, caption }) {
+function ExpandableFilmStat({ movie, label, sublabel, onFilm, onMember, expanded, onToggle, chartData, caption }) {
   return (
     <div>
       <div style={{ position: 'relative' }}>
@@ -849,7 +935,7 @@ function ExpandableFilmStat({ movie, label, sublabel, onFilm, expanded, onToggle
         <GlassCard style={{ marginTop: '8px', padding: '14px 12px' }}>
           {chartData && chartData.bars.length > 0 ? (
             <>
-              <MemberScoreBars data={chartData.bars} mean={chartData.mean} sd={chartData.sd} />
+              <MemberScoreBars data={chartData.bars} mean={chartData.mean} sd={chartData.sd} onMember={onMember} />
               {caption && (
                 <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                   {caption}
@@ -880,6 +966,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
     const rows = ratings
       .filter(r => r.movie_id === movieId && r.score != null && byUser[r.user_id])
       .map(r => ({
+        id: r.user_id,
         name: firstLast(byUser[r.user_id].name),
         value: Number(r.score),
         fill: memberColor(byUser[r.user_id].name),
@@ -1143,10 +1230,11 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
             label={`${fmt(stats.mostDivisive.avgScore)}`}
             sublabel={`Std dev: ${fmt(stats.mostDivisive.sd)} · Low: ${fmt(stats.mostDivisive.low)} · High: ${fmt(stats.mostDivisive.high)}`}
             onFilm={onFilm}
+            onMember={onMember}
             expanded={expanded === 'divisive'}
             onToggle={() => setExpanded(e => e === 'divisive' ? null : 'divisive')}
             chartData={memberBarsForMovie(stats.mostDivisive.movie.id)}
-            caption="Each member's score · μ = club mean · dashed = ±1 std-dev (high spread)"
+            caption="Each member's score · solid line = club mean (μ) · accent lines = ±1 std-dev (σ, high spread)"
           />
         ) : (
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
@@ -1164,10 +1252,11 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
             label={`${fmt(stats.mostUnanimous.avgScore)}`}
             sublabel={`Std dev: ${fmt(stats.mostUnanimous.sd)} · Low: ${fmt(stats.mostUnanimous.low)} · High: ${fmt(stats.mostUnanimous.high)}`}
             onFilm={onFilm}
+            onMember={onMember}
             expanded={expanded === 'unanimous'}
             onToggle={() => setExpanded(e => e === 'unanimous' ? null : 'unanimous')}
             chartData={memberBarsForMovie(stats.mostUnanimous.movie.id)}
-            caption="Each member's score · μ = club mean · dashed = ±1 std-dev (tight spread)"
+            caption="Each member's score · solid line = club mean (μ) · accent lines = ±1 std-dev (σ, tight spread)"
           />
         ) : (
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
@@ -1185,6 +1274,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
             label={fmt(stats.highest.avgScore)}
             sublabel={`Avg of ${(stats.movieScores[stats.highest.movie.id] || []).length} score(s)`}
             onFilm={onFilm}
+            onMember={onMember}
             expanded={expanded === 'highest'}
             onToggle={() => setExpanded(e => e === 'highest' ? null : 'highest')}
             chartData={memberBarsForMovie(stats.highest.movie.id)}
@@ -1204,6 +1294,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
             label={fmt(stats.lowest.avgScore)}
             sublabel={`Avg of ${(stats.movieScores[stats.lowest.movie.id] || []).length} score(s)`}
             onFilm={onFilm}
+            onMember={onMember}
             expanded={expanded === 'lowest'}
             onToggle={() => setExpanded(e => e === 'lowest' ? null : 'lowest')}
             chartData={memberBarsForMovie(stats.lowest.movie.id)}
@@ -1273,7 +1364,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
 
 // ─── Me Tab ───────────────────────────────────────────────────────────────────
 
-function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, monthsById = {}, onFilm }) {
+function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, monthsById = {}, onFilm, onGenre }) {
   // Your guess-the-picker accuracy across resolved (picker-revealed) films.
   const guessAcc = useMemo(() => {
     const movieById = {}
@@ -1409,7 +1500,8 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
       const mv = movieMap[r.movie_id]
       const my = mv?.month_id ? monthsById[mv.month_id]?.month_year : null
       const season = seasonForMonthYear(my)
-      return { title: mv?.title, score: Number(r.score), season, year: my ? Number(my.split('-')[0]) : null }
+      // Carry the full movie object so ranking rows can open the film overlay.
+      return { title: mv?.title, movie: mv, score: Number(r.score), season, year: my ? Number(my.split('-')[0]) : null }
     }).filter(x => x.title)
 
     const seasonGroups = {}
@@ -1617,7 +1709,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         <SectionLabel>Favourite Genres</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.myGenreDonut.length > 0 ? (
-            <DonutChart data={stats.myGenreDonut} height={220} />
+            <DonutChart data={stats.myGenreDonut} height={220} onLegendClick={onGenre} />
           ) : (
             /* TODO: needs genre data on movies */
             <ChartPlaceholder>Genre data not yet available.</ChartPlaceholder>
@@ -1633,7 +1725,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {stats.seasonRankings.map(s => (
-              <RankingList key={s.label} title={s.label} films={s.films} />
+              <RankingList key={s.label} title={s.label} films={s.films} onFilm={onFilm} />
             ))}
           </div>
         )}
@@ -1647,7 +1739,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {stats.yearRankings.map(y => (
-              <RankingList key={y.label} title={y.label} films={y.films} />
+              <RankingList key={y.label} title={y.label} films={y.films} onFilm={onFilm} />
             ))}
           </div>
         )}
@@ -1683,13 +1775,18 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
               padding: '10px 14px',
               borderBottom: i < visibleExcVsFinal.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
             }}>
-              <p style={{
-                flex: 1, minWidth: 0,
-                fontFamily: "'DM Sans',sans-serif",
-                color: 'var(--text)', fontSize: '13px',
-                margin: 0,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
+              <p
+                onClick={r.movie ? () => onFilm?.(r.movie) : undefined}
+                onKeyDown={r.movie ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFilm?.(r.movie) } } : undefined}
+                role={r.movie ? 'button' : undefined}
+                tabIndex={r.movie ? 0 : undefined}
+                style={{
+                  flex: 1, minWidth: 0,
+                  fontFamily: "'DM Sans',sans-serif",
+                  color: 'var(--text)', fontSize: '13px',
+                  margin: 0, cursor: r.movie ? 'pointer' : 'default',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
                 {r.movie.title}
               </p>
               {r.excitement != null && (
@@ -1825,27 +1922,50 @@ function MiniFilmCard({ movie, score, onClick }) {
 
 // ─── Ranking list (season/year personal rankings) ───────────────────────────
 
-function RankingList({ title, films }) {
+// Collapsible ranked film list. Shows the first `collapseAt` rows; "Show all (N)"
+// reveals the rest. Film titles open the film overlay via onFilm.
+function RankingList({ title, films, onFilm, collapseAt = 6 }) {
+  const [expanded, setExpanded] = useState(false)
+  const canCollapse = films.length > collapseAt
+  const visible = expanded || !canCollapse ? films : films.slice(0, collapseAt)
   return (
     <GlassCard style={{ padding: '12px 14px' }}>
       <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-dim)', margin: '0 0 10px' }}>
         {title}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {films.map((f, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ flexShrink: 0, width: '18px', fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-faint)', fontSize: '1rem', textAlign: 'right' }}>
-              {i + 1}
-            </span>
-            <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {f.title}
-            </p>
-            <span style={{ flexShrink: 0, fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '1.1rem', letterSpacing: '0.04em' }}>
-              {fmt(f.score)}
-            </span>
-          </div>
-        ))}
+        {visible.map((f, i) => {
+          const clickable = !!(onFilm && f.movie)
+          return (
+            <div
+              key={i}
+              onClick={clickable ? () => onFilm(f.movie) : undefined}
+              onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFilm(f.movie) } } : undefined}
+              role={clickable ? 'button' : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: clickable ? 'pointer' : 'default' }}
+            >
+              <span style={{ flexShrink: 0, width: '18px', fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-faint)', fontSize: '1rem', textAlign: 'right' }}>
+                {i + 1}
+              </span>
+              <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {f.title}
+              </p>
+              <span style={{ flexShrink: 0, fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '1.1rem', letterSpacing: '0.04em' }}>
+                {fmt(f.score)}
+              </span>
+            </div>
+          )
+        })}
       </div>
+      {canCollapse && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          style={{ marginTop: '10px', width: '100%', padding: '7px', borderRadius: '8px', border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'transparent', color: 'var(--text-dim)', fontFamily: "'DM Sans',sans-serif", fontSize: '12px', cursor: 'pointer' }}
+        >
+          {expanded ? 'Show less' : `Show all (${films.length})`}
+        </button>
+      )}
     </GlassCard>
   )
 }
@@ -2342,24 +2462,36 @@ function ClubVsTmdbChart({ candidates }) {
   // than a forest of side-by-side bars with overlapping film labels (those now
   // live only in the tooltip). Points above the line = we liked it more.
   const above = rows.filter(r => r.club > r.tmdb).length
+  // Auto-scale BOTH axes to the data (with padding) so films spread out instead
+  // of bunching in a 0–10 box. A SHARED domain across x and y keeps the y=x
+  // reference line a true diagonal and within the visible window.
+  const allVals = rows.flatMap(r => [r.club, r.tmdb])
+  const dataMin = Math.min(...allVals)
+  const dataMax = Math.max(...allVals)
+  const pad = Math.max(0.3, (dataMax - dataMin) * 0.12)
+  const lo = Math.max(0, Math.floor((dataMin - pad) * 10) / 10)
+  const hi = Math.min(10, Math.ceil((dataMax + pad) * 10) / 10)
+  const axisDomain = lo < hi ? [lo, hi] : [0, 10]
   return (
     <>
       <ResponsiveContainer width="100%" height={260}>
         <ScatterChart margin={{ top: 10, right: 16, left: -16, bottom: 18 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
-            type="number" dataKey="tmdb" name="TMDB" domain={[0, 10]}
+            type="number" dataKey="tmdb" name="TMDB" domain={axisDomain} allowDecimals
             tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
             axisLine={{ stroke: CHART.axisLine }} tickLine={false}
+            tickFormatter={(v) => Number(v).toFixed(1)}
             label={{ value: 'TMDB vote', position: 'insideBottom', offset: -8, fontSize: 9, fill: CHART.axis }}
           />
           <YAxis
-            type="number" dataKey="club" name="Club" domain={[0, 10]}
+            type="number" dataKey="club" name="Club" domain={axisDomain} allowDecimals
             tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
             axisLine={false} tickLine={false} width={34}
+            tickFormatter={(v) => Number(v).toFixed(1)}
             label={{ value: 'Club avg', angle: -90, position: 'insideLeft', offset: 16, fontSize: 9, fill: CHART.axis }}
           />
-          <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 10, y: 10 }]} stroke={CHART.muted} strokeDasharray="4 4" ifOverflow="hidden" />
+          <ReferenceLine segment={[{ x: axisDomain[0], y: axisDomain[0] }, { x: axisDomain[1], y: axisDomain[1] }]} stroke={CHART.muted} strokeDasharray="4 4" ifOverflow="hidden" />
           <Tooltip content={<ChartTooltip labelKey="name" />} cursor={{ strokeDasharray: '3 3' }} />
           <Scatter data={rows} isAnimationActive={false}>
             {rows.map((r, i) => (
@@ -2375,7 +2507,7 @@ function ClubVsTmdbChart({ candidates }) {
   )
 }
 
-function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
+function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onMember, onGenre }) {
   // Trend x-axis mode: monthly average vs per-film (chronological watch order).
   const [trendMode, setTrendMode] = useState('month')
   // Collapse the (potentially long) per-film spread list to a few rows by default.
@@ -2520,11 +2652,18 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       for (const m of films) orderedFilms.push({ movie: m, month_id: mid })
     }
-    const filmTrendData = orderedFilms.map(({ movie: m, month_id }) => {
+    const filmTrendData = orderedFilms.map(({ movie: m, month_id }, i) => {
       const sc = ratingsByMovie[m.id] || []
       const clubAvg = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
       const my = monthsById[month_id]?.month_year ?? null
       const row = {
+        // `idx` is a UNIQUE per-film x value. Using the month label as the x-axis
+        // key collapsed multiple films in the same month onto one x position, so
+        // clicks resolved to the wrong film. A unique numeric x keeps every point
+        // distinct; the month label is recovered for the tick via `xLabel`.
+        idx: i,
+        movieId: m.id,
+        xLabel: my ? formatMonthLabel(my) : '—',
         groupLabel: my ? formatMonthLabel(my) : '—',
         title: m.title,
         club: clubAvg,
@@ -2571,6 +2710,21 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
           club: clubAvgAll,
         }
       })
+
+    // Data-driven Y domain for the Given/Received/Club chart: a fixed 0–10 makes
+    // every member's bars look identical. Zoom to the actual value range (padded,
+    // never inverted) so the differences between members become visible.
+    const grValues = givenReceived
+      .flatMap(d => [d.given, d.received, d.club])
+      .filter(v => v != null && !Number.isNaN(v))
+    const givenReceivedDomain = grValues.length
+      ? (() => {
+          const lo = Math.min(...grValues)
+          const hi = Math.max(...grValues)
+          const pad = Math.max(0.25, (hi - lo) * 0.15)
+          return [Math.max(0, Math.floor((lo - pad) * 10) / 10), Math.min(10, Math.ceil((hi + pad) * 10) / 10)]
+        })()
+      : [0, 10]
 
     // ── Picker power rankings: avg score of films each member picked ──
     let pickerRankings = []
@@ -2620,7 +2774,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     const percentileData = corrMembers
       .map(u => {
         const a = avg(scoresByUser[u.id])
-        return { name: firstLast(u.name), value: percentileRank(memberAvgArr, a), avgScore: a, _fill: memberColor(u.name) }
+        return { id: u.id, name: firstLast(u.name), value: percentileRank(memberAvgArr, a), avgScore: a, _fill: memberColor(u.name) }
       })
       .sort((a, b) => b.value - a.value)
 
@@ -2645,6 +2799,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     const granularityData = users
       .filter(u => u.is_active !== false && (scoresByUser[u.id] || []).length >= 2)
       .map(u => ({
+        id: u.id,
         name: firstLast(u.name),
         granularity: scoringGranularity(scoresByUser[u.id]),
         color: memberColor(u.name) || accentColor(),
@@ -2656,6 +2811,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     const stdDevData = users
       .filter(u => u.is_active !== false && (scoresByUser[u.id] || []).length >= 2)
       .map(u => ({
+        id: u.id,
         name: firstLast(u.name),
         value: stddev(scoresByUser[u.id]),
         _fill: memberColor(u.name) || accentColor(),
@@ -2670,7 +2826,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       .filter(m => m.scores_revealed && (ratingsByMovie[m.id] || []).length >= 2)
       .map(m => {
         const sc = ratingsByMovie[m.id]
-        return { id: m.id, title: m.title, mean: avg(sc), sd: stddev(sc), count: sc.length }
+        return { id: m.id, title: m.title, movie: m, mean: avg(sc), sd: stddev(sc), count: sc.length }
       })
       .sort((a, b) => (b.sd ?? 0) - (a.sd ?? 0))
 
@@ -2708,6 +2864,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       distBuckets,
       memberBox,
       givenReceived,
+      givenReceivedDomain,
       pickerRankings,
       havePickerData,
       corrNames,
@@ -2784,7 +2941,8 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
                   data={stats.filmTrendData}
                   series={stats.trendSeries}
                   height={230}
-                  xKey="groupLabel"
+                  xKey="idx"
+                  xLabelKey="xLabel"
                   sparseTicks
                   tooltipLabelKey="title"
                 />
@@ -2850,7 +3008,12 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {stats.granularityData.map(d => (
                 <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span
+                    onClick={d.id ? () => onMember?.(d.id) : undefined}
+                    onKeyDown={d.id ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onMember?.(d.id) } } : undefined}
+                    role={d.id ? 'button' : undefined}
+                    tabIndex={d.id ? 0 : undefined}
+                    style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)', fontSize: '13px', cursor: d.id ? 'pointer' : 'default', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {d.name}
                   </span>
                   <span style={{
@@ -2886,6 +3049,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
               /* Auto-scale to the data so member differences are visible — a fixed
                  0–10 axis flattens std devs that are usually well under 2. */
               domain={[0, Math.max(0.5, Math.max(...stats.stdDevData.map(d => d.value)) * 1.2)]}
+              /* Round the long std-dev x-axis labels to 2 decimals. */
+              valueTickFormatter={(v) => Number(v).toFixed(2)}
+              memberIds={stats.stdDevData.map(d => d.id)}
+              onMember={onMember}
               height={Math.max(120, stats.stdDevData.length * 30 + 20)}
             />
           ) : (
@@ -2902,11 +3069,17 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
             (() => {
               const list = spreadShowAll ? stats.perMovieStats : stats.perMovieStats.slice(0, 8)
               return list.map((m, i) => (
-                <div key={m.id} style={{
-                  display: 'flex', alignItems: 'center', gap: '12px',
-                  padding: '10px 16px',
-                  borderBottom: i < list.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
-                }}>
+                <div
+                  key={m.id}
+                  onClick={m.movie ? () => onFilm?.(m.movie) : undefined}
+                  onKeyDown={m.movie ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFilm?.(m.movie) } } : undefined}
+                  role={m.movie ? 'button' : undefined}
+                  tabIndex={m.movie ? 0 : undefined}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '10px 16px', cursor: m.movie ? 'pointer' : 'default',
+                    borderBottom: i < list.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
+                  }}>
                   <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.title}
                   </p>
@@ -2955,11 +3128,17 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
         {stats.havePickerData && stats.pickerRankings.length > 0 ? (
           <GlassCard style={{ padding: '4px 0' }}>
             {stats.pickerRankings.map((p, i) => (
-              <div key={p.id} style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '11px 16px',
-                borderBottom: i < stats.pickerRankings.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
-              }}>
+              <div
+                key={p.id}
+                onClick={p.id ? () => onMember?.(p.id) : undefined}
+                onKeyDown={p.id ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onMember?.(p.id) } } : undefined}
+                role={p.id ? 'button' : undefined}
+                tabIndex={p.id ? 0 : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '11px 16px', cursor: p.id ? 'pointer' : 'default',
+                  borderBottom: i < stats.pickerRankings.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
+                }}>
                 <span style={{ flexShrink: 0, width: '20px', textAlign: 'center', fontFamily: "'Bebas Neue',sans-serif", color: i === 0 ? 'var(--accent)' : 'var(--text-faint)', fontSize: '1.3rem' }}>
                   {i + 1}
                 </span>
@@ -3015,6 +3194,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
                   ]}
               layout="horizontal"
               labelKey="name"
+              domain={stats.givenReceivedDomain}
               height={210}
             />
           ) : (
@@ -3040,7 +3220,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
         <SectionLabel>Score Percentile (Generosity)</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.percentileData.length > 0 ? (
-            <PercentileBar data={stats.percentileData} />
+            <PercentileBar data={stats.percentileData} memberIds={stats.percentileData.map(d => d.id)} onMember={onMember} />
           ) : (
             <ChartPlaceholder>Not enough data yet.</ChartPlaceholder>
           )}
@@ -3081,7 +3261,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       <div>
         <SectionLabel>Most Active Scorer</SectionLabel>
         {stats.mostActiveUser ? (
-          <GlassCard style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px' }}>
+          <GlassCard
+            onClick={() => onMember?.(stats.mostActiveUser.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', cursor: 'pointer' }}
+          >
             <div style={{
               flexShrink: 0,
               width: '44px', height: '44px',
@@ -3123,11 +3306,17 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
           {stats.activeUsers.map((u, i) => {
             const streak = stats.streaks[u.id] || 0
             return (
-              <div key={u.id} style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '11px 16px',
-                borderBottom: i < stats.activeUsers.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
-              }}>
+              <div
+                key={u.id}
+                onClick={() => onMember?.(u.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onMember?.(u.id) } }}
+                role="button"
+                tabIndex={0}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '11px 16px', cursor: 'pointer',
+                  borderBottom: i < stats.activeUsers.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
+                }}>
                 <div style={{
                   flexShrink: 0,
                   width: '32px', height: '32px',
@@ -3178,7 +3367,15 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
               {stats.topGenres.map(([genre, count]) => {
                 const pct = (count / maxGenreCount) * 100
                 return (
-                  <div key={genre} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    key={genre}
+                    onClick={onGenre ? () => onGenre(genre) : undefined}
+                    onKeyDown={onGenre ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onGenre(genre) } } : undefined}
+                    role={onGenre ? 'button' : undefined}
+                    tabIndex={onGenre ? 0 : undefined}
+                    title={onGenre ? `View ${genre} films` : undefined}
+                    style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: onGenre ? 'pointer' : 'default' }}
+                  >
                     <span style={{
                       fontFamily: "'DM Sans',sans-serif",
                       fontSize: '12px',
@@ -3638,6 +3835,7 @@ const TABS = ['Overview', 'Me', 'Members', 'Club', 'Head to Head']
 
 export default function Stats() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   // Honor a ?tab= deep link (e.g. Home's "all caught up" box → ?tab=me), matched case-insensitively.
   const initialTab = (() => {
     const t = new URLSearchParams(window.location.search).get('tab')
@@ -3651,6 +3849,10 @@ export default function Stats() {
   const onFilm = useCallback((movie) => { if (movie) setSelectedMovie(movie) }, [])
   const { openMember } = useMemberOverlay()
   const onMember = useCallback((userId) => { if (userId) openMember(userId) }, [openMember])
+  // Genre deep-link → Films page filtered by that genre.
+  const onGenre = useCallback((g) => {
+    if (g) navigate('/films?tab=All Films&genre=' + encodeURIComponent(g))
+  }, [navigate])
 
   const TEST_USER_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 
@@ -3823,6 +4025,7 @@ export default function Stats() {
               loading={loading}
               monthsById={monthsById}
               onFilm={onFilm}
+              onGenre={onGenre}
             />
           )}
           {activeTab === 'Members' && (
@@ -3843,6 +4046,9 @@ export default function Stats() {
               users={users}
               loading={loading}
               monthsById={monthsById}
+              onFilm={onFilm}
+              onMember={onMember}
+              onGenre={onGenre}
             />
           )}
           {activeTab === 'Head to Head' && (
