@@ -126,13 +126,16 @@ export default function MonthReveal({ monthId, monthLabel, users = [], currentUs
         const ratingByUser = {}
         for (const r of ratings) if (r.movie_id === f.id && r.score != null) ratingByUser[r.user_id] = r.score
 
-        // Guess-the-picker results for this film
-        const filmGuesses = guesses.filter(g => g.movie_id === f.id)
+        // Guess-the-picker results for this film. Exclude guesses by the test account
+        // (and any unknown user) — it's filtered out of `users`/nameById, so it must not
+        // appear as a blank "—" guesser or be counted in "X/Y guessed correctly".
+        const filmGuesses = guesses.filter(g => g.movie_id === f.id && nameById[g.guessing_user_id])
         const correctGuessers = filmGuesses.filter(g => g.guessed_user_id === f.picked_by_user_id)
         const myGuess = filmGuesses.find(g => g.guessing_user_id === currentUserId)
 
         // Picker's predictions for this film
-        const filmPreds = predictions.filter(p => p.movie_id === f.id && p.predicting_user_id === f.picked_by_user_id)
+        // Likewise drop predictions targeting an unknown/test user (would render "Unknown").
+        const filmPreds = predictions.filter(p => p.movie_id === f.id && p.predicting_user_id === f.picked_by_user_id && nameById[p.target_user_id])
 
         return (
           <div key={f.id} style={{

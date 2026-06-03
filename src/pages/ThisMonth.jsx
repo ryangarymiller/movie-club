@@ -1366,10 +1366,11 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
   const nextMonthLabel = nextMonth ? formatMonthLabel(nextMonth.month_year) : ''
   const loading = monthLoading || picksLoading
 
-  // The viewer's own pick is always visible (RLS guarantees it's readable). Other members'
-  // picks stay hidden until reveal — admins can read them all and they render below.
+  // The viewer's own pick is always visible (RLS guarantees it's readable). Other
+  // members' upcoming picks are intentionally never displayed in this view (they're
+  // secret until the end-of-month reveal) — so the admin "read all" RLS policy can't
+  // spoil the surprise here.
   const myPick = profile ? picks.find(p => p.user_id === profile.id) ?? null : null
-  const otherPicks = profile ? picks.filter(p => p.user_id !== profile.id) : picks
 
   return (
     <div>
@@ -1434,9 +1435,12 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
         </div>
       ) : (
         <>
-          {/* The viewer's own pick — always visible, inline justification + change affordance */}
+          {/* Only the viewer's OWN pick is shown here. Other members' upcoming picks
+              are secret until the end-of-month reveal (surfaced by the Reveal section,
+              gated on picker_revealed) — they are NOT shown here even to admins, so the
+              surprise isn't spoiled in this member-facing view. */}
           {myPick ? (
-            <div style={{ marginBottom: otherPicks.length ? '24px' : 0 }}>
+            <div>
               <p style={{
                 fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
                 fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
@@ -1456,33 +1460,9 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
             <div style={{
               textAlign: 'center', padding: '32px 0',
               fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '14px',
-              marginBottom: otherPicks.length ? '24px' : 0,
             }}>
               You haven’t picked a film for {nextMonthLabel} yet.
             </div>
-          )}
-
-          {/* Other members' picks — only present once the month has been revealed (or for admins) */}
-          {otherPicks.length > 0 && (
-            <>
-              <p style={{
-                fontFamily: "'DM Mono',monospace", color: 'var(--hairline)',
-                fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
-                margin: '0 0 12px',
-              }}>
-                Other picks
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {otherPicks.map(pick => (
-                  <PickRow
-                    key={pick.id}
-                    pick={pick}
-                    expanded={expandedPickId === pick.id}
-                    onToggle={() => setExpandedPickId(id => id === pick.id ? null : pick.id)}
-                  />
-                ))}
-              </div>
-            </>
           )}
         </>
       )}
