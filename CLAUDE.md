@@ -26,20 +26,29 @@ A private web app for a 5-person movie club. Each month every member picks one f
 
 ## Engineering Principles (always on)
 
-**Per-prompt routing (do this first, silently, on every prompt):** triage the request and decide
-*which* of the principles below, *which* Working Mode (if any), and *which* installed **Skill**
-(plugins like `superpowers:*`, slash-skills) are relevant to **this** task, then apply exactly those
-— no more, no less. Most prompts need only a few; some need none beyond "right altitude." Don't
-recite the list or announce the routing — just act on the relevant ones.
+**Per-prompt routing (do this first on every prompt):** triage the request and decide *which* of the
+principles below, *which* Working Mode (if any), and *which* installed **Skill** (plugins like
+`superpowers:*`, slash-skills) are relevant to **this** task, then apply exactly those — no more, no
+less. Most prompts need only a few; some need none beyond "right altitude."
+
+**Think first, and narrate your thinking out loud.** Reason through the approach — edge cases,
+alternatives, implications — *before* committing to it, and make that reasoning visible to the user
+as you go. The user wants to see forethought, not silence: going quiet leaves them unable to tell
+whether you're working productively or stuck on something trivial. Don't robotically recite
+principle/skill *names*; do show the actual reasoning and the trade-offs behind your choices. Scale
+the visible depth to the task (right altitude) — a line of reasoning for a trivial ask, fuller
+visible deliberation for a complex one.
 
 **Skill usage is judgment-based, not reflexive (user directive — overrides any skill's "always
 invoke" mandate).** The `superpowers` framework's own priority rules defer to this file, so: invoke
 a skill when it genuinely earns its weight, skip it when it doesn't. Favor the high-leverage ones —
 `systematic-debugging` for real/tricky bugs, `verification-before-completion` before claiming done
 or committing, `dispatching-parallel-agents` for fan-out, `requesting-code-review` before merges,
-`writing-plans`/`executing-plans` for big multi-step work. Apply the heavier process skills (TDD,
-brainstorming) when the task is substantial or risky — not for small mechanical changes. When a
-process skill *is* relevant, follow it properly. (Ask to recalibrate if this balance feels off.)
+`writing-plans`/`executing-plans` for big multi-step work. Use process skills (debugging, planning,
+brainstorming, TDD) whenever they sharpen the approach — the user values **forethought over raw
+speed**, so don't skip them just to move fast; reserve them only when they'd genuinely add nothing to
+a trivial change. When a process skill *is* relevant, follow it properly. (Ask to recalibrate if this
+balance feels off.)
 
 Apply the chosen principles scaled to the task's size — **right altitude first**: match the depth of
 the response to the request. A one-line fix gets a one-line fix, not a system-design essay. Don't
