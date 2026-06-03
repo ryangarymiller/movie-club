@@ -1150,7 +1150,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
   // `users` is already test-filtered in fetchDetails.
   const recommendYes = ratings.filter(r => r.recommend_outside_club === true).length
   const hasRecommendData = ratings.some(r => r.recommend_outside_club != null)
-  const filmMonthEnd = m._monthYear ? `${m._monthYear}-31` : null
+  const filmMonthEnd = (() => {
+    if (!m._monthYear) return null
+    const [y, mo] = m._monthYear.split('-').map(Number)
+    // Day 0 of the next month == last day of the target month
+    const lastDay = new Date(y, mo, 0).getDate()
+    return `${m._monthYear}-${String(lastDay).padStart(2, '0')}`
+  })()
   const expectedMemberCount = filmMonthEnd
     ? users.filter(u => u.joined_at != null && u.joined_at <= filmMonthEnd).length
     : users.length
@@ -1419,21 +1425,6 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 </div>
               )}
             </div>
-            {/* Recommend stat — only after scores revealed and if any ratings have the
-                field set. Denominator is the expected member count for the film's month
-                (pre-Zack 4, post-Zack 5), not the number who filled the field. */}
-            {m.scores_revealed && hasRecommendData && recommendTotal > 0 && (
-              <p style={{
-                fontFamily: "'DM Mono', monospace",
-                fontSize: '10px',
-                color: 'rgba(var(--fg-rgb), 0.3)',
-                letterSpacing: '0.05em',
-                margin: '0 0 16px',
-              }}>
-                {recommendYes}/{recommendTotal} would recommend outside the club
-              </p>
-            )}
-
             {detailLoading ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {[...Array(4)].map((_, i) => (

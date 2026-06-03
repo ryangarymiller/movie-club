@@ -239,8 +239,10 @@ function DonutChart({ data, height = 200 }) {
 // Recharts injects the geometry props (x, y, width, height, payload).
 function BoxWhisker({ c, x, y, width, height: bh, payload }) {
   if (!payload) return null
-  const scaleX = width / (payload.q3 - payload.q1 || 1)
-  const px = (val) => x + (val - payload.q1) * scaleX
+  const range = payload.q3 - payload.q1
+  const scaleX = range === 0 ? 0 : width / range
+  const cx = x + width / 2
+  const px = (val) => range === 0 ? cx : x + (val - payload.q1) * scaleX
   const cy = y + bh / 2
   return (
     <g stroke={c} strokeWidth={1.5}>
@@ -2153,8 +2155,8 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       }
       monthMovies[m.month_id].push(m)
     }
-    // Sort months by id (they're likely sequential UUIDs or ints; use string sort as fallback)
-    const sortedMonths = [...new Set(monthSet)].sort()
+    // Sort months chronologically using month_year via the canonical helper
+    const sortedMonths = orderMonths([...new Set(monthSet)], monthsById)
 
     // Score over time: avg score per month
     const ratingsByMovie = {}
@@ -2278,7 +2280,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     }
     const moviePickedBy = {}
     for (const m of movies) {
-      if (m.picked_by_user_id) moviePickedBy[m.id] = m.picked_by_user_id
+      if (m.picked_by_user_id && m.picker_revealed) moviePickedBy[m.id] = m.picked_by_user_id
     }
     const havePickerData = Object.keys(moviePickedBy).length > 0
 
@@ -2327,7 +2329,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       }
       userRatingMap[u.id] = map
     }
-    const corrNames = corrMembers.map(u => u.name)
+    const corrNames = corrMembers.map(u => firstLast(u.name))
     const corrMatrix = corrMembers.map((ua) =>
       corrMembers.map((ub) => {
         if (ua.id === ub.id) return 1
@@ -2445,7 +2447,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       corrMatrix,
       percentileData,
     }
-  }, [movies, ratings, users])
+  }, [movies, ratings, users, monthsById])
 
   if (loading) {
     return (

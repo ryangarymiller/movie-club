@@ -125,6 +125,9 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
     const allTargetIds = [...reviewIds, ...commentIds]
 
     if (allTargetIds.length) {
+      const reviewIdSet = new Set(reviewIds)
+      const commentIdSet = new Set(commentIds)
+
       const [reacRes, voteRes] = await Promise.all([
         supabase
           .from('reactions')
@@ -136,7 +139,13 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
           .in('target_id', allTargetIds),
       ])
       // Reactions/votes are non-critical; degrade gracefully on error.
-      setReactions(reacRes.error ? [] : (reacRes.data || []))
+      // Client-side validation: only keep a reaction if its target_type matches
+      // the entity it belongs to (guards against cross-type id collisions).
+      const rawReactions = reacRes.error ? [] : (reacRes.data || [])
+      setReactions(rawReactions.filter(r =>
+        (r.target_type === 'review' && reviewIdSet.has(r.target_id)) ||
+        (r.target_type === 'comment' && commentIdSet.has(r.target_id))
+      ))
       setVotes(voteRes.error ? [] : (voteRes.data || []))
     } else {
       setReactions([])
@@ -187,17 +196,22 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
 
   // Build nested comment trees keyed by review_id.
   // commentsByReview[reviewId] = array of top-level comment nodes (each with .children).
+  // Comments with a null review_id (orphans or legacy film-level comments) are stored
+  // under the special key '__unthreaded__' so they are never silently dropped.
+  const UNTHREADED_KEY = '__unthreaded__'
   const commentsByReview = useMemo(() => {
     const nodes = {}
     for (const c of comments) nodes[c.id] = { ...c, children: [] }
-    const roots = {} // reviewId -> [top-level comment nodes]
+    const roots = {} // reviewId (or UNTHREADED_KEY) -> [top-level comment nodes]
     for (const c of comments) {
       const node = nodes[c.id]
       const parent = c.parent_comment_id ? nodes[c.parent_comment_id] : null
       if (parent) {
         parent.children.push(node)
       } else {
-        const rid = c.review_id
+        // Use the special key for comments whose review_id is null so they are
+        // not lost (Object.keys ignores null properties).
+        const rid = c.review_id != null ? c.review_id : UNTHREADED_KEY
         if (!roots[rid]) roots[rid] = []
         roots[rid].push(node)
       }
@@ -362,6 +376,29 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
               {...shared}
             />
           ))}
+          {/* Render orphan / legacy film-level comments that have no review_id */}
+          {(commentsByReview[UNTHREADED_KEY] || []).length > 0 && (
+            <div style={{
+              border: '1px solid rgba(var(--fg-rgb),0.1)', borderRadius: '14px',
+              padding: '16px', background: 'rgba(var(--fg-rgb),0.02)',
+            }}>
+              <p style={{
+                fontFamily: MONO, fontSize: '10px', textTransform: 'uppercase',
+                letterSpacing: '0.1em', color: 'var(--text-dim)', margin: '0 0 12px',
+              }}>
+                Comments
+              </p>
+              {commentsByReview[UNTHREADED_KEY].map(node => (
+                <CommentNode
+                  key={node.id}
+                  node={node}
+                  reviewId={null}
+                  depth={0}
+                  {...shared}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

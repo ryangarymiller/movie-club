@@ -1105,7 +1105,7 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
 // ─────────────────────────────────────────────
 // TAB 3 — Members
 // ─────────────────────────────────────────────
-function InviteCard({ onRefresh }) {
+function InviteCard({ onRefresh, currentProfile }) {
   const todayStr = new Date().toISOString().split('T')[0]
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -1210,7 +1210,7 @@ function InviteCard({ onRefresh }) {
               aria-label="Role"
             >
               <option value="member">member</option>
-              <option value="admin">admin</option>
+              {currentProfile?.is_op && <option value="admin">admin</option>}
             </select>
           </div>
           <div style={{ flex: '1 1 140px', minWidth: 0 }}>
@@ -1325,7 +1325,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <InviteCard onRefresh={onRefresh} setSuccess={setSuccess} />
+      <InviteCard onRefresh={onRefresh} setSuccess={setSuccess} currentProfile={currentProfile} />
       {users.map(user => (
         <div key={user.id} style={{
           background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)',
