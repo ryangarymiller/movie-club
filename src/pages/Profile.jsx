@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
-import { USER_COLOR_PALETTE } from '../lib/colors'
+import { USER_COLOR_PALETTE, MEMBER_COLORS } from '../lib/colors'
 import AwardsBadges from '../components/AwardsBadges'
 import { deliberateSignOut } from '../lib/authLog'
 import { FilmDetailOverlay } from './Films.jsx'
@@ -285,11 +285,19 @@ export default function Profile({ overlayUserId = null } = {}) {
       try {
         const { data } = await supabase
           .from('users')
-          .select('id, user_color, email')
+          .select('id, name, user_color, email')
           .neq('id', profile.id)
           .neq('email', 'i.am.ryan.the.miller@gmail.com')
         if (!alive) return
-        setTakenColors(new Set((data ?? []).map(u => u.user_color).filter(Boolean)))
+        const taken = new Set()
+        for (const u of (data ?? [])) {
+          if (u.user_color) {
+            taken.add(u.user_color)
+          } else if (u.name && MEMBER_COLORS[u.name]) {
+            taken.add(MEMBER_COLORS[u.name])
+          }
+        }
+        setTakenColors(taken)
       } catch { /* ignore — transient/test mock */ }
     })()
     return () => { alive = false }
@@ -812,7 +820,7 @@ export default function Profile({ overlayUserId = null } = {}) {
             <button
               onClick={() => {
                 closeMemberOverlay()
-                navigate('/stats?tab=members')
+                navigate('/stats?tab=members&memberId=' + displayProfile.id)
               }}
               style={{
                 width: '100%',

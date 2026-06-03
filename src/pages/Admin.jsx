@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { writeAwardsToDb } from '../lib/awards'
@@ -561,6 +561,17 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
   const [autoFetchingGenreId, setAutoFetchingGenreId] = useState(null)
   const [backfillStatus, setBackfillStatus] = useState(null) // null | 'running' | 'done'
   const [backfillMsg, setBackfillMsg] = useState('')
+
+  // Auto-backfill genres once on mount if any film is missing genre data
+  const autoBackfillRan = useRef(false)
+  useEffect(() => {
+    if (autoBackfillRan.current) return
+    const needsGenre = movies.some(m => m.tmdb_id && (!m.genre || m.genre.length === 0))
+    if (!needsGenre) return
+    autoBackfillRan.current = true
+    backfillGenres()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movies])
 
   // Bulk reveal state
   const [selectedBulkMonth, setSelectedBulkMonth] = useState('')

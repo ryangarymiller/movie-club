@@ -307,7 +307,7 @@ export default function Home() {
             <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
           ) : pendingFilms.length === 0 ? (
             <div
-              onClick={() => navigate(activeMonthYear ? `/films?tab=History&month=${activeMonthYear}` : '/films?tab=History')}
+              onClick={() => navigate('/this-month')}
               className="flex items-center gap-3 p-4 rounded-xl border border-white/10 transition-colors"
               style={{ cursor: 'pointer', background: 'rgba(var(--fg-rgb),0.03)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.07)' }}
@@ -318,7 +318,7 @@ export default function Home() {
                 <p className="text-white text-sm font-medium">You're all caught up</p>
                 <p className="text-gray-500 text-xs">All scores submitted for this month</p>
               </div>
-              <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>View this month's scores →</span>
+              <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>View this month →</span>
             </div>
           ) : (
             <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -1150,6 +1150,8 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
               layout="vertical"
               height={Math.max(120, stats.memberAvgs.length * 30 + 20)}
               cellFill="_fill"
+              memberIds={stats.memberAvgs.map(u => u.id)}
+              onMember={onMember}
             />
           </GlassCard>
         </div>
@@ -2072,9 +2074,11 @@ export function calcGivenVsReceived(userId, ratings, moviePickedBy, scoresByMovi
 
 // ─── Members Tab ─────────────────────────────────────────────────────────────
 
-function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember, onFilm }) {
+function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember, onFilm, focusMemberId = null, onFocusConsumed }) {
   // Which member's card is expanded into its detailed plots (null = none).
   const [expandedId, setExpandedId] = useState(null)
+  // Refs to each member card so a deep link (?memberId=) can scroll it into view.
+  const cardRefs = useRef({})
 
   const stats = useMemo(() => {
     if (!users.length) return null
@@ -2163,6 +2167,22 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
       .sort((a, b) => b.avgScore - a.avgScore)
   }, [movies, ratings, users, monthsById])
 
+  // Deep-link focus: when arriving via ?memberId=, expand that member's card and
+  // scroll it into view once the data (and thus the card) is present. One-shot —
+  // we clear the focus via onFocusConsumed so it doesn't re-fire on re-renders.
+  useEffect(() => {
+    if (loading || !focusMemberId || !stats) return
+    const exists = stats.some(u => u.id === focusMemberId)
+    if (!exists) { onFocusConsumed?.(); return }
+    setExpandedId(focusMemberId)
+    // Defer the scroll so the (now-expanded) card has laid out.
+    const el = cardRefs.current[focusMemberId]
+    if (el && typeof el.scrollIntoView === 'function') {
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    }
+    onFocusConsumed?.()
+  }, [loading, focusMemberId, stats, onFocusConsumed])
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -2182,7 +2202,8 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {stats.map(u => (
-        <GlassCard key={u.id} style={{ padding: '18px' }}>
+        <div key={u.id} ref={el => { cardRefs.current[u.id] = el }}>
+        <GlassCard style={{ padding: '18px' }}>
           {/* Header row — click avatar/name to open the member's profile */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
             <div
@@ -2387,6 +2408,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
             </div>
           )}
         </GlassCard>
+        </div>
       ))}
     </div>
   )
@@ -2507,6 +2529,108 @@ function ClubVsTmdbChart({ candidates }) {
   )
 }
 
+// Genre Blindspot heatmap. rows: [{ id, name, counts:[n,...] }] aligned to
+// `genres`. Each cell shows how many films of that genre the member has RATED.
+// Zero cells are tinted faint-red (a blindspot); non-zero cells fill the accent
+// at an opacity that scales with the count vs `max`. Horizontally scrollable so
+// it stays readable on narrow screens; member labels open the member overlay.
+function GenreBlindspotGrid({ genres, rows, max, onMember }) {
+  const denom = max > 0 ? max : 1
+  const labelW = 86
+  const cellMin = 30
+  // grid template: a fixed label column + one min-sized column per genre.
+  const gridTemplate = `${labelW}px repeat(${genres.length}, minmax(${cellMin}px, 1fr))`
+  // Truncate long genre names for the header without losing the title tooltip.
+  const shortGenre = (g) => (g.length > 9 ? g.slice(0, 8) + '…' : g)
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ minWidth: `${labelW + genres.length * cellMin}px` }}>
+        {/* Header row — genre labels */}
+        <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '3px', marginBottom: '3px' }}>
+          <div />
+          {genres.map(g => (
+            <div
+              key={g}
+              title={g}
+              style={{
+                fontFamily: "'DM Mono',monospace",
+                fontSize: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                color: 'var(--text-faint)',
+                textAlign: 'center',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                padding: '0 1px',
+              }}
+            >
+              {shortGenre(g)}
+            </div>
+          ))}
+        </div>
+
+        {/* Member rows */}
+        {rows.map(r => (
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '3px', marginBottom: '3px' }}>
+            <div
+              onClick={onMember ? () => onMember(r.id) : undefined}
+              onKeyDown={onMember ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onMember(r.id) } } : undefined}
+              role={onMember ? 'button' : undefined}
+              tabIndex={onMember ? 0 : undefined}
+              title={r.name}
+              style={{
+                display: 'flex', alignItems: 'center',
+                fontFamily: "'DM Sans',sans-serif",
+                fontSize: '11px',
+                color: 'var(--text-muted)',
+                cursor: onMember ? 'pointer' : 'default',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                paddingRight: '4px',
+              }}
+            >
+              {firstLast(r.name)}
+            </div>
+            {r.counts.map((c, i) => {
+              const isBlind = c === 0
+              // Non-zero: accent fill, opacity ramps 0.22 → 1.0 with the count.
+              const intensity = 0.22 + 0.78 * (c / denom)
+              const bg = isBlind
+                ? 'rgba(220, 38, 38, 0.12)'
+                : `rgba(var(--accent-rgb, 168,85,247), ${intensity.toFixed(3)})`
+              return (
+                <div
+                  key={i}
+                  title={`${firstLast(r.name)} · ${genres[i]}: ${c} rated`}
+                  style={{
+                    height: '26px',
+                    borderRadius: '5px',
+                    background: bg,
+                    border: isBlind ? '1px solid rgba(220, 38, 38, 0.28)' : '1px solid rgba(var(--fg-rgb), 0.05)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: "'DM Mono',monospace",
+                    fontSize: '10px',
+                    color: isBlind
+                      ? 'rgba(220, 38, 38, 0.85)'
+                      : (intensity > 0.6 ? 'var(--bg)' : 'var(--text-strong)'),
+                  }}
+                >
+                  {c}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+
+        {/* Legend */}
+        <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '10px 0 0', textAlign: 'center' }}>
+          Films rated per genre · faint red = blindspot (0 rated) · darker = more coverage
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onMember, onGenre }) {
   // Trend x-axis mode: monthly average vs per-film (chronological watch order).
   const [trendMode, setTrendMode] = useState('month')
@@ -2599,6 +2723,52 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     const totalFilmsForGenre = revealedMovies.length
     // Are there any movies with genre data at all?
     const hasAnyGenreData = revealedMovies.some(m => m.genre && (Array.isArray(m.genre) ? m.genre.length > 0 : String(m.genre).trim() !== ''))
+
+    // ── Genre Blindspot Grid ──────────────────────────────────────────────────
+    // For each active member × each genre, count how many films of that genre the
+    // member has actually RATED (has a score). Low/zero cells are a member's
+    // "blindspot" — genres they've barely engaged with. We constrain to the
+    // genres that actually appear (top by overall film count) so the grid stays
+    // readable, and to films that carry genre data.
+    const genreFilmIds = {} // genre -> Set<movie_id> (movies tagged with that genre)
+    for (const m of movies) {
+      if (!m.genre) continue
+      const parts = (Array.isArray(m.genre) ? m.genre : String(m.genre).split(','))
+        .map(s => String(s).trim()).filter(Boolean)
+      for (const g of parts) {
+        if (!genreFilmIds[g]) genreFilmIds[g] = new Set()
+        genreFilmIds[g].add(m.id)
+      }
+    }
+    // Order genres by how many films carry them (most common first), cap to keep
+    // the grid mobile-friendly.
+    const blindspotGenres = Object.entries(genreFilmIds)
+      .sort((a, b) => b[1].size - a[1].size)
+      .slice(0, 12)
+      .map(([g]) => g)
+
+    // Which films each member has rated (score present).
+    const ratedFilmsByUser = {} // userId -> Set<movie_id>
+    for (const r of ratings) {
+      if (r.score == null) continue
+      if (!ratedFilmsByUser[r.user_id]) ratedFilmsByUser[r.user_id] = new Set()
+      ratedFilmsByUser[r.user_id].add(r.movie_id)
+    }
+
+    // Build the matrix: rows = active members, cols = genres, cell = # rated in genre.
+    let blindspotMax = 0
+    const blindspotRows = activeUsers.map(u => {
+      const rated = ratedFilmsByUser[u.id] || new Set()
+      const counts = blindspotGenres.map(g => {
+        const filmsInGenre = genreFilmIds[g] || new Set()
+        let c = 0
+        for (const fid of filmsInGenre) if (rated.has(fid)) c++
+        if (c > blindspotMax) blindspotMax = c
+        return c
+      })
+      return { id: u.id, name: u.name, counts }
+    })
+    const hasBlindspotData = blindspotGenres.length > 0 && blindspotRows.length > 0
 
     // Excitement vs Reality
     const excitements = ratings
@@ -2859,6 +3029,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       topGenres,
       hasAnyGenreData,
       totalFilmsForGenre,
+      blindspotGenres,
+      blindspotRows,
+      blindspotMax,
+      hasBlindspotData,
       avgExcitement,
       avgFinal,
       distBuckets,
@@ -3239,21 +3413,24 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         </GlassCard>
       </div>
 
-      {/* Director / Actor connection web — needs cast data not in DB */}
-      <div>
-        <SectionLabel>Connection Web · 6 Degrees</SectionLabel>
-        <GlassCard style={{ padding: '16px' }}>
-          {/* TODO: needs cast/actor data (movies only has a single `director` field, no cast) */}
-          <ChartPlaceholder>Cast & connection data not yet available.</ChartPlaceholder>
-        </GlassCard>
-      </div>
-
-      {/* Genre Blindspot Grid — needs full genre taxonomy per member */}
+      {/* Genre Blindspot Grid — members × genres heatmap of films RATED per genre.
+          Faint/red cells (0 films rated) are a member's blindspot; cell intensity
+          scales with how many films of that genre they've scored. */}
       <div>
         <SectionLabel>Genre Blindspot Grid</SectionLabel>
         <GlassCard style={{ padding: '16px' }}>
-          {/* TODO: needs per-member genre coverage matrix; genre often sparse */}
-          <ChartPlaceholder>Genre blindspot data not yet available.</ChartPlaceholder>
+          {stats.hasBlindspotData ? (
+            <GenreBlindspotGrid
+              genres={stats.blindspotGenres}
+              rows={stats.blindspotRows}
+              max={stats.blindspotMax}
+              onMember={onMember}
+            />
+          ) : (
+            <ChartPlaceholder>
+              {stats.hasAnyGenreData === false ? 'Run genre backfill in Admin to see this chart.' : 'No genre data yet.'}
+            </ChartPlaceholder>
+          )}
         </GlassCard>
       </div>
 
@@ -3837,11 +4014,19 @@ export default function Stats() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   // Honor a ?tab= deep link (e.g. Home's "all caught up" box → ?tab=me), matched case-insensitively.
-  const initialTab = (() => {
-    const t = new URLSearchParams(window.location.search).get('tab')
-    return TABS.find(x => x.toLowerCase() === (t ?? '').toLowerCase()) ?? 'Overview'
+  // Deep link: /stats?tab=members&memberId=<id> opens the Members tab focused on
+  // a specific member (Profile produces this link). Read both on mount.
+  const initialQuery = (() => {
+    const q = new URLSearchParams(window.location.search)
+    const t = q.get('tab')
+    const tab = TABS.find(x => x.toLowerCase() === (t ?? '').toLowerCase()) ?? 'Overview'
+    const memberId = q.get('memberId')
+    // A memberId implies the Members tab even if tab= is absent/mismatched.
+    return { tab: memberId ? 'Members' : tab, memberId: memberId || null }
   })()
-  const [activeTab, setActiveTab] = useState(initialTab)
+  const [activeTab, setActiveTab] = useState(initialQuery.tab)
+  // One-shot focus target consumed by MembersTab (expand + scroll), then cleared.
+  const [focusMemberId, setFocusMemberId] = useState(initialQuery.memberId)
   const [selectedMovie, setSelectedMovie] = useState(null)
 
   // Spec: films are clickable everywhere in Stats (open the film overlay) and
@@ -4037,6 +4222,8 @@ export default function Stats() {
               monthsById={monthsById}
               onMember={onMember}
               onFilm={onFilm}
+              focusMemberId={focusMemberId}
+              onFocusConsumed={() => setFocusMemberId(null)}
             />
           )}
           {activeTab === 'Club' && (

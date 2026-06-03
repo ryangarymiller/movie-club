@@ -329,7 +329,23 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
 
             {/* Score input */}
             <div style={{ position: 'relative', marginBottom: error ? '8px' : '20px' }}>
+              <label
+                htmlFor="score-input"
+                style={{
+                  display: 'block',
+                  fontFamily: "'DM Sans',sans-serif",
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: 'var(--text-muted)',
+                  marginBottom: '8px',
+                  letterSpacing: '0.01em',
+                  userSelect: 'none',
+                }}
+              >
+                Tap to enter a score
+              </label>
               <input
+                id="score-input"
                 ref={inputRef}
                 type="number"
                 inputMode="decimal"
@@ -342,21 +358,26 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                 placeholder="e.g. 7.50"
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  background: 'rgba(var(--fg-rgb), 0.05)', border: `1.5px solid ${error ? '#ef4444' : 'rgba(var(--fg-rgb), 0.15)'}`,
-                  borderRadius: '12px', padding: '14px 16px',
-                  fontFamily: "'DM Mono','DM Sans',monospace", fontSize: '1.25rem', letterSpacing: '0.06em',
+                  background: 'rgba(var(--fg-rgb), 0.08)',
+                  border: `2px solid ${error ? '#ef4444' : 'rgba(var(--fg-rgb), 0.28)'}`,
+                  borderRadius: '12px', padding: '15px 16px',
+                  fontFamily: "'DM Mono','DM Sans',monospace", fontSize: '18px', letterSpacing: '0.06em',
                   color: 'var(--text-strong)',
                   caretColor: 'var(--accent)',
                   outline: 'none',
-                  transition: 'border-color 0.15s ease',
+                  transition: 'border-color 0.15s ease, background 0.15s ease',
                   WebkitAppearance: 'none', MozAppearance: 'textfield',
                 }}
                 onFocus={e => {
                   if (!error) e.target.style.borderColor = 'var(--accent)'
+                  e.target.style.background = 'rgba(var(--fg-rgb), 0.11)'
                   // Keep input above the mobile keyboard.
                   e.target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
                 }}
-                onBlur={e => { if (!error) e.target.style.borderColor = 'rgba(var(--fg-rgb), 0.15)' }}
+                onBlur={e => {
+                  if (!error) e.target.style.borderColor = 'rgba(var(--fg-rgb), 0.28)'
+                  e.target.style.background = 'rgba(var(--fg-rgb), 0.08)'
+                }}
               />
             </div>
 

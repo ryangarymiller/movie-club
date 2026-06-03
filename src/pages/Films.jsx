@@ -960,6 +960,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const [awardData, setAwardData] = useState(null) // { movies, ratings, users, months, seasons }
   const [filmAwardsState, setFilmAwardsState] = useState(null) // null = not yet loaded
   const scrollRef = useRef(null)
+  const discussionRef = useRef(null)
 
   // Determine whether the viewer picked this film. Querying with the picked_by_user_id
   // filter only ever returns the viewer's own pick, so it never leaks other pickers.
@@ -1760,7 +1761,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           {profile && (
             <>
               <Divider />
-              <div style={{ marginTop: '4px' }}>
+              <div ref={discussionRef} style={{ marginTop: '4px' }}>
                 <CommentThread
                   movieId={m.id}
                   currentUserId={profile.id}
@@ -1783,7 +1784,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
           onClose={() => setShowScoreModal(false)}
           onSaved={() => {
             setShowScoreModal(false)
-            if (movie) fetchDetails(movie.id, movie)
+            if (movie) {
+              fetchDetails(movie.id, movie).then(() => {
+                setTimeout(() => {
+                  discussionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }, 150)
+              })
+            }
           }}
         />
       )}

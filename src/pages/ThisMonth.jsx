@@ -246,7 +246,7 @@ function GuessThePicker({ movie, profile, allUsers }) {
 
 // ─── Film Card ───────────────────────────────────────────────────────────────
 
-function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }) {
+function FilmCard({ movie, rating, onScorePress, onOpen, pickerName, profile, allUsers }) {
   const status = scoreStatus(rating)
   const pickerColor = pickerName ? MEMBER_COLORS[pickerName] : undefined
 
@@ -269,14 +269,18 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
   const labelColor = status === 'done' ? 'var(--text-faint)' : 'var(--text-muted)'
 
   return (
-    <div style={{
-      padding: '12px',
-      borderRadius: '14px',
-      background: 'rgba(var(--fg-rgb), 0.025)',
-      border: '1px solid rgba(var(--fg-rgb), 0.07)',
-      borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(var(--fg-rgb), 0.07)',
-      width: '100%', boxSizing: 'border-box',
-    }}>
+    <div
+      onClick={() => onOpen && onOpen(movie)}
+      style={{
+        padding: '12px',
+        borderRadius: '14px',
+        background: 'rgba(var(--fg-rgb), 0.025)',
+        border: '1px solid rgba(var(--fg-rgb), 0.07)',
+        borderLeft: pickerColor ? `3px solid ${pickerColor}` : '1px solid rgba(var(--fg-rgb), 0.07)',
+        width: '100%', boxSizing: 'border-box',
+        cursor: onOpen ? 'pointer' : 'default',
+      }}
+    >
       {/* Row: poster + info + CTA */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         {/* Poster */}
@@ -329,7 +333,7 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
 
         {/* CTA */}
         <button
-          onClick={() => status !== 'done' && onScorePress(movie, rating)}
+          onClick={e => { e.stopPropagation(); status !== 'done' && onScorePress(movie, rating) }}
           style={{
             flexShrink: 0,
             fontFamily: status === 'done' ? "'Bebas Neue',sans-serif" : "'DM Sans',sans-serif",
@@ -395,7 +399,7 @@ function FilmCard({ movie, rating, onScorePress, pickerName, profile, allUsers }
 
 // ─── Films Tab ───────────────────────────────────────────────────────────────
 
-function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile, activeMonth, ownPick, onOpenPickModal }) {
+function FilmsTab({ movies, ratingsMap, loading, onScorePress, onOpen, users, profile, activeMonth }) {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -410,133 +414,25 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile, a
       : 'this month'
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {/* Explanatory banner */}
-        <div style={{
-          padding: '18px 20px',
-          borderRadius: '14px',
-          background: 'rgba(var(--fg-rgb), 0.025)',
-          border: '1px solid rgba(var(--fg-rgb), 0.07)',
-          boxSizing: 'border-box',
+      <div style={{
+        padding: '18px 20px',
+        borderRadius: '14px',
+        background: 'rgba(var(--fg-rgb), 0.025)',
+        border: '1px solid rgba(var(--fg-rgb), 0.07)',
+        boxSizing: 'border-box',
+      }}>
+        <p style={{
+          fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)',
+          fontSize: '14px', margin: '0 0 4px', fontWeight: 500,
         }}>
-          <p style={{
-            fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)',
-            fontSize: '14px', margin: '0 0 4px', fontWeight: 500,
-          }}>
-            No films yet for {monthLabel}
-          </p>
-          <p style={{
-            fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)',
-            fontSize: '13px', margin: 0, lineHeight: 1.5,
-          }}>
-            Films appear here once the month is activated by the admin. In the meantime, submit your pick below.
-          </p>
-        </div>
-
-        {/* Viewer's own pick inline, or CTA to pick */}
-        {ownPick ? (
-          <div>
-            <p style={{
-              fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
-              fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em',
-              margin: '0 0 10px',
-            }}>
-              Your pick for {monthLabel}
-            </p>
-            <div style={{
-              display: 'flex', gap: '14px',
-              padding: '14px',
-              borderRadius: '14px',
-              background: 'rgba(var(--fg-rgb), 0.025)',
-              border: '1px solid rgba(var(--fg-rgb), 0.07)',
-              boxSizing: 'border-box',
-            }}>
-              <div style={{
-                flexShrink: 0, width: '48px', height: '68px',
-                borderRadius: '7px', overflow: 'hidden', background: 'var(--surface-2)',
-              }}>
-                {ownPick.poster_url ? (
-                  <img
-                    src={`https://image.tmdb.org/t/p/w185${ownPick.poster_url}`}
-                    alt={ownPick.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={e => { e.target.style.display = 'none' }}
-                  />
-                ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '12px' }}>
-                      {initials(ownPick.title)}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{
-                  fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
-                  fontWeight: 600, fontSize: '15px',
-                  margin: '0 0 3px', lineHeight: 1.3,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {ownPick.title}
-                </p>
-                {(() => {
-                  const meta = ownPick.metadata ?? {}
-                  const parts = [meta.year, meta.director].filter(Boolean)
-                  return parts.length ? (
-                    <p style={{
-                      fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
-                      fontSize: '11px', margin: '0 0 4px',
-                    }}>
-                      {parts.join(' · ')}
-                    </p>
-                  ) : null
-                })()}
-                {onOpenPickModal && (
-                  <button
-                    onClick={onOpenPickModal}
-                    style={{
-                      marginTop: '4px',
-                      padding: '4px 10px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(var(--fg-rgb), 0.1)',
-                      background: 'transparent',
-                      color: 'var(--text-dim)',
-                      fontFamily: "'DM Sans',sans-serif",
-                      fontSize: '12px', cursor: 'pointer',
-                    }}
-                  >
-                    Change pick
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : onOpenPickModal ? (
-          <button
-            onClick={onOpenPickModal}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              width: '100%',
-              padding: '14px 16px',
-              borderRadius: '12px',
-              border: '1px solid rgba(var(--accent-rgb, 99,102,241),0.4)',
-              background: 'rgba(var(--accent-rgb, 99,102,241),0.08)',
-              color: 'var(--text-strong)',
-              fontFamily: "'DM Sans',sans-serif",
-              fontWeight: 600,
-              fontSize: '14px',
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'background 0.15s ease',
-              boxSizing: 'border-box',
-            }}
-          >
-            <span style={{ flex: 1 }}>Pick your movie for {monthLabel}</span>
-            <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
-          </button>
-        ) : null}
+          No films yet for {monthLabel}
+        </p>
+        <p style={{
+          fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)',
+          fontSize: '13px', margin: 0, lineHeight: 1.5,
+        }}>
+          Films appear here once the month is activated by the admin. In the meantime, submit your pick below.
+        </p>
       </div>
     )
   }
@@ -553,6 +449,7 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress, users, profile, a
             movie={m}
             rating={ratingsMap[m.id] ?? null}
             onScorePress={onScorePress}
+            onOpen={onOpen}
             pickerName={pickerName}
             profile={profile}
             allUsers={users}
@@ -1753,6 +1650,7 @@ export default function ThisMonth() {
             ratingsMap={ratingsMap}
             loading={loading}
             onScorePress={openModal}
+            onOpen={setSelectedMovie}
             users={users}
             profile={profile}
             activeMonth={activeMonth}
