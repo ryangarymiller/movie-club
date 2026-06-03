@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import NotificationBell from '../NotificationCenter'
 
 // ─── SVG Icon Component ───────────────────────────────────────────────────────
 
@@ -155,11 +156,22 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex">
+      {/* Mobile: fixed top-right bell (hidden on desktop, where it lives in the sidebar) */}
+      <div
+        className="md:hidden fixed z-50"
+        style={{ top: 'max(0.75rem, env(safe-area-inset-top))', right: '0.75rem' }}
+      >
+        <NotificationBell />
+      </div>
+
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-56 border-r border-gray-800 p-4 gap-1 shrink-0">
-        <div className="text-lg font-bold tracking-tight text-white px-3 py-4 mb-2 flex items-center gap-2">
-          <FilmsIcon active={true} />
-          Movie Club
+        <div className="px-3 py-4 mb-2 flex items-center justify-between gap-2">
+          <div className="text-lg font-bold tracking-tight text-white flex items-center gap-2 min-w-0">
+            <FilmsIcon active={true} />
+            <span className="truncate">Movie Club</span>
+          </div>
+          <NotificationBell />
         </div>
         {items.map(item => {
           const Icon = ICON_MAP[item.label]

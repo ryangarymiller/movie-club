@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { MemberOverlayProvider, useMemberOverlay } from './context/MemberOverlayContext'
+import { NotificationsProvider } from './context/NotificationsContext'
 import { ThemeProvider } from './context/ThemeContext'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/Login'
@@ -123,10 +124,12 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <MemberOverlayProvider>
-            <AppRoutes />
-            <MemberOverlayHost />
-          </MemberOverlayProvider>
+          <NotificationsProvider>
+            <MemberOverlayProvider>
+              <AppRoutes />
+              <MemberOverlayHost />
+            </MemberOverlayProvider>
+          </NotificationsProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
