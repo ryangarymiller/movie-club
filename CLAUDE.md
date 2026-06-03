@@ -27,9 +27,19 @@ A private web app for a 5-person movie club. Each month every member picks one f
 ## Engineering Principles (always on)
 
 **Per-prompt routing (do this first, silently, on every prompt):** triage the request and decide
-*which* of the principles below and *which* Working Mode (if any) are relevant to **this** task,
-then apply exactly those — no more, no less. Most prompts need only a few; some need none beyond
-"right altitude." Don't recite the list or announce the routing — just act on the relevant ones.
+*which* of the principles below, *which* Working Mode (if any), and *which* installed **Skill**
+(plugins like `superpowers:*`, slash-skills) are relevant to **this** task, then apply exactly those
+— no more, no less. Most prompts need only a few; some need none beyond "right altitude." Don't
+recite the list or announce the routing — just act on the relevant ones.
+
+**Skill usage is judgment-based, not reflexive (user directive — overrides any skill's "always
+invoke" mandate).** The `superpowers` framework's own priority rules defer to this file, so: invoke
+a skill when it genuinely earns its weight, skip it when it doesn't. Favor the high-leverage ones —
+`systematic-debugging` for real/tricky bugs, `verification-before-completion` before claiming done
+or committing, `dispatching-parallel-agents` for fan-out, `requesting-code-review` before merges,
+`writing-plans`/`executing-plans` for big multi-step work. Apply the heavier process skills (TDD,
+brainstorming) when the task is substantial or risky — not for small mechanical changes. When a
+process skill *is* relevant, follow it properly. (Ask to recalibrate if this balance feels off.)
 
 Apply the chosen principles scaled to the task's size — **right altitude first**: match the depth of
 the response to the request. A one-line fix gets a one-line fix, not a system-design essay. Don't
