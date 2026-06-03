@@ -2,7 +2,76 @@
 
 > Living document. Update status as work completes.
 > Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
-> Last updated: 2026-06-03 (session 8)
+> Last updated: 2026-06-03 (session 9)
+
+---
+
+## Session 9 — Browser-test rounds 2–3 + consolidation
+
+### Navigation / Architecture
+- [x] **This Month consolidated** — sub-tabs (Films / Deadlines / Picks / Reveal) removed. Single scrolling page with three sections: (1) this month's films with inline deadline countdowns + inline picker reveal once `picker_revealed`; (2) "Your Pick" (pick CTA, own pick inline, change-pick, others' picks after reveal, guess/predict nudge); (3) "Reveal" section (picker identities, justifications, guess + prediction results, monthly awards, recap) shown only once a month is fully revealed. Deadlines are inline on film cards — no separate Deadlines tab.
+- [x] **Member overlay (MemberOverlayContext)** — clicking any member name/avatar anywhere (Home, Stats, Awards, Films legend, film overlay) opens a popup overlay; closing returns you exactly where you were. Bottom-bar Profile tab remains your own profile. `/profile/:id` route kept as a deep-link fallback.
+- [x] **New files:** `src/components/AwardsBadges.jsx`, `src/context/MemberOverlayContext.jsx`, `src/lib/authLog.js`.
+
+### Auth / Security / DB
+- [x] **Intermittent sign-out fix** — `fetchProfile` now distinguishes transient network/DB errors from a genuine missing user row; retries once and never blanks an existing profile on error. App shows a Retry screen instead of bouncing to `/not-approved`.
+- [x] **Auth diagnostics** — new table `public.auth_events` (admins read; open insert so signed-out events still log). `src/lib/authLog.js` provides fire-and-forget `logAuthEvent`; `deliberateSignOut()` centralises the user-initiated tag. Logs: `SIGNED_OUT` (with `user_initiated` + visibility/online flags) and profile-fetch retries/errors.
+- [x] **`months` admin RLS** — added INSERT + UPDATE policies for admins. The client `status='active'` update was previously silently blocked, so "Activate / Trigger now" did not persist. Now it does.
+- [x] **`reactions` unique constraint** — replaced the partial unique index with a plain unique constraint (`target_type, target_id, user_id, emoji`) so the upsert `ON CONFLICT` works. Emoji react no longer errors.
+- [x] **`materialize_and_split_month` service context** — allows a null `auth.uid()` (service/privileged context) to drive materialization (previously hard-failed for null caller).
+
+### Scoring
+- [x] **ScoreModal backfill path** — skips the pre-watch excitement step for revealed/historical films and goes straight to final-score entry; a backfilled score never lands in `pre_watch_excitement`. Large live-echo of the typed value for mobile legibility. "Submit Score" CTA now shows whenever no final score exists (an excitement-only row no longer hides it).
+
+### Films
+- [x] **Group average from live ratings** — All Films + By Season now compute the group average from actual `ratings` rows when `scores_revealed = true` and `historical_avg_score` is null (fixes missing May 2026 scores; History already did this).
+- [x] **Floating "hide scores" toggle** — hides score, divisive-sort stddev, and the Vault gold star across the films grid. Film title rendered under each poster.
+- [x] **Upcoming-month films excluded** — films for months not yet active are excluded from the Films page (prevents pre-activation pick leaks).
+- [x] **Divisive sort** — shows stddev value alongside the sort label.
+- [x] **"Where to watch" entries are links.**
+- [x] **Duplicate "Discussion" label removed** from film overlay.
+
+### Discussion
+- [x] **Idempotent votes + reactions** — both use upsert and swallow duplicate-key errors; re-voting or re-reacting no longer surfaces a duplicate-key error.
+
+### Stats
+- [x] **Member names → member overlay** across scoring granularity, scoring variation, picker power rankings, score percentile generosity, most active scorer, scoring streaks.
+- [x] **Film titles → film overlay** in per-film spread, season/year rankings, excitement-vs-final.
+- [x] **Season/year ranking lists collapsible.**
+- [x] **Genres link** to the genre-filtered Films page. Genre pie: single-select + tooltip + legend links out.
+- [x] **Club by-film trend chart** — click maps to the correct film (keyed by `id`, not index).
+- [x] **Histogram** — selected bar glows.
+- [x] **Club-vs-TMDB scatter** — auto-scales to the data range.
+- [x] **Given/Received/Club-avg chart** — y-axis labels + data-driven domain.
+- [x] **Taste-correlation** uses the accent color.
+- [x] **Std-dev/mean overlay lines** are visually distinct with numeric values.
+- [x] **Scoring-variation x-axis** labels rounded.
+
+### Awards
+- [x] **`historical_avg_score` authoritative in all award computations** — e.g. Eternal Sunshine reads 8.60, not 9.5.
+- [x] **Award poster fills its card.**
+- [x] **Awards deep-link** — `scope`/`key`/`ref` query params scroll to and highlight the matching award.
+- [x] **"In the Vault"** links to the Vault tab; **"Club average"** links to the Stats Club tab.
+- [x] **`AwardsBadges` component** — awards render as a collapsible badge grid on Profile pages and the film overlay (replaces previous list display).
+
+### Profile / Home / Theme
+- [x] **Profile: awards collapsible grid** — reserves space on mount (no layout jump).
+- [x] **Profile: "Films [member] picked" section** — shows picks by month with score.
+- [x] **Profile: user-color picker collapses** after a color is chosen.
+- [x] **Profile: recent-scores rows** open the film overlay.
+- [x] **Profile (member popup): clicking an award** closes the popup.
+- [x] **Profile: "View full stats" link** added.
+- [x] **Home: "Club Members" browse strip** added.
+- [x] **Home: Recent Activity** collapsible.
+- [x] **Home: "all caught up" box** links to that month's scores (Films › History).
+- [x] **`colors.js` additions** — `CHART_CATEGORICAL`, `CHART_NEUTRAL`, `chartColorAt` for chart series coloring.
+
+### DB / Migrations
+- [x] New table: `public.auth_events` (auth diagnostics).
+- [x] `months`: admin INSERT + UPDATE RLS policies.
+- [x] `reactions`: partial unique index → plain unique constraint.
+- [x] `materialize_and_split_month`: service-context (null `auth.uid()`) allowed.
+- [x] All changes tracked as new migrations under `supabase/migrations/`.
 
 ---
 
@@ -68,6 +137,8 @@
 ### DB state after session 8
 Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `ratings`, `upcoming_picks`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `reviews` (multi/film), `comments` (+`review_id`, `parent_comment_id`), `reactions` (polymorphic `target_type`/`target_id`, NOT NULL), `votes` (new). RPC: `materialize_and_split_month(uuid)`. All tracked in `supabase/migrations/`.
 
+*(Session 9 additions: `auth_events` table; `months` admin INSERT/UPDATE RLS; `reactions` plain unique constraint; `materialize_and_split_month` service-context allowance — see Session 9 DB/Migrations above.)*
+
 ### Security hardening & adversarial review (post-build)
 - [x] **Op-role enforced at the DB layer** — `trg_enforce_op_role` trigger blocks any non-op from changing `role`/`is_op` (was UI-only; a regular admin could self-promote via the API).
 - [x] **`materialize_and_split_month` locked down** — admin anytime, else a member only for an active month where they have a pick (was callable by any authenticated user on any month).
@@ -126,9 +197,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 | NotApproved | ✅ | |
 | AppLayout | ✅ | |
 | Home | ✅ | Film click opens FilmDetailOverlay |
-| ThisMonth — Films tab | ✅ | |
-| ThisMonth — Deadlines tab | ✅ | Past-deadline shows "Scores revealed"/"Awaiting reveal" |
-| ThisMonth — Picks tab (renamed from Upcoming) | ✅ | "Pick your next movie" CTA, no search bar |
+| ThisMonth — consolidated single page | ✅ | Films + inline deadlines + Your Pick + Reveal sections; sub-tabs removed |
 | ThisMonth — No picks yet state | ✅ | "No picks yet for [Month]" |
 | Films — Poster wall | ✅ | Sorted by id ASC; vault = gold star only |
 | Films — FilmDetailOverlay | ✅ | Streaming (TMDB→Edge fallback), review gate, own score, prediction lock, awards section |
@@ -147,7 +216,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 | Awards on profile pages | ✅ | Includes awards for films the user picked |
 | Profile | ✅ | Light/dark toggle added; user_color on avatar; awards section |
 | Profile — Admin mode toggle | ✅ | Was already built |
-| Members directory / clickable names | ✅ | Per-member route /profile/:userId live |
+| Members directory / clickable names | ✅ | MemberOverlayContext: any member click opens popup; /profile/:id deep-link kept |
 | Admin — Dashboard | ✅ | Score count fix + N/A cells |
 | Admin — Films | ✅ | Full TMDB metadata editing + bulk month reveal |
 | Admin — Members | ✅ | |
@@ -223,7 +292,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] Veto voting (3+/5) — `VetoControl.jsx`, film overlay (current pre-reveal films)
 - [x] This Month — Reveal sub-tab — `MonthReveal.jsx`: picker + justification + guess results + prediction results (shows latest revealed month)
 - [~] Reveal system: per-film + per-month admin triggers already exist; auto-scheduling of reveals is Phase 4
-- [ ] **Verify in-browser** — components are agent-built + build/test-green but not yet click-tested live
+- [x] **Verify in-browser** — browser-tested in sessions 8–9; issues found and fixed (see Session 9 above)
 
 ### Phase 2 polish (session 7 cont.)
 - [x] New awards implemented: Most Consistent Picker + Easy Crowd (Season); Most Consistent + The Wildcard + Master of Disguise + Most Evolved (Annual); Master of Disguise (All-Time)

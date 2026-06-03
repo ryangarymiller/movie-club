@@ -12,23 +12,32 @@ A private web app for a 5-person movie club. Each month every member picks one f
 - **Monthly Picks** — Submit film picks with TMDB integration for automatic metadata, posters, and streaming providers
 - **Two-tier Reveal System** — Per-film score reveal (after scoring deadline) and end-of-month picker identity reveal; RLS enforces visibility rules throughout
 - **Pick Lifecycle** — Picks materialize into films for the active month; scoring deadlines auto-split evenly across the month's films
-- **Dual Scoring** — Pre-watch excitement score (locked once final score is submitted) and final score (0.01–10.00, two decimal places)
+- **Dual Scoring** — Pre-watch excitement score (locked once final score is submitted) and final score (0.01–10.00, two decimal places); backfill mode skips excitement and goes straight to final score entry
 - **Guess-the-Picker & Score Predictions** — Members guess who picked each film; the picker predicts every other member's score for their own pick
 
 ### Discussion
 - **Reddit-style Threaded Reviews** — Members post multiple reviews per film; comments nest under reviews and each other
-- **Votes** — Up/down votes on reviews and comments (one per user per target)
-- **Emoji Reactions** — Reactions on reviews and comments (polymorphic target model)
+- **Votes** — Up/down votes on reviews and comments (one per user per target); idempotent upsert, re-voting never errors
+- **Emoji Reactions** — Reactions on reviews and comments (polymorphic target model); idempotent upsert, re-reacting never errors
 - **15-minute Edit Window** — Authors can edit their own posts within 15 minutes; admins can delete any post
 - **@Mentions** — Inline mentions preserved throughout
 
 ### Stats and Charts
 - Score distribution histogram, scores over time (trend line, per-member overlay), member comparison bar chart, excitement vs. final scatter, head-to-head score delta matrix
-- Per-user scoring granularity and standard deviation, avg score per release decade, club-vs-TMDB vote average comparison
-- Clicking a film anywhere in Stats opens the film overlay; clicking a member name navigates to their profile
+- Per-user scoring granularity and standard deviation, avg score per release decade, club-vs-TMDB vote average comparison (auto-scaled scatter), genre pie chart with filter link-outs
+- Clicking a film anywhere in Stats opens the film overlay; clicking a member name opens the member overlay (profile popup); season/year ranking lists are collapsible
+- Improved chart interactions: histogram selected bar glows, club-by-film trend keyed by id, taste-correlation uses accent color, std-dev/mean overlays show numeric values
 
 ### Awards
-Monthly, seasonal, annual, and all-time awards computed automatically from scoring data. Awards appear on film pages and member profile pages. Categories include: Pick/Flop of the Month, The Contrarian, The Oracle, Hype Machine, Most Divisive, Most Unanimous, Film/Picker of the Season, Harshest Critic, Most Generous, Easy Crowd, Master of Disguise, Most Evolved, and more. The Auteur Award (ranked-choice member vote) is planned for Phase 6.
+Monthly, seasonal, annual, and all-time awards computed automatically from scoring data (`historical_avg_score` is authoritative in all computations). Awards appear as a collapsible badge grid (`AwardsBadges` component) on film overlay and member profiles. Deep-link to any award via `scope`/`key`/`ref` query params. Categories include: Pick/Flop of the Month, The Contrarian, The Oracle, Hype Machine, Most Divisive, Most Unanimous, Film/Picker of the Season, Harshest Critic, Most Generous, Easy Crowd, Master of Disguise, Most Evolved, and more. The Auteur Award (ranked-choice member vote) is planned for Phase 6.
+
+### Member Profiles
+- **Member Overlay** — Clicking any member name or avatar anywhere in the app (Home, Stats, Awards, Films legend, film overlay) opens a profile popup via `MemberOverlayContext`; closing it returns you exactly where you were. The bottom-bar Profile tab remains your own profile. `/profile/:id` is kept as a deep-link fallback.
+- Profile shows: awards badge grid, films the member picked (by month with score), recent scores (click to open film overlay), user color, and a "View full stats" link
+
+### Auth and Reliability
+- **Intermittent sign-out fix** — `fetchProfile` now distinguishes a transient network/DB error from a genuine missing user row: it retries once and never blanks an existing session on error; the app shows a Retry screen instead of redirecting to `/not-approved`
+- **Auth diagnostics** — `auth_events` table (admin-read; open insert so sign-out events log even while signed out) + `src/lib/authLog.js` (`logAuthEvent` fire-and-forget; `deliberateSignOut()` tags user-initiated sign-outs)
 
 ### Personalization
 - Light/dark mode (bound to `.dark` class, not `prefers-color-scheme`)
@@ -40,7 +49,7 @@ Monthly, seasonal, annual, and all-time awards computed automatically from scori
 - Trigger score reveal and picker reveal per film or per entire month
 - Manual score entry (can overwrite existing); missing-score matrix with member-presence awareness
 - Film metadata editing, streaming provider refresh, member management (activate/deactivate)
-- Materialize picks into films and recompute scoring deadlines for a month
+- Materialize picks into films and recompute scoring deadlines for a month; month `status='active'` update now correctly persists (RLS INSERT/UPDATE policies added)
 
 ---
 
@@ -96,7 +105,7 @@ Copy `.env.example` to `.env` and fill in values, or contact a maintainer. The o
 
 The full database schema lives in `supabase/migrations/`. Migrations are tracked in order and applied via the Supabase CLI (`supabase db push`) or the Supabase dashboard.
 
-Key tables: `users` (+ `is_op`), `seasons`, `months` (+ `active_date`), `movies`, `ratings`, `upcoming_picks`, `reviews`, `comments` (+ `review_id`, `parent_comment_id`), `reactions` (polymorphic), `votes`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `film_tags`, `auteur_votes`, `season_rankings`, `notifications`.
+Key tables: `users` (+ `is_op`), `seasons`, `months` (+ `active_date`), `movies`, `ratings`, `upcoming_picks`, `reviews`, `comments` (+ `review_id`, `parent_comment_id`), `reactions` (polymorphic, unique constraint on target_type/target_id/user_id/emoji), `votes`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `film_tags`, `auteur_votes`, `season_rankings`, `notifications`, `auth_events` (admin-read, open insert for sign-out logging).
 
 Key RPC: `public.materialize_and_split_month(p_month_id uuid)` — materializes picks into films and splits scoring deadlines evenly.
 
@@ -110,12 +119,12 @@ Key RPC: `public.materialize_and_split_month(p_month_id uuid)` — materializes 
 
 | Tab | Description |
 |-----|-------------|
-| Home | Your Turn cards, recent activity, quick stats |
-| This Month | Films, Deadlines, Picks, Reveal (post-reveal only) |
-| Films | All Films, The Vault, By Season, History |
+| Home | Your Turn cards, collapsible recent activity, Club Members browse strip, quick stats |
+| This Month | Single consolidated scrolling view: film cards with inline deadline countdowns, Your Pick section (pick CTA / change-pick / others' picks after reveal), Reveal section (picker identities, justifications, guess + prediction results, monthly awards — shown once fully revealed) |
+| Films | All Films (floating hide-scores toggle; upcoming-month films excluded), The Vault, By Season, History |
 | Stats | Overview, Me, Members, Club, Head to Head |
 | Awards | Monthly, Season, Annual, All-Time |
-| Profile | Theme, user color, settings, sign out |
+| Profile | Theme, user color picker (collapses after choosing), films you picked, awards badge grid, settings, sign out |
 | Admin | Dashboard, film editing, member management, score matrix *(admin only)* |
 
 ---
@@ -132,7 +141,7 @@ Key RPC: `public.materialize_and_split_month(p_month_id uuid)` — materializes 
 | 6 — Awards and Recaps | Auteur Award (ranked-choice vote), AI recap, seasonal readjustment window |
 | 7 — Polish | Guest mode, export, milestones, veto voting, watchlist, draft queue |
 
-Phases 1–3 are complete. Phase 4 deadline enforcement is display-only until launch; admin "trigger now" is available in the meantime.
+Phases 1–3 are complete. Phase 4 deadline enforcement is display-only until launch; admin "trigger now" is available in the meantime. Sessions 1–9 have also delivered portions of Phases 4–6 work (stats charts, awards computations, auth hardening, member overlays) ahead of their formal phase.
 
 ---
 

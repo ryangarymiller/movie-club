@@ -150,6 +150,13 @@ Do not attempt to build everything at once. Phases in order:
 
 ---
 
+## Architecture: Auth Stability
+
+- **Random sign-out fix (Session 9):** `fetchProfile` now distinguishes a transient network/DB error from a genuine "no user row". It retries once before drawing any conclusion and never blanks an existing in-memory profile on error. If the retry also fails, the app shows a Retry screen instead of bouncing the user to `/not-approved`.
+- **Auth diagnostics:** `src/lib/authLog.js` exports `logAuthEvent()` (fire-and-forget insert into `auth_events`) and `deliberateSignOut()` (tags sign-out as user-initiated before calling Supabase signOut). Logs include `SIGNED_OUT` (with `user_initiated` flag, visibility, and online status) and profile-fetch retry/error events. The `auth_events` table has open INSERT so signed-out events can still be logged without an authenticated session; reads are admin-only.
+
+---
+
 ## Architecture: Anonymity & Reveal System
 
 This is the most architecturally significant system — it affects RLS policies, queries, and UI throughout the app.
@@ -182,6 +189,7 @@ The old "one primary review per user + flat comments" model is **superseded**. T
 - Both reviews and comments support **emoji reactions** (polymorphic `reactions` table: `target_type 'review'|'comment'` + `target_id`) and **up/down votes** (`votes` table: same polymorphic shape, `value +1|-1`, one per user per target).
 - **Edit window:** 15 minutes. Members may delete their own content; admins may delete any content.
 - **@mentions** are preserved.
+- **Idempotency:** votes and reactions use upsert + swallow-duplicate-key — re-voting or re-reacting never surfaces a duplicate-key error.
 
 ---
 
@@ -190,6 +198,9 @@ The old "one primary review per user + flat comments" model is **superseded**. T
 - Range: 0.01–10.00 (two decimal places, always displayed as X.XX)
 - Pre-watch excitement score submitted **before** final score; permanently locked once final score is submitted
 - **If a user has already submitted their final score, the excitement score input must be locked/hidden**
+- **ScoreModal skips the excitement step entirely for revealed/historical (backfill) films** — it goes straight to final-score entry so a backfilled score never lands in `pre_watch_excitement`.
+- The score input shows a large live-echo of the typed value for mobile legibility.
+- The "Submit Score" CTA appears whenever there is no final score yet — an excitement-only row (no final score) does not hide it.
 - Final score confirmation dialogue triggers above 8.99 or below 2.01 (admin-adjustable thresholds)
 - Scores locked on submission; changes outside the seasonal readjustment window require admin approval via `score_change_requests` table
 - During seasonal readjustment window: score changes allowed freely
@@ -207,7 +218,9 @@ When a month is activated, a member's `upcoming_picks` row materializes into a `
 
 **Deadlines are display-only for now (dev mode, until launch/July).** Enforcement, grace periods, and auto month-activation on the 1st are Phase 4 work.
 
-The Picks tab shows the signed-in user's own pick inline (clickable → justification + change-pick flow). Once materialized, picks populate the Films and Deadlines sub-tabs.
+The "Activate / Trigger now" action now correctly persists the `status='active'` update (admin INSERT/UPDATE RLS policies on `months` were added in Session 9 to fix a silent block). The RPC also accepts a service/privileged context (`auth.uid()` null) so server-side or migration-driven materialization works without a signed-in user.
+
+The signed-in user's own pick shows inline on the This Month page (clickable → justification + change-pick flow). Upcoming-month films are excluded from the Films page (no pre-activation pick leak). Once materialized, picks become film cards on the This Month page with inline deadlines.
 
 ---
 
@@ -243,7 +256,8 @@ reviews        — id, movie_id, user_id, body
 comments       — id, movie_id, review_id, user_id, parent_comment_id (nullable), body
                  (comments nest under a review via review_id, and under each other via parent_comment_id)
 reactions      — id, target_type ('review'|'comment'), target_id, user_id, emoji
-                 (polymorphic — applies to both reviews and comments)
+                 (polymorphic — applies to both reviews and comments;
+                  unique constraint on (target_type,target_id,user_id,emoji) enables upsert ON CONFLICT)
 votes          — id, target_type ('review'|'comment'), target_id, user_id, value (+1|-1)
                  (one vote per user per target; Reddit-style up/down)
 picker_guesses — id, movie_id, guessing_user_id, guessed_user_id
@@ -260,10 +274,15 @@ score_change_requests — id, rating_id, user_id, requested_score, status (pendi
 month_absences — id, month_id, user_id (excludes member from picker stats that month)
 notifications  — id, user_id, type, payload, channel (email|push)
 awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltime), period_ref
+auth_events    — id, user_id (nullable), event, user_initiated (bool), detail (jsonb), user_agent, created_at
+                 (admins read; open insert so signed-out events still log;
+                  used by src/lib/authLog.js — logAuthEvent() fire-and-forget,
+                  deliberateSignOut() tags user-initiated sign-outs;
+                  logs SIGNED_OUT with user_initiated + visibility/online, and profile-fetch retries/errors)
 
 RPC: public.materialize_and_split_month(p_month_id uuid) SECURITY DEFINER
      — materializes upcoming_picks into movies for the given month and auto-splits scoring
-       deadlines evenly by film count
+       deadlines evenly by film count; accepts service/privileged context (auth.uid() null)
 ```
 
 ---
@@ -287,44 +306,58 @@ RPC: public.materialize_and_split_month(p_month_id uuid) SECURITY DEFINER
 **Desktop:** Left sidebar  
 **Tabs:** Home · This Month · Films · Stats · Awards · Profile · Admin *(admin only)*
 
-### This Month sub-tabs
-Films · Deadlines · Picks · Reveal *(active only after end-of-month reveal)*
+### This Month — single consolidated view (no sub-tabs)
 
-- **Films tab:** Shows current month's films with scoring status; populated once picks are materialized
-- **Deadlines tab:** Countdown timers per film (display-only until Phase 4 enforcement)
-- **Picks tab:** Shows all active members' upcoming picks for the *next* month (hidden until reveal — could be 4 or 5 depending on who sits out). The signed-in user's own pick shows inline (clickable → justification + change-pick flow). A "Pick your next movie" CTA triggers the TMDB search → disambiguation → justification → confirm flow. No search/filter bar.
-- If current month has no films yet: show "No picks yet for [Month]" state
-- **June 2026 exception:** Picks are being entered manually by the admin — the Picks tab may show an incomplete list until all picks are in.
+This Month is a **single scrolling page** (sub-tabs removed as of Session 9). It contains three sections in order:
+
+1. **Films section:** This month's film cards with inline deadline countdowns. Once `picker_revealed` is true, the picker's identity appears inline on each card. Populated once picks are materialized; shows "No films yet for [Month]" otherwise.
+2. **Your Pick section:** Pick CTA ("Pick your next movie" → TMDB search → disambiguation → justification → confirm), the signed-in user's own pick inline (clickable → justification + change-pick flow), and — after the end-of-month reveal — other members' picks are shown and guess/predict nudge appears.
+3. **Reveal section:** Shown only after `end_of_month_reveal_date` passes / `picker_revealed` is true for all films. Displays picker identities, pick justifications, guess + prediction results, monthly awards, and the month's recap. Hidden until the month is fully revealed.
+
+**June 2026 exception:** Picks are being entered manually by the admin — the picks section may show an incomplete list until all picks are in.
 
 ### Films sub-tabs
 All Films · The Vault · By Season · History
 
-- **All Films:** Sort options — Most/Least Recent (months desc, watch-order reversed within month), Highest/Lowest Rated, Most/Least Divisive, By Member. Genre tags deep-link to All Films filtered by that genre (genre filter active). Vault badge links to the Vault tab. "Pickers" legend renamed "Club Members" with profile links. Member names/avatars in the film overlay link to profiles.
-- **By Season tab:** Sortable (newest/oldest season order; sort applies within every season).
+- **All Films:** Sort options — Most/Least Recent (months desc, watch-order reversed within month), Highest/Lowest Rated, Most/Least Divisive, By Member. Group average computed from actual ratings when `scores_revealed` and `historical_avg_score` is null (fixes missing May 2026 scores). Floating "hide scores" toggle hides score, divisive-sort stddev, and the vault gold star. Film title rendered under each poster. Genre tags deep-link to All Films filtered by that genre (genre filter active). Vault badge links to the Vault tab. Divisive sort shows stddev. "Where to watch" entries are links. "Pickers" legend renamed "Club Members" with profile links. Member names/avatars in the film overlay link to profiles. Upcoming-month films excluded (no pre-activation pick leak).
+- **By Season tab:** Sortable (newest/oldest season order; sort applies within every season). Same group-average fix applied.
 - **History tab:** Browse revealed months one at a time (month pills → 2-up film grid with picker labels).
 - Streaming providers display correctly (flat-shape read fix applied).
+- Duplicate "Discussion" label removed from the film overlay.
 
 **Film ordering within each month:** follows the watch-order established in the group chat (earliest deadline first). Films are ordered by their DB insertion order (id ASC within a month).
 
 ### Stats sub-tabs
 Overview · Me · Members · Club · Head to Head
 
-- Clicking a film anywhere in Stats opens the film overlay; clicking a member name navigates to their profile
+- Clicking a film anywhere in Stats opens the film overlay; clicking a member name opens the **member overlay** (MemberOverlayContext)
 - Member names shown as "First L." in Stats (guest-style abbreviation)
-- Member names are clickable throughout the app (scores, stats, reviews, etc.)
+- Member names are clickable throughout the app (scores, stats, reviews, etc.) and open the member overlay
 - Clicking a stat value expands a relevant chart (per-member bars, mean/stddev for divisive/unanimous)
 - **Additional stats implemented:** avg score per release decade, per-user scoring granularity, per-user std dev, per-movie breakdown, club-vs-TMDB comparison (uses `tmdb_vote_average`), expandable per-member cards, dynamic histogram bins, Club "score over time" trend line (club avg + per-member lines)
+- **Session 9 stat polish:** Member names in scoring granularity, scoring variation, picker power rankings, score percentile generosity, most active scorer, and scoring streaks all link to the member overlay. Film titles in per-film spread, season/year rankings, and excitement-vs-final open the film overlay. Season/year ranking lists are collapsible. Genres link to the genre-filtered Films page. Genre pie single-selects + updates tooltip + legend links out. Club by-film trend chart click maps to the correct film (keyed by id). Histogram selected bar glows. Club-vs-TMDB scatter auto-scales to the data. Given/Received/Club-avg has y-axis labels + a data-driven domain. Taste-correlation uses the accent color. Std-dev/mean overlay lines are visually distinct with numeric values. Scoring-variation x-axis labels rounded.
 
 ### Awards sub-tabs
 Monthly · Season · Annual · All-Time
 
 - Awards are also shown on individual film pages (awards that film won)
 - Awards are also shown on user profile pages (awards that user has won, including awards for films they picked)
-- Award film/member click-throughs verified: films open the overlay, members open `/profile/:id`
+- Award film/member click-throughs verified: films open the overlay, members open the member overlay
+- Awards render as a collapsible badge grid (`AwardsBadges` component) on Profile pages and in the film overlay
+- Awards deep-link via scope/key/ref query params — the target award scrolls into view and highlights
+- `historical_avg_score` is authoritative in all award computations (e.g. Eternal Sunshine reads 8.60, not 9.5)
+- "In the Vault" links to the Vault tab; "Club average" in award copy links to the Stats Club tab
+- Award poster fills its card
+
+### Member Overlay (global)
+
+Member profiles open as an **overlay/popup** (`MemberOverlayContext`) anywhere you click a member name or avatar — Home, Stats, Awards, Films legend, film overlay. Closing the overlay returns the user exactly where they were. The bottom-bar **Profile** tab is always the signed-in user's own profile. The `/profile/:id` route is kept as a deep-link fallback (e.g. from external links or direct navigation).
+
+Member overlay contains: profile card, awards badge grid (collapsible), "Films [member] picked" section (by month, with score), recent scores (each opens the film overlay), and a "View full stats" link.
 
 ### Smart Linking (global)
 
-Films open the film overlay and member names/avatars navigate to `/profile/:id` throughout the app — Home, Stats, Awards, Films, the film overlay. Home "all caught up" box links to Stats Me tab; Home stats link to the relevant film or Films page.
+Films open the film overlay and member names/avatars open the **member overlay** throughout the app — Home, Stats, Awards, Films, the film overlay. (Direct `/profile/:id` navigation is preserved as a deep-link fallback.) Home "all caught up" box links to that month's scores (Films History); Home stats link to the relevant film or Films page. Home includes a "Club Members" browse strip and a collapsible Recent Activity section.
 
 ### Modal Safety
 
@@ -338,7 +371,7 @@ Global CSS classes `.mc-modal-backdrop` / `.mc-modal-panel` ensure modals never 
 
 Light/dark mode is bound to the `.dark` CSS class (not `prefers-color-scheme`) — toggled by adding/removing `.dark` on `<html>`. Toggle accessible from the Profile page.
 
-**User colors:** Centralized in `src/lib/colors.js` — `MEMBER_COLORS` map, `USER_COLOR_PALETTE` of 20 hue-separated options, and `memberColor()` helper. Colors are hue-separated so no two members' colors are confusable (e.g. Ryan Miller = purple `#a855f7`, distinct from Chris's blue). One color per member enforced; Profile color picker strikes out colors already taken by other members.
+**User colors:** Centralized in `src/lib/colors.js` — `MEMBER_COLORS` map, `USER_COLOR_PALETTE` of 20 hue-separated options, `memberColor()` helper, plus `CHART_CATEGORICAL`, `CHART_NEUTRAL`, and `chartColorAt()` for chart series. Colors are hue-separated so no two members' colors are confusable (e.g. Ryan Miller = purple `#a855f7`, distinct from Chris's blue). One color per member enforced; Profile color picker strikes out colors already taken by other members. The color picker collapses after a color is chosen.
 
 Displayed as a colored ring around the member's avatar and as the color of the initials text when no avatar is set.
 
@@ -388,7 +421,7 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
   - Cells marked N/A (crossed out) when a member wasn't in the club for that film's month
   - Zack is backfillable for pre-join months via the matrix
 - Trigger by month: bulk-reveal scores or pickers for all films in a month
-- **Activate / Trigger now:** runs `materialize_and_split_month` for a month, materializing picks into films and splitting deadlines
+- **Activate / Trigger now:** runs `materialize_and_split_month` for a month, materializing picks into films and splitting deadlines. The `status='active'` update now persists correctly — admin INSERT/UPDATE RLS policies were added to `months` in Session 9 to fix a silent block that previously prevented persistence.
 - **Op-only (Ryan Miller):** Admin Members tab shows Op / Admin / Member tiers; op can promote members to admin or demote admins to member. No other admin can change roles. **DB-enforced:** the `trg_enforce_op_role` trigger rejects any `role`/`is_op` change by a non-op, so it can't be bypassed via the API (the `materialize_and_split_month` RPC is likewise authorization-gated).
 
 ---
@@ -424,3 +457,12 @@ Opens automatically at the start of each new season for the previous season (def
 The Vault: films averaging ≥ 8.5 (configurable). Auto-removes if average drops below threshold after score updates.
 
 **Awards display:** Shown on film pages (awards that film won) and on profile pages (all awards a user has won, including awards for films they picked).
+
+---
+
+## New Files (Session 9)
+
+- `src/components/AwardsBadges.jsx` — collapsible badge-grid component for awards; used on Profile and in the film overlay
+- `src/context/MemberOverlayContext.jsx` — global context that opens the member profile overlay from anywhere in the app
+- `src/lib/authLog.js` — `logAuthEvent()` and `deliberateSignOut()` for auth diagnostics
+- `supabase/migrations/` — new migration files for: `auth_events` table, `months` admin RLS policies, `reactions` unique constraint, `materialize_and_split_month` service-context support
