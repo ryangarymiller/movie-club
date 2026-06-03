@@ -24,6 +24,35 @@ A private web app for a 5-person movie club. Each month every member picks one f
 
 ---
 
+## Engineering Principles (always on)
+
+Apply these to every task, scaled to its size — **right altitude first**: match the depth of the
+response to the request. A one-line fix gets a one-line fix, not a system-design essay. Don't
+over-produce; don't under-investigate.
+
+- **Understand before you change.** In unfamiliar code, trace the architecture and data flow first. Read the surrounding code and match its idioms, naming, and patterns.
+- **Root cause, not symptom.** For bugs: reproduce/locate the real cause, reason step by step, consider edge cases, then propose a robust fix. State *what's wrong, why it fails, and what edge cases exist* — not just the patch.
+- **Preserve behavior in refactors.** When improving structure/duplication/perf/maintainability, functionality stays identical — only quality improves.
+- **Design for scale, build the minimal version.** Think through architecture and data flow, then implement the smallest correct, scalable slice. No speculative gold-plating.
+- **Performance awareness.** Watch for bottlenecks, inefficient logic, and unnecessary re-renders; optimize when it actually matters, not preemptively.
+- **Production-ready UI.** Components are reusable, accessible (a11y), responsive, and handle loading / empty / error / edge states. Thoughtful prop design.
+- **Verify before claiming done.** Build + lint + tests green before saying it works; report failures honestly with the output.
+- **Parallelize big work.** For large/complex tasks, split into focused passes (and parallel agents) — see Working Modes.
+
+## Working Modes (opt-in — invoke by name when you want that output shape)
+
+These are heavier templates; use them when the task calls for it, not on every prompt.
+
+- **From-scratch build** — architecture · file structure · DB schema · API endpoints · UI architecture · complete code. (Startup-MVP altitude: minimal but scalable.)
+- **Refactor pass** — architecture summary · problem areas (structure / duplication / perf / maintainability) · refactoring strategy · improved code, behavior unchanged.
+- **Debug investigation** — code function · what's wrong · why it fails · edge cases · fixed, production-ready code.
+- **System design** — architecture · components · data flow · API design · DB schema · caching strategy · implementation.
+- **Perf pass** — bottlenecks · inefficient logic · unnecessary rendering → strategies → improved code.
+- **Multi-agent panel** — Architect → Engineer → Reviewer → Optimizer passes (use real parallel agents); returns architecture · implementation · review feedback · optimized final.
+- **UI component** — component architecture · props design · implementation · usage examples, with loading/edge/responsive/a11y states.
+
+---
+
 ## Tech Stack
 
 | Layer | Choice |
