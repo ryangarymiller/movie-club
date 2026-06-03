@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { FilmDetailOverlay } from './Films.jsx'
 
@@ -71,89 +71,53 @@ function isUserEligibleForSeason(userName, seasonIsWinter2026) {
   return !isZack
 }
 
-// ─── Poster Thumbnail ────────────────────────────────────────────────────────
 
-function PosterThumb({ posterUrl, title }) {
-  const initials = (title ?? '')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0])
-    .join('')
-    .toUpperCase()
-
-  return (
-    <div style={{
-      flexShrink: 0,
-      width: '40px',
-      height: '56px',
-      borderRadius: '6px',
-      overflow: 'hidden',
-      background: 'rgba(var(--fg-rgb), 0.05)',
-    }}>
-      {posterUrl ? (
-        <img
-          src={`https://image.tmdb.org/t/p/w185${posterUrl}`}
-          alt={title}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onError={e => { e.target.style.display = 'none' }}
-        />
-      ) : (
-        <div style={{
-          width: '100%', height: '100%',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{
-            fontFamily: "'Bebas Neue',sans-serif",
-            color: 'rgba(var(--fg-rgb), 0.15)',
-            fontSize: '11px',
-          }}>
-            {initials}
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Award Card ──────────────────────────────────────────────────────────────
 
-function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noData, onWinnerClick, winnerClickable }) {
+function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noData, onWinnerClick, winnerClickable, awardId }) {
   const clickable = winnerClickable && onWinnerClick && winner
+  const hasPoster = !!(posterUrl || posterTitle)
   return (
-    <div style={{
-      background: 'rgba(var(--fg-rgb), 0.025)',
-      border: '1px solid rgba(var(--fg-rgb), 0.07)',
-      borderRadius: '14px',
-      padding: '16px',
-      width: '100%',
-      boxSizing: 'border-box',
-    }}>
-      {/* Top label row */}
-      <p style={{
-        fontFamily: "'DM Mono',monospace",
-        fontSize: '10px',
-        textTransform: 'uppercase',
-        letterSpacing: '0.18em',
-        color: 'var(--hairline)',
-        margin: '0 0 10px',
-      }}>
-        {emoji} {label}
-      </p>
-
-      {noData ? (
+    <div
+      data-award-id={awardId}
+      style={{
+        background: 'rgba(var(--fg-rgb), 0.025)',
+        border: '1px solid rgba(var(--fg-rgb), 0.07)',
+        borderRadius: '14px',
+        width: '100%',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'stretch',
+        position: 'relative',
+      }}
+    >
+      {/* Main content */}
+      <div style={{ flex: 1, minWidth: 0, padding: '16px', paddingRight: hasPoster ? '12px' : '16px' }}>
+        {/* Top label row */}
         <p style={{
-          fontFamily: "'DM Sans',sans-serif",
+          fontFamily: "'DM Mono',monospace",
+          fontSize: '10px',
+          textTransform: 'uppercase',
+          letterSpacing: '0.18em',
           color: 'var(--hairline)',
-          fontSize: '13px',
-          margin: 0,
+          margin: '0 0 10px',
         }}>
-          Not enough data
+          {emoji} {label}
         </p>
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Winner text */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+
+        {noData ? (
+          <p style={{
+            fontFamily: "'DM Sans',sans-serif",
+            color: 'var(--hairline)',
+            fontSize: '13px',
+            margin: 0,
+          }}>
+            Not enough data
+          </p>
+        ) : (
+          <div style={{ minWidth: 0 }}>
             <p
               onClick={clickable ? onWinnerClick : undefined}
               role={clickable ? 'button' : undefined}
@@ -189,14 +153,41 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
               </p>
             )}
           </div>
+        )}
+      </div>
 
-          {/* Optional poster */}
-          {(posterUrl || posterTitle) && (
-            <div
-              onClick={clickable ? onWinnerClick : undefined}
-              style={{ cursor: clickable ? 'pointer' : 'default' }}
-            >
-              <PosterThumb posterUrl={posterUrl} title={posterTitle} />
+      {/* Poster — fills full card height on the right edge */}
+      {hasPoster && !noData && (
+        <div
+          onClick={clickable ? onWinnerClick : undefined}
+          style={{
+            flexShrink: 0,
+            width: '56px',
+            cursor: clickable ? 'pointer' : 'default',
+            overflow: 'hidden',
+            background: 'rgba(var(--fg-rgb), 0.05)',
+            alignSelf: 'stretch',
+          }}
+        >
+          {posterUrl ? (
+            <img
+              src={`https://image.tmdb.org/t/p/w185${posterUrl}`}
+              alt={posterTitle ?? ''}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={e => { e.target.style.display = 'none' }}
+            />
+          ) : (
+            <div style={{
+              width: '100%', height: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                color: 'rgba(var(--fg-rgb), 0.15)',
+                fontSize: '11px',
+              }}>
+                {(posterTitle ?? '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+              </span>
             </div>
           )}
         </div>
@@ -207,7 +198,7 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
 
 // ─── Big Poster Hero Card ────────────────────────────────────────────────────
 
-function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
+function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick, awardId }) {
   const clickable = !!onClick && !!movie
   const initials = (movie?.title ?? '')
     .split(' ')
@@ -218,14 +209,17 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick }) {
     .toUpperCase()
 
   return (
-    <div style={{
-      background: 'rgba(var(--fg-rgb), 0.025)',
-      border: '1px solid rgba(var(--fg-rgb), 0.07)',
-      borderRadius: '14px',
-      padding: '16px',
-      width: '100%',
-      boxSizing: 'border-box',
-    }}>
+    <div
+      data-award-id={awardId}
+      style={{
+        background: 'rgba(var(--fg-rgb), 0.025)',
+        border: '1px solid rgba(var(--fg-rgb), 0.07)',
+        borderRadius: '14px',
+        padding: '16px',
+        width: '100%',
+        boxSizing: 'border-box',
+      }}
+    >
       <p style={{
         fontFamily: "'DM Mono',monospace",
         fontSize: '10px',
@@ -404,13 +398,15 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     if (r.pre_watch_excitement != null) excitementByMovie[r.movie_id]?.push(Number(r.pre_watch_excitement))
   })
 
-  // Per-movie averages (fallback to historical)
+  // Per-movie averages — historical_avg_score is authoritative when set
   const movieAvgScore = {}
   seasonMovies.forEach(m => {
-    const scores = scoresByMovie[m.id]
-    movieAvgScore[m.id] = scores.length
-      ? avg(scores)
-      : (m.historical_avg_score ? Number(m.historical_avg_score) : null)
+    if (m.historical_avg_score != null) {
+      movieAvgScore[m.id] = Number(m.historical_avg_score)
+    } else {
+      const scores = scoresByMovie[m.id]
+      movieAvgScore[m.id] = scores.length ? avg(scores) : null
+    }
   })
 
   // 1. Film of the Season — highest avg (min 2 scores)
@@ -648,12 +644,15 @@ export function computeAnnualAwards(movies, allRatings, users, year, guesses = [
     if (r.score != null) scoresByMovie[r.movie_id]?.push(Number(r.score))
   })
 
+  // Per-movie averages — historical_avg_score is authoritative when set
   const movieAvgScore = {}
   revealedMovies.forEach(m => {
-    const scores = scoresByMovie[m.id]
-    movieAvgScore[m.id] = scores.length
-      ? avg(scores)
-      : (m.historical_avg_score ? Number(m.historical_avg_score) : null)
+    if (m.historical_avg_score != null) {
+      movieAvgScore[m.id] = Number(m.historical_avg_score)
+    } else {
+      const scores = scoresByMovie[m.id]
+      movieAvgScore[m.id] = scores.length ? avg(scores) : null
+    }
   })
 
   // 1. Glance stats
@@ -867,14 +866,16 @@ export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
     if (r.pre_watch_excitement != null) excitementByMovie[r.movie_id]?.push(Number(r.pre_watch_excitement))
   })
 
-  // Per-movie averages
+  // Per-movie averages — historical_avg_score is authoritative when set
   const movieAvgScore = {}
   const movieAvgExcitement = {}
   monthMovies.forEach(m => {
-    const scores = scoresByMovie[m.id]
-    movieAvgScore[m.id] = scores.length
-      ? avg(scores)
-      : (m.historical_avg_score ? Number(m.historical_avg_score) : null)
+    if (m.historical_avg_score != null) {
+      movieAvgScore[m.id] = Number(m.historical_avg_score)
+    } else {
+      const scores = scoresByMovie[m.id]
+      movieAvgScore[m.id] = scores.length ? avg(scores) : null
+    }
     movieAvgExcitement[m.id] = excitementByMovie[m.id].length
       ? avg(excitementByMovie[m.id])
       : null
@@ -1038,12 +1039,15 @@ export function computeAllTimeAwards(movies, allRatings, users, guesses = []) {
     if (r.score != null) scoresByMovie[r.movie_id]?.push(Number(r.score))
   })
 
+  // Per-movie averages — historical_avg_score is authoritative when set
   const movieAvgScore = {}
   revealedMovies.forEach(m => {
-    const scores = scoresByMovie[m.id]
-    movieAvgScore[m.id] = scores.length
-      ? avg(scores)
-      : (m.historical_avg_score ? Number(m.historical_avg_score) : null)
+    if (m.historical_avg_score != null) {
+      movieAvgScore[m.id] = Number(m.historical_avg_score)
+    } else {
+      const scores = scoresByMovie[m.id]
+      movieAvgScore[m.id] = scores.length ? avg(scores) : null
+    }
   })
 
   // 1. Greatest Film — highest avg (min 2 scores)
@@ -1225,7 +1229,7 @@ export function computeAllTimeAwards(movies, allRatings, users, guesses = []) {
 
 // ─── Monthly Tab ─────────────────────────────────────────────────────────────
 
-function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMember }) {
+function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMember, deepLink }) {
   const revealedMonths = useMemo(() => {
     return months
       .filter(m => {
@@ -1237,17 +1241,26 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
 
   const [selectedMonth, setSelectedMonth] = useState(null)
 
-  // set default once revealed months load
+  // set default once revealed months load; honour deep-link ref
   useEffect(() => {
-    if (revealedMonths.length && !selectedMonth) {
-      setSelectedMonth(revealedMonths[0])
+    if (!revealedMonths.length) return
+    if (deepLink?.ref) {
+      const target = revealedMonths.find(m => m.month_year === deepLink.ref)
+      if (target) { setSelectedMonth(target); return }
     }
-  }, [revealedMonths])
+    if (!selectedMonth) setSelectedMonth(revealedMonths[0])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealedMonths, deepLink?.ref])
 
   const awards = useMemo(() => {
     if (!selectedMonth) return null
     return computeMonthlyAwards(movies, allRatings, users, selectedMonth)
   }, [selectedMonth, movies, allRatings, users])
+
+  const aid = useCallback(
+    (key) => selectedMonth ? `monthly:${key}:${selectedMonth.month_year}` : undefined,
+    [selectedMonth]
+  )
 
   if (loading) {
     return (
@@ -1330,6 +1343,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.pickOfMonth}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.pickOfMonth)}
+            awardId={aid('pick_of_month')}
           />
 
           {/* 2. Flop of the Month */}
@@ -1343,6 +1357,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.flopOfMonth || awards.flopOfMonth.id === awards.pickOfMonth?.id}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.flopOfMonth)}
+            awardId={aid('flop_of_month')}
           />
 
           {/* 3. The Oracle */}
@@ -1354,6 +1369,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.oracleWinner}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.oracleWinner)}
+            awardId={aid('oracle')}
           />
 
           {/* 4. Hype Machine */}
@@ -1365,6 +1381,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.hypeMachineWinner}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.hypeMachineWinner)}
+            awardId={aid('hype_machine')}
           />
 
           {/* 5. The Letdown */}
@@ -1380,6 +1397,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.letdownMovie}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.letdownMovie)}
+            awardId={aid('letdown')}
           />
 
           {/* 6. The Surprise */}
@@ -1395,6 +1413,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.surpriseMovie}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.surpriseMovie)}
+            awardId={aid('surprise')}
           />
 
           {/* 7. Most Divisive */}
@@ -1410,6 +1429,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.divisiveMovie}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.divisiveMovie)}
+            awardId={aid('most_divisive')}
           />
 
           {/* 8. Most Unanimous */}
@@ -1425,6 +1445,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.unanimousMovie}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.unanimousMovie)}
+            awardId={aid('most_unanimous')}
           />
 
           {/* 9. The Contrarian */}
@@ -1436,6 +1457,7 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
             noData={!awards.contrarianWinner}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.contrarianWinner)}
+            awardId={aid('contrarian')}
           />
         </div>
       )}
@@ -1450,6 +1472,8 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
     if (loading || !movies.length) return null
     return computeAllTimeAwards(movies, allRatings, users, guesses)
   }, [movies, allRatings, users, guesses, loading])
+
+  const aid = useCallback((key) => `alltime:${key}:`, [])
 
   if (loading) {
     return (
@@ -1492,6 +1516,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.greatestFilm}
         winnerClickable
         onWinnerClick={() => onFilm?.(awards.greatestFilm)}
+        awardId={aid('greatest_film')}
       />
 
       {/* 2. Worst Film */}
@@ -1505,6 +1530,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.worstFilm}
         winnerClickable
         onWinnerClick={() => onFilm?.(awards.worstFilm)}
+        awardId={aid('worst_film')}
       />
 
       {/* 3. Most Divisive Film */}
@@ -1520,6 +1546,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.mostDivisiveFilm}
         winnerClickable
         onWinnerClick={() => onFilm?.(awards.mostDivisiveFilm)}
+        awardId={aid('divisive_ever')}
       />
 
       {/* 4. Most Unanimous Film */}
@@ -1535,6 +1562,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.mostUnanimousFilm}
         winnerClickable
         onWinnerClick={() => onFilm?.(awards.mostUnanimousFilm)}
+        awardId={aid('unanimous_ever')}
       />
 
       {/* 5. Top Picker */}
@@ -1546,6 +1574,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.topPicker}
         winnerClickable
         onWinnerClick={() => onMember?.(awards.topPicker)}
+        awardId={aid('picker_goat')}
       />
 
       {/* 6. Harshest Critic */}
@@ -1557,6 +1586,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.harshestCritic}
         winnerClickable
         onWinnerClick={() => onMember?.(awards.harshestCritic)}
+        awardId={aid('coldest_critic')}
       />
 
       {/* 7. Most Generous */}
@@ -1568,6 +1598,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.mostGenerous}
         winnerClickable
         onWinnerClick={() => onMember?.(awards.mostGenerous)}
+        awardId={aid('biggest_softie')}
       />
 
       {/* 8. Biggest Contrarian */}
@@ -1579,6 +1610,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.biggestContrarian}
         winnerClickable
         onWinnerClick={() => onMember?.(awards.biggestContrarian)}
+        awardId={aid('wildcard_alltime')}
       />
 
       {/* 8b. Master of Disguise */}
@@ -1590,6 +1622,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.masterOfDisguise}
         winnerClickable
         onWinnerClick={() => onMember?.(awards.masterOfDisguise)}
+        awardId={aid('master_of_disguise_alltime')}
       />
 
       {/* 9. The Oracle (all-time) */}
@@ -1601,6 +1634,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
         noData={!awards.oracleAllTime}
         winnerClickable
         onWinnerClick={() => onMember?.(awards.oracleAllTime)}
+        awardId={aid('oracle_alltime')}
       />
     </div>
   )
@@ -1608,7 +1642,7 @@ function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, 
 
 // ─── Season Tab ───────────────────────────────────────────────────────────────
 
-function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm, onMember }) {
+function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm, onMember, deepLink }) {
   // Only seasons that have at least one movie with scores_revealed
   const revealedSeasons = useMemo(() => {
     return seasons
@@ -1622,10 +1656,14 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
   const [selectedSeason, setSelectedSeason] = useState(null)
 
   useEffect(() => {
-    if (revealedSeasons.length && !selectedSeason) {
-      setSelectedSeason(revealedSeasons[0])
+    if (!revealedSeasons.length) return
+    if (deepLink?.ref) {
+      const target = revealedSeasons.find(s => s.id === deepLink.ref)
+      if (target) { setSelectedSeason(target); return }
     }
-  }, [revealedSeasons])
+    if (!selectedSeason) setSelectedSeason(revealedSeasons[0])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealedSeasons, deepLink?.ref])
 
   const seasonIsWinter2026 = useMemo(
     () => isWinter2026(selectedSeason, months),
@@ -1636,6 +1674,11 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
     if (!selectedSeason) return null
     return computeSeasonAwards(movies, allRatings, users, selectedSeason, months, seasonIsWinter2026)
   }, [selectedSeason, movies, allRatings, users, months, seasonIsWinter2026])
+
+  const aid = useCallback(
+    (key) => selectedSeason ? `season:${key}:${selectedSeason.id}` : undefined,
+    [selectedSeason]
+  )
 
   if (loading) {
     return (
@@ -1730,6 +1773,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.filmOfSeason}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.filmOfSeason)}
+            awardId={aid('film_of_season')}
           />
 
           {/* 2. Flop of the Season */}
@@ -1743,6 +1787,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.flopOfSeason || awards.flopOfSeason.id === awards.filmOfSeason?.id}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.flopOfSeason)}
+            awardId={aid('flop_of_season')}
           />
 
           {/* 3. Picker of the Season */}
@@ -1758,6 +1803,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.pickerOfSeason}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.pickerOfSeason)}
+            awardId={aid('picker_of_season')}
           />
 
           {/* 4. Ice Cold */}
@@ -1773,6 +1819,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.iceCold || awards.iceCold?.id === awards.pickerOfSeason?.id}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.iceCold)}
+            awardId={aid('ice_cold')}
           />
 
           {/* 5. Most Divisive Film */}
@@ -1788,6 +1835,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.mostDivisiveFilm}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.mostDivisiveFilm)}
+            awardId={aid('season_divisive')}
           />
 
           {/* 6. Most Unanimous Film */}
@@ -1803,6 +1851,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.mostUnanimousFilm}
             winnerClickable
             onWinnerClick={() => onFilm?.(awards.mostUnanimousFilm)}
+            awardId={aid('season_unanimous')}
           />
 
           {/* 7. Harshest Critic */}
@@ -1814,6 +1863,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.harshestCritic}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.harshestCritic)}
+            awardId={aid('season_harshest')}
           />
 
           {/* 8. Most Generous */}
@@ -1825,6 +1875,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.mostGenerous}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.mostGenerous)}
+            awardId={aid('season_generous')}
           />
 
           {/* 9. The Contrarian */}
@@ -1836,6 +1887,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.contrarianWinner}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.contrarianWinner)}
+            awardId={aid('season_contrarian')}
           />
 
           {/* 10. The Oracle */}
@@ -1847,6 +1899,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.oracleWinner}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.oracleWinner)}
+            awardId={aid('season_oracle')}
           />
 
           {/* 11. Most Consistent Picker */}
@@ -1858,6 +1911,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.mostConsistentPicker}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.mostConsistentPicker)}
+            awardId={aid('season_consistent_picker')}
           />
 
           {/* 12. Easy Crowd */}
@@ -1869,6 +1923,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             noData={!awards.easyCrowd}
             winnerClickable
             onWinnerClick={() => onMember?.(awards.easyCrowd)}
+            awardId={aid('season_easy_crowd')}
           />
         </div>
       )}
@@ -1878,7 +1933,7 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
 
 // ─── Annual Tab ────────────────────────────────────────────────────────────────
 
-function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, onFilm, onMember }) {
+function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, onFilm, onMember, deepLink }) {
   // Group movies by year via their month's month_year
   const monthYearById = useMemo(() => {
     const map = {}
@@ -1899,10 +1954,13 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
   const [selectedYear, setSelectedYear] = useState(null)
 
   useEffect(() => {
-    if (availableYears.length && !selectedYear) {
-      setSelectedYear(availableYears[0])
+    if (!availableYears.length) return
+    if (deepLink?.ref && availableYears.includes(deepLink.ref)) {
+      setSelectedYear(deepLink.ref); return
     }
-  }, [availableYears])
+    if (!selectedYear) setSelectedYear(availableYears[0])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableYears, deepLink?.ref])
 
   const yearMovies = useMemo(() => {
     if (!selectedYear) return []
@@ -1918,6 +1976,11 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
     yearMovies.forEach(m => { monthYearByMovie[m.id] = monthYearById[m.month_id] })
     return computeAnnualAwards(yearMovies, allRatings, users, selectedYear, guesses, monthYearByMovie)
   }, [yearMovies, allRatings, users, selectedYear, loading, guesses, monthYearById])
+
+  const aid = useCallback(
+    (key) => selectedYear ? `annual:${key}:${selectedYear}` : undefined,
+    [selectedYear]
+  )
 
   if (loading) {
     return (
@@ -2033,6 +2096,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           avgScore={awards.filmOfYear ? awards.movieAvgScore[awards.filmOfYear.id] : null}
           noData={!awards.filmOfYear}
           onClick={() => onFilm?.(awards.filmOfYear)}
+          awardId={aid('film_of_year')}
         />
 
         {/* 3. Worst Film of the Year — hero card */}
@@ -2043,6 +2107,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           avgScore={awards.worstFilmOfYear ? awards.movieAvgScore[awards.worstFilmOfYear.id] : null}
           noData={!awards.worstFilmOfYear || awards.worstFilmOfYear?.id === awards.filmOfYear?.id}
           onClick={() => onFilm?.(awards.worstFilmOfYear)}
+          awardId={aid('worst_film_of_year')}
         />
 
         {/* 4. Picker of the Year */}
@@ -2058,6 +2123,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.pickerOfYear}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.pickerOfYear)}
+          awardId={aid('picker_of_year')}
         />
 
         {/* 5. Harshest Critic */}
@@ -2069,6 +2135,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.harshestCritic}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.harshestCritic)}
+          awardId={aid('annual_harshest')}
         />
 
         {/* 6. Most Generous */}
@@ -2080,6 +2147,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.mostGenerous}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.mostGenerous)}
+          awardId={aid('annual_generous')}
         />
 
         {/* 7. Most Divisive Film */}
@@ -2095,6 +2163,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.mostDivisiveFilm}
           winnerClickable
           onWinnerClick={() => onFilm?.(awards.mostDivisiveFilm)}
+          awardId={aid('annual_divisive')}
         />
 
         {/* 8. The Oracle */}
@@ -2106,6 +2175,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.oracleOfYear}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.oracleOfYear)}
+          awardId={aid('annual_oracle')}
         />
 
         {/* 9. Most Consistent */}
@@ -2117,6 +2187,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.mostConsistent}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.mostConsistent)}
+          awardId={aid('annual_most_consistent')}
         />
 
         {/* 10. The Wildcard */}
@@ -2128,6 +2199,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.wildcard}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.wildcard)}
+          awardId={aid('annual_wildcard')}
         />
 
         {/* 11. Master of Disguise */}
@@ -2139,6 +2211,7 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.masterOfDisguise}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.masterOfDisguise)}
+          awardId={aid('annual_master_of_disguise')}
         />
 
         {/* 12. Most Evolved (activates once the year spans ≥ 8 months) */}
@@ -2150,10 +2223,53 @@ function AnnualTab({ movies, allRatings, users, months, guesses = [], loading, o
           noData={!awards.mostEvolved}
           winnerClickable
           onWinnerClick={() => onMember?.(awards.mostEvolved)}
+          awardId={aid('annual_most_evolved')}
         />
       </div>
     </div>
   )
+}
+
+// ─── Deep-link highlight hook ────────────────────────────────────────────────
+// After the target tab renders, find the card with data-award-id matching the
+// deep-link and scroll it into view + briefly highlight it.
+
+function useAwardDeepLink(activeTab, loading, deepLink) {
+  const highlightRef = useRef(null) // tracks the highlight timeout
+
+  useEffect(() => {
+    if (!deepLink || loading) return
+    // Give the tab content a moment to render and the sub-tab to auto-select
+    const timer = setTimeout(() => {
+      if (!deepLink.key || !deepLink.scope) return
+      const ref = deepLink.ref ?? ''
+      const id = `${deepLink.scope}:${deepLink.key}:${ref}`
+      const el = document.querySelector(`[data-award-id="${id}"]`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Flash highlight
+      el.style.transition = 'box-shadow 0.2s ease, outline 0.2s ease'
+      el.style.outline = '2px solid var(--accent, rgba(var(--fg-rgb), 0.4))'
+      el.style.outlineOffset = '2px'
+      if (highlightRef.current) clearTimeout(highlightRef.current)
+      highlightRef.current = setTimeout(() => {
+        el.style.outline = ''
+        el.style.outlineOffset = ''
+        highlightRef.current = null
+      }, 1800)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [activeTab, loading, deepLink])
+
+  useEffect(() => () => { if (highlightRef.current) clearTimeout(highlightRef.current) }, [])
+}
+
+// Map URL scope param → tab label
+const SCOPE_TO_TAB = {
+  monthly: 'Monthly',
+  season: 'Season',
+  annual: 'Annual',
+  alltime: 'All-Time',
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -2162,7 +2278,24 @@ const TABS = ['Monthly', 'Season', 'Annual', 'All-Time']
 
 export default function Awards() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('Monthly')
+  const location = useLocation()
+
+  // Parse deep-link params once on mount
+  const deepLink = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    const scope = params.get('scope')
+    const key = params.get('key')
+    const ref = params.get('ref') ?? ''
+    if (!scope || !key) return null
+    return { scope, key, ref }
+  }, [location.search])
+
+  const initialTab = useMemo(() => {
+    if (deepLink?.scope) return SCOPE_TO_TAB[deepLink.scope] ?? 'Monthly'
+    return 'Monthly'
+  }, [deepLink])
+
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [selectedMovie, setSelectedMovie] = useState(null)
 
   // Clicking a film title/poster opens the shared film overlay.
@@ -2215,6 +2348,9 @@ export default function Awards() {
 
     fetchAll()
   }, [])
+
+  // Scroll + highlight the target award card after tab + sub-tab resolve
+  useAwardDeepLink(activeTab, loading, deepLink)
 
   return (
     <div style={{
@@ -2299,6 +2435,7 @@ export default function Awards() {
               loading={loading}
               onFilm={onFilm}
               onMember={onMember}
+              deepLink={deepLink?.scope === 'monthly' ? deepLink : null}
             />
           )}
           {activeTab === 'Season' && (
@@ -2311,6 +2448,7 @@ export default function Awards() {
               loading={loading}
               onFilm={onFilm}
               onMember={onMember}
+              deepLink={deepLink?.scope === 'season' ? deepLink : null}
             />
           )}
           {activeTab === 'Annual' && (
@@ -2323,6 +2461,7 @@ export default function Awards() {
               loading={loading}
               onFilm={onFilm}
               onMember={onMember}
+              deepLink={deepLink?.scope === 'annual' ? deepLink : null}
             />
           )}
           {activeTab === 'All-Time' && (

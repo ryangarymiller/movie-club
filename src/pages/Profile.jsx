@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
 import { USER_COLOR_PALETTE } from '../lib/colors'
+import AwardsBadges from '../components/AwardsBadges'
+import { FilmDetailOverlay } from './Films.jsx'
 
 const ACCENT_SWATCHES = [
   { name: 'crimson',    hex: '#dc2626', label: 'Crimson'    },
@@ -210,6 +212,7 @@ function formatMemberSince(dateStr) {
 
 export default function Profile() {
   const { userId } = useParams()
+  const navigate = useNavigate()
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, toggleMode } = useTheme()
 
@@ -245,8 +248,14 @@ export default function Profile() {
   const [signingOut, setSigningOut] = useState(false)
   const [adminToggling, setAdminToggling] = useState(false)
   const [userAwards, setUserAwards] = useState([])
+  const [awardsLoading, setAwardsLoading] = useState(true)
   // Colors already claimed by other members (one-per-member rule)
   const [takenColors, setTakenColors] = useState(new Set())
+  // Picks section
+  const [pickedFilms, setPickedFilms] = useState([])  // [{movie, monthYear, avgScore}]
+  const [picksLoading, setPicksLoading] = useState(true)
+  // Film overlay
+  const [overlayMovie, setOverlayMovie] = useState(null)
 
   // ── Fetch other members' colors ──────────────────────────────────────────────
   useEffect(() => {
@@ -335,11 +344,13 @@ export default function Profile() {
     if (!displayProfile) return
     let cancelled = false
     async function loadAwards() {
+      if (!cancelled) setAwardsLoading(true)
       // Try DB first
       const dbAwards = await fetchAwardsForUser(supabase, displayProfile.id)
       if (cancelled) return
       if (dbAwards.length > 0) {
         setUserAwards(dbAwards)
+        setAwardsLoading(false)
         return
       }
       // DB empty — fall back to compute approach
@@ -369,8 +380,87 @@ export default function Profile() {
       } catch {
         if (!cancelled) setUserAwards([])
       }
+      if (!cancelled) setAwardsLoading(false)
     }
     loadAwards()
+    return () => { cancelled = true }
+  }, [displayProfile])
+
+  // ── Load revealed picks for this user ────────────────────────────────────────
+  useEffect(() => {
+    if (!displayProfile) return
+    let cancelled = false
+
+    async function loadPicks() {
+      if (!cancelled) setPicksLoading(true)
+      try {
+        // Query movies where picker_revealed = true and picked_by_user_id = displayProfile.id
+        const { data: movies } = await supabase
+          .from('movies_safe')
+          .select('id, month_id, title, poster_url, year_released, historical_avg_score, picker_revealed, picked_by_user_id, scores_revealed')
+          .eq('picker_revealed', true)
+          .eq('picked_by_user_id', displayProfile.id)
+
+        if (cancelled || !movies || movies.length === 0) {
+          if (!cancelled) setPickedFilms([])
+          if (!cancelled) setPicksLoading(false)
+          return
+        }
+
+        // Fetch month info for ordering
+        const monthIds = [...new Set(movies.map(m => m.month_id))]
+        const { data: months } = await supabase
+          .from('months')
+          .select('id, month_year')
+          .in('id', monthIds)
+
+        const monthMap = Object.fromEntries((months ?? []).map(m => [m.id, m.month_year]))
+
+        // For movies without historical_avg_score, compute avg from ratings
+        const needAvg = movies.filter(m => m.historical_avg_score == null)
+        let ratingsMap = {}
+        if (needAvg.length > 0) {
+          const { data: ratings } = await supabase
+            .from('ratings')
+            .select('movie_id, score')
+            .in('movie_id', needAvg.map(m => m.id))
+            .not('score', 'is', null)
+          for (const r of (ratings ?? [])) {
+            if (!ratingsMap[r.movie_id]) ratingsMap[r.movie_id] = []
+            ratingsMap[r.movie_id].push(Number(r.score))
+          }
+        }
+
+        function computeAvg(movieId) {
+          const scores = ratingsMap[movieId] ?? []
+          if (scores.length === 0) return null
+          return scores.reduce((a, b) => a + b, 0) / scores.length
+        }
+
+        const result = movies.map(m => ({
+          movie: m,
+          monthYear: monthMap[m.month_id] ?? '',
+          avgScore: m.historical_avg_score != null
+            ? Number(m.historical_avg_score)
+            : computeAvg(m.id),
+        }))
+
+        // Sort by month ascending (earliest pick first)
+        result.sort((a, b) => (a.monthYear < b.monthYear ? -1 : a.monthYear > b.monthYear ? 1 : 0))
+
+        if (!cancelled) {
+          setPickedFilms(result)
+          setPicksLoading(false)
+        }
+      } catch {
+        if (!cancelled) {
+          setPickedFilms([])
+          setPicksLoading(false)
+        }
+      }
+    }
+
+    loadPicks()
     return () => { cancelled = true }
   }, [displayProfile])
 
@@ -624,45 +714,165 @@ export default function Profile() {
         </section>
 
         {/* ── Section 3b: Awards ── */}
-        {userAwards.length > 0 && (
-          <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.2s ease both' }}>
-            <span style={SECTION_LABEL}>Awards</span>
-            <div style={{ ...CARD, padding: '8px 14px' }}>
-              {userAwards.map((a, i) => (
-                <div
-                  key={`${a.scope}-${a.key}-${a.periodRef ?? i}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '10px 0',
-                    borderBottom: i === userAwards.length - 1
-                      ? 'none'
-                      : '1px solid rgba(var(--fg-rgb), 0.05)',
-                  }}
-                >
-                  <span style={{ fontSize: '20px', flexShrink: 0 }}>{a.emoji}</span>
+        <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.2s ease both' }}>
+          <AwardsBadges
+            awards={userAwards}
+            loading={awardsLoading}
+            onAwardClick={(award) => {
+              const key = award.award_key || award.key || ''
+              const ref = award.period_ref || award.periodRef || ''
+              const scope = award.scope || ''
+              navigate(`/awards?scope=${encodeURIComponent(scope)}&key=${encodeURIComponent(key)}&ref=${encodeURIComponent(ref)}`)
+            }}
+          />
+        </section>
+
+        {/* ── Section 3c: Picks ── */}
+        <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.22s ease both' }}>
+          <span style={SECTION_LABEL}>
+            {isOwnProfile ? 'Films You Picked' : `${displayProfile?.name?.split(' ')[0] ?? 'Their'}'s Picks`}
+          </span>
+
+          {picksLoading ? (
+            <div style={{ ...CARD, padding: '4px 14px' }}>
+              {[...Array(3)].map((_, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0' }}>
+                  <div
+                    className="animate-pulse"
+                    style={{ width: 48, height: 68, borderRadius: '6px', background: 'rgba(var(--fg-rgb), 0.05)', flexShrink: 0 }}
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: 'var(--text-strong)', fontSize: '14px', fontWeight: 500, margin: 0, lineHeight: 1.2 }}>
-                      {a.label}
-                    </p>
-                    {a.period && (
-                      <p style={{
-                        fontFamily: "'DM Mono', monospace",
-                        fontSize: '10px',
-                        letterSpacing: '0.08em',
-                        color: 'var(--text-dim)',
-                        margin: '3px 0 0',
-                      }}>
-                        {a.period}{a.metric ? ` · ${a.metric}` : ''}
-                      </p>
-                    )}
+                    <div className="animate-pulse" style={{ height: 14, width: '60%', background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: 4, marginBottom: 6 }} />
+                    <div className="animate-pulse" style={{ height: 11, width: '30%', background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: 4 }} />
                   </div>
+                  <div className="animate-pulse" style={{ width: 40, height: 28, background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: 4 }} />
                 </div>
               ))}
             </div>
-          </section>
-        )}
+          ) : pickedFilms.length === 0 ? (
+            <div style={{ ...CARD, padding: '16px 14px' }}>
+              <p style={{ color: 'var(--text-faint)', fontSize: '13px', textAlign: 'center', margin: 0 }}>
+                No revealed picks yet.
+              </p>
+            </div>
+          ) : (
+            <div style={{ ...CARD, padding: '4px 14px' }}>
+              {pickedFilms.map(({ movie, monthYear, avgScore }, i) => {
+                const monthLabel = monthYear
+                  ? new Date(`${monthYear}-02`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                  : ''
+                return (
+                  <button
+                    key={movie.id}
+                    onClick={() => setOverlayMovie(movie)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '10px 0',
+                      width: '100%',
+                      background: 'none',
+                      border: 'none',
+                      borderBottom: i === pickedFilms.length - 1
+                        ? 'none'
+                        : '1px solid rgba(var(--fg-rgb), 0.05)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontFamily: 'inherit',
+                    }}
+                    aria-label={`${movie.title} — picked ${monthLabel}`}
+                  >
+                    {/* Poster */}
+                    <div
+                      style={{
+                        width: 48,
+                        height: 68,
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                        background: '#111',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {movie.poster_url ? (
+                        <img
+                          src={`${TMDB_IMG}${movie.poster_url}`}
+                          alt={movie.title}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={e => { e.target.style.display = 'none' }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontFamily: "'Bebas Neue', sans-serif",
+                              fontSize: '18px',
+                              color: 'rgba(var(--fg-rgb), 0.15)',
+                            }}
+                          >
+                            {(movie.title || '?').slice(0, 2).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Title + month */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p
+                        style={{
+                          color: 'var(--text-strong)',
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          margin: 0,
+                        }}
+                      >
+                        {movie.title ?? '—'}
+                      </p>
+                      {monthLabel && (
+                        <p
+                          style={{
+                            fontFamily: "'DM Mono', monospace",
+                            fontSize: '10px',
+                            letterSpacing: '0.06em',
+                            color: 'var(--text-dim)',
+                            margin: '3px 0 0',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {monthLabel}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Club avg */}
+                    <p
+                      style={{
+                        fontFamily: "'Bebas Neue', sans-serif",
+                        fontSize: '1.75rem',
+                        color: 'var(--accent)',
+                        lineHeight: 1,
+                        flexShrink: 0,
+                        margin: 0,
+                      }}
+                    >
+                      {avgScore != null ? Number(avgScore).toFixed(2) : '—'}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </section>
 
         {/* ── Section 4: Appearance Settings ── */}
         {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.24s ease both' }}>
@@ -871,6 +1081,14 @@ export default function Profile() {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
+
+      {/* ── Film Detail Overlay ── */}
+      {overlayMovie && (
+        <FilmDetailOverlay
+          movie={overlayMovie}
+          onClose={() => setOverlayMovie(null)}
+        />
+      )}
     </div>
   )
 }

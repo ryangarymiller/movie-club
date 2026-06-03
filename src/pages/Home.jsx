@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
 import { FilmDetailOverlay } from './Films'
-import { MEMBER_COLORS } from '../lib/colors'
+import { MEMBER_COLORS, memberColor } from '../lib/colors'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -191,6 +191,11 @@ export default function Home() {
   // Film detail overlay state
   const [selectedMovie, setSelectedMovie] = useState(null)
 
+  // Recent Activity collapse state
+  const [activityExpanded, setActivityExpanded] = useState(false)
+
+  const ACTIVITY_COLLAPSED_COUNT = 4
+
   const load = useCallback(async () => {
     if (!profile) return
     const [
@@ -205,7 +210,7 @@ export default function Home() {
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed'),
       supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
-      supabase.from('users').select('id, name, email'),
+      supabase.from('users').select('id, name, email, is_active, user_color'),
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
       supabase.from('reviews').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
       supabase.from('comments').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
@@ -215,8 +220,8 @@ export default function Home() {
     setActiveMonthYear(activeMonth?.month_year ?? null)
     setAllMovies(movies ?? [])
     setMyRatings(ratings ?? [])
-    // Test account must be invisible in all UI — filter by email.
-    const visibleUsers = (usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com')
+    // Test account must be invisible in all UI — filter by email. Also exclude inactive members.
+    const visibleUsers = (usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com' && u.is_active !== false)
     setUsers(visibleUsers)
 
     // Build the Recent Activity feed: merge ratings, reviews, comments into one list.
@@ -300,7 +305,7 @@ export default function Home() {
             <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
           ) : pendingFilms.length === 0 ? (
             <div
-              onClick={() => navigate('/stats?tab=me')}
+              onClick={() => navigate(activeMonthYear ? `/films?tab=History&month=${activeMonthYear}` : '/films?tab=History')}
               className="flex items-center gap-3 p-4 rounded-xl border border-white/10 transition-colors"
               style={{ cursor: 'pointer', background: 'rgba(var(--fg-rgb),0.03)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.07)' }}
@@ -311,7 +316,7 @@ export default function Home() {
                 <p className="text-white text-sm font-medium">You're all caught up</p>
                 <p className="text-gray-500 text-xs">All scores submitted for this month</p>
               </div>
-              <span style={{ color: 'var(--text-dim)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>View stats →</span>
+              <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>View this month's scores →</span>
             </div>
           ) : (
             <div className="space-y-2">
@@ -439,10 +444,66 @@ export default function Home() {
               <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: 0 }}>No recent activity yet.</p>
             </div>
           ) : (
-            <div className="rounded-xl px-3" style={{ background: 'var(--surface)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
-              {activity.map((item, i) => (
-                <ActivityRow key={item.key} item={item} onFilmPress={setSelectedMovie} isLast={i === activity.length - 1} />
-              ))}
+            <>
+              <div className="rounded-xl px-3" style={{ background: 'var(--surface)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
+                {(activityExpanded ? activity : activity.slice(0, ACTIVITY_COLLAPSED_COUNT)).map((item, i, arr) => (
+                  <ActivityRow key={item.key} item={item} onFilmPress={setSelectedMovie} isLast={i === arr.length - 1} />
+                ))}
+              </div>
+              {activity.length > ACTIVITY_COLLAPSED_COUNT && (
+                <button
+                  onClick={() => setActivityExpanded(prev => !prev)}
+                  style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)', fontFamily: "'DM Mono',monospace", background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', display: 'block' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-dim)' }}
+                >
+                  {activityExpanded ? '▲ Show less' : `▼ Show ${activity.length - ACTIVITY_COLLAPSED_COUNT} more`}
+                </button>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* Club Members strip */}
+        <section className="mt-8 mb-4" style={{ animation: 'fadeUp 0.5s 0.5s ease both' }}>
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
+            Club Members
+          </p>
+          {loading ? (
+            <div className="flex gap-4">{[...Array(5)].map((_, i) => <Skeleton key={i} className="w-14 h-14 rounded-full" />)}</div>
+          ) : (
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              {users.map(u => {
+                const color = u.user_color || memberColor(u.name) || 'var(--accent)'
+                const nameParts = (u.name ?? '').split(' ')
+                const displayName = nameParts.length >= 2
+                  ? `${nameParts[0]} ${nameParts[nameParts.length - 1][0]}.`
+                  : nameParts[0] ?? ''
+                const initStr = nameParts.map(p => p[0]).join('').slice(0, 2).toUpperCase()
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => navigate(`/profile/${u.id}`)}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  >
+                    <div
+                      style={{
+                        width: '48px', height: '48px', borderRadius: '50%',
+                        border: `2.5px solid ${color}`,
+                        background: 'rgba(var(--fg-rgb),0.04)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <span style={{ fontSize: '13px', fontWeight: 700, color, fontFamily: "'DM Mono',monospace" }}>
+                        {initStr}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', maxWidth: '64px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {displayName}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )}
         </section>

@@ -28,8 +28,18 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   // If the final score is already submitted, excitement scoring is no longer available.
   // Skip excitement step and go straight to final score (or locked) mode.
   const finalScoreAlreadySubmitted = existingRating?.score != null
-  const isExcitementMode = !finalScoreAlreadySubmitted && !existingRating?.pre_watch_excitement
-  const isFinalMode = !finalScoreAlreadySubmitted && existingRating?.pre_watch_excitement && !existingRating?.score
+  // Excitement mode only applies to CURRENT (unrevealed) films the user hasn't
+  // watched yet. For historical/revealed films (scores_revealed === true) we go
+  // straight to final-score entry so a backfilling user never accidentally writes
+  // their intended score into pre_watch_excitement.
+  const isExcitementMode =
+    !finalScoreAlreadySubmitted &&
+    !existingRating?.pre_watch_excitement &&
+    !movie.scores_revealed
+  const isFinalMode =
+    !finalScoreAlreadySubmitted &&
+    (existingRating?.pre_watch_excitement || movie.scores_revealed) &&
+    !existingRating?.score
 
   // Animate in
   useEffect(() => {
@@ -37,10 +47,16 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
     return () => cancelAnimationFrame(t)
   }, [])
 
-  // Focus input after animation
+  // Focus input after animation and scroll it into view so it isn't hidden
+  // behind the mobile keyboard.
   useEffect(() => {
     if (visible) {
-      const t = setTimeout(() => inputRef.current?.focus(), 180)
+      const t = setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus()
+          inputRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        }
+      }, 180)
       return () => clearTimeout(t)
     }
   }, [visible])
@@ -281,6 +297,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               <input
                 ref={inputRef}
                 type="number"
+                inputMode="decimal"
                 min="0.01"
                 max="10.00"
                 step="0.01"
@@ -292,12 +309,20 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                   width: '100%', boxSizing: 'border-box',
                   background: 'rgba(var(--fg-rgb), 0.04)', border: `1px solid ${error ? '#ef4444' : 'rgba(var(--fg-rgb), 0.1)'}`,
                   borderRadius: '12px', padding: '14px 16px',
-                  fontFamily: "'Bebas Neue',sans-serif", fontSize: '2rem', letterSpacing: '0.05em',
+                  // Use DM Mono at a legible size for mobile — Bebas Neue at 2rem
+                  // is hard to read while typing numerals on a virtual keyboard.
+                  fontFamily: "'DM Mono','DM Sans',monospace", fontSize: '1.4rem', letterSpacing: '0.04em',
                   color: 'var(--text-strong)', outline: 'none',
                   transition: 'border-color 0.15s ease',
                   WebkitAppearance: 'none', MozAppearance: 'textfield',
                 }}
-                onFocus={e => { if (!error) e.target.style.borderColor = 'var(--accent)' }}
+                onFocus={e => {
+                  if (!error) e.target.style.borderColor = 'var(--accent)'
+                  // Ensure the input stays visible above the mobile keyboard.
+                  // Optional-chain the method: not all environments implement it
+                  // (jsdom in tests, older browsers) — no-op there instead of throwing.
+                  e.target.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+                }}
                 onBlur={e => { if (!error) e.target.style.borderColor = 'rgba(var(--fg-rgb), 0.1)' }}
               />
             </div>

@@ -229,6 +229,9 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
   const totalCount = reviews.length + comments.length
 
   // --- Reaction toggle (polymorphic) ---
+  // On add: upsert with onConflict so a duplicate-key (23505) is silently treated as success.
+  // On remove: delete by id when local state has the record, or by natural key as fallback.
+  // Always refetch so local state is consistent after any toggle.
   async function toggleReaction(targetType, targetId, emoji) {
     if (!currentUserId || !canParticipate) return
     const existing = reactions.find(
@@ -240,18 +243,26 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
         const { error: delErr } = await supabase.from('reactions').delete().eq('id', existing.id)
         if (delErr) throw delErr
       } else {
-        const { error: insErr } = await supabase
+        const { error: upsErr } = await supabase
           .from('reactions')
-          .insert({ target_type: targetType, target_id: targetId, user_id: currentUserId, emoji })
-        if (insErr) throw insErr
+          .upsert(
+            { target_type: targetType, target_id: targetId, user_id: currentUserId, emoji },
+            { onConflict: 'target_type,target_id,user_id,emoji', ignoreDuplicates: true }
+          )
+        // 23505 = unique_violation — reaction already exists; treat as success.
+        if (upsErr && upsErr.code !== '23505') throw upsErr
       }
       await fetchAll()
     } catch (e) {
-      setError(e.message || 'Could not update reaction.')
+      // Swallow duplicate-key errors that somehow escape upsert; surface all others.
+      if (e.code !== '23505') setError(e.message || 'Could not update reaction.')
+      else await fetchAll()
     }
   }
 
   // --- Vote toggle (up/down, one per user per target) ---
+  // Uses upsert so stale local state never causes a duplicate-key error.
+  // Clicking the already-active arrow deletes the vote (toggle off).
   async function castVote(targetType, targetId, value) {
     if (!currentUserId || !canParticipate) return
     const existing = votes.find(
@@ -262,22 +273,21 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
         // Clicking the active arrow again removes the vote.
         const { error: delErr } = await supabase.from('votes').delete().eq('id', existing.id)
         if (delErr) throw delErr
-      } else if (existing) {
-        // Switch direction.
-        const { error: upErr } = await supabase
-          .from('votes')
-          .update({ value, updated_at: new Date().toISOString() })
-          .eq('id', existing.id)
-        if (upErr) throw upErr
       } else {
-        const { error: insErr } = await supabase
+        // Insert or update (change direction) — upsert handles both cases idempotently.
+        const { error: upsErr } = await supabase
           .from('votes')
-          .insert({ target_type: targetType, target_id: targetId, user_id: currentUserId, value })
-        if (insErr) throw insErr
+          .upsert(
+            { target_type: targetType, target_id: targetId, user_id: currentUserId, value },
+            { onConflict: 'target_type,target_id,user_id' }
+          )
+        if (upsErr) throw upsErr
       }
       await fetchAll()
     } catch (e) {
-      setError(e.message || 'Could not record vote.')
+      // Swallow duplicate-key errors; surface all others.
+      if (e.code !== '23505') setError(e.message || 'Could not record vote.')
+      else await fetchAll()
     }
   }
 

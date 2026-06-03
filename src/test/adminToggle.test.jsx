@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import Profile from '../pages/Profile'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -71,7 +72,9 @@ import { useAuth } from '../context/AuthContext'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function renderProfile() {
-  return render(<Profile />)
+  // Profile uses react-router hooks (useParams/useNavigate) — it's always
+  // rendered inside the app Router, so the test must provide a Router too.
+  return render(<MemoryRouter><Profile /></MemoryRouter>)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

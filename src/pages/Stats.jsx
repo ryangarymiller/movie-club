@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { FilmDetailOverlay } from './Films'
-import { memberColor } from '../lib/colors'
+import { memberColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt } from '../lib/colors'
 import {
   ResponsiveContainer,
   BarChart, Bar,
   LineChart, Line,
   ScatterChart, Scatter,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, Sector,
   XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
   ReferenceLine,
@@ -87,16 +87,37 @@ function ChartPlaceholder({ children, height = 120 }) {
 // ─── Reusable Recharts chart components ──────────────────────────────────────
 
 // Score distribution histogram (0–10 buckets). data: [{ label, count }]
-function ScoreHistogram({ data, height = 150, color }) {
+// `onSelect` + `selectedIndex` let a parent highlight a single tapped bar; the
+// rest dim so the selection reads clearly (no whole-chart bounding box).
+function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = null }) {
   const c = color || accentColor()
+  const interval = data.length > 12 ? Math.ceil(data.length / 10) - 1 : 0
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false} interval={0} />
+        <XAxis dataKey="label" tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false} interval={interval} />
         <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-        <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
-        <Bar dataKey="count" name="Films" fill={c} radius={[3, 3, 0, 0]} />
+        <Tooltip content={<ChartTooltip />} cursor={false} />
+        <Bar
+          dataKey="count"
+          name="Films"
+          fill={c}
+          radius={[3, 3, 0, 0]}
+          isAnimationActive={false}
+          onClick={onSelect ? ((_, i) => onSelect(i)) : undefined}
+          style={onSelect ? { cursor: 'pointer' } : undefined}
+        >
+          {data.map((_, i) => (
+            <Cell
+              key={i}
+              fill={c}
+              fillOpacity={selectedIndex == null || selectedIndex === i ? 1 : 0.32}
+              stroke={selectedIndex === i ? c : 'none'}
+              strokeWidth={selectedIndex === i ? 1.5 : 0}
+            />
+          ))}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   )
@@ -110,11 +131,12 @@ function MemberScoreBars({ data, mean, sd, height }) {
   const h = height || Math.max(130, data.length * 30 + 40)
   return (
     <ResponsiveContainer width="100%" height={h}>
-      <BarChart data={data} layout="vertical" margin={{ top: 6, right: 30, left: 4, bottom: 0 }}>
+      {/* Extra top margin so the μ ReferenceLine label (position:top) isn't clipped. */}
+      <BarChart data={data} layout="vertical" margin={{ top: 18, right: 30, left: 4, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
         <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
-        <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
+        <Tooltip content={<ChartTooltip />} cursor={false} />
         {mean != null && (
           <ReferenceLine x={mean} stroke={CHART.muted} strokeDasharray="4 4"
             label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} />
@@ -134,19 +156,54 @@ function MemberScoreBars({ data, mean, sd, height }) {
 }
 
 // Line chart over months. data: [{ month, value, value2? }]
-function MonthLineChart({ data, height = 170, series, color }) {
+//
+// For per-film series (one point per film) the raw film titles overlap badly on
+// the x-axis. Pass `xKey="groupLabel"` plus `sparseTicks` and the chart will
+// only render a tick the first time each group label (a month/season) appears,
+// keeping the axis clean while every point stays hoverable. `tooltipLabelKey`
+// chooses what the tooltip headline shows (e.g. the film title).
+function MonthLineChart({
+  data, height = 170, series, color,
+  xKey = 'month', sparseTicks = false, tooltipLabelKey,
+}) {
   const c = color || accentColor()
   const lines = series || [{ key: 'value', name: 'Avg', color: c }]
+
+  // When sparse, show the group label only at its first occurrence so each
+  // month/season is labelled once instead of once per film.
+  const firstSeen = useMemo(() => {
+    if (!sparseTicks) return null
+    const seen = new Set()
+    const set = new Set()
+    data.forEach((d, i) => {
+      const k = d[xKey]
+      if (!seen.has(k)) { seen.add(k); set.add(i) }
+    })
+    return set
+  }, [data, xKey, sparseTicks])
+
+  const tickFormatter = sparseTicks
+    ? (val, idx) => (firstSeen && firstSeen.has(idx) ? val : '')
+    : undefined
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-        <XAxis dataKey="month" tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false} interval="preserveStartEnd" />
+        <XAxis
+          dataKey={xKey}
+          tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
+          axisLine={{ stroke: CHART.axisLine }}
+          tickLine={false}
+          interval={sparseTicks ? 0 : 'preserveStartEnd'}
+          tickFormatter={tickFormatter}
+          minTickGap={sparseTicks ? 0 : 5}
+        />
         <YAxis domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
-        <Tooltip content={<ChartTooltip />} cursor={{ stroke: CHART.muted }} />
+        <Tooltip content={<ChartTooltip labelKey={tooltipLabelKey} />} cursor={{ stroke: CHART.muted }} />
         {lines.length > 1 && <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />}
         {lines.map(l => {
-          const emphasize = l.key === 'club'
+          const emphasize = l.emphasize ?? (l.key === 'club')
           return (
             <Line
               key={l.key}
@@ -155,10 +212,12 @@ function MonthLineChart({ data, height = 170, series, color }) {
               name={l.name}
               stroke={l.color}
               strokeWidth={emphasize ? 3 : 1.6}
+              strokeDasharray={l.dashed ? '6 4' : undefined}
               strokeOpacity={lines.length > 1 && !emphasize ? 0.75 : 1}
               dot={{ r: emphasize ? 3 : 2, fill: l.color }}
               activeDot={{ r: 4 }}
               connectNulls
+              isAnimationActive={false}
             />
           )
         })}
@@ -188,26 +247,28 @@ function ExcitementScatter({ data, height = 220, color }) {
 // Horizontal/vertical comparison bar chart. data: [{ name, ...keys }]
 // When `cellFill` is given and there is exactly one series, each bar is coloured
 // per-datum from data[i][cellFill] (used to apply member colours).
-function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name', cellFill }) {
+// `domain` overrides the value-axis range (default [0,10]); pass a tight,
+// data-driven domain so small-magnitude series (e.g. std dev) aren't flattened.
+function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name', cellFill, domain = [0, 10] }) {
   const accent = accentColor()
   const resolved = keys.map((k, i) => ({ ...k, color: k.color || (i === 0 ? accent : CAT_PALETTE[i % CAT_PALETTE.length]) }))
   const perCell = cellFill && resolved.length === 1
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} layout={layout} margin={{ top: 6, right: 14, left: layout === 'vertical' ? 4 : -20, bottom: 0 }}>
+      <BarChart data={data} layout={layout} margin={{ top: 14, right: 14, left: layout === 'vertical' ? 4 : -20, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={layout === 'horizontal'} vertical={layout === 'vertical'} />
         {layout === 'vertical' ? (
           <>
-            <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+            <XAxis type="number" domain={domain} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
             <YAxis type="category" dataKey={labelKey} width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
           </>
         ) : (
           <>
             <XAxis dataKey={labelKey} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false} interval={0} />
-            <YAxis domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
+            <YAxis domain={domain} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
           </>
         )}
-        <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
+        <Tooltip content={<ChartTooltip />} cursor={false} />
         {resolved.length > 1 && <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />}
         {resolved.map(k => (
           <Bar key={k.key} dataKey={k.key} name={k.name} fill={k.color} radius={layout === 'vertical' ? [0, 3, 3, 0] : [3, 3, 0, 0]}>
@@ -219,13 +280,55 @@ function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey
   )
 }
 
-// Donut chart. data: [{ name, value }]
+// Active-slice renderer: the selected slice grows slightly and gets a stroke so
+// it's emphasised on its own — never the whole chart's bounding box.
+function ActiveDonutSlice(props) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props
+  return (
+    <Sector
+      cx={cx} cy={cy}
+      innerRadius={innerRadius}
+      outerRadius={outerRadius + 7}
+      startAngle={startAngle}
+      endAngle={endAngle}
+      fill={fill}
+      stroke="var(--surface)"
+      strokeWidth={2}
+    />
+  )
+}
+
+// Donut chart. data: [{ name, value }]. Clicking a slice emphasises just that
+// slice (expand + stroke); clicking it again clears the selection.
 function DonutChart({ data, height = 200 }) {
+  const [activeIndex, setActiveIndex] = useState(null)
   return (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={78} paddingAngle={2} stroke="none">
-          {data.map((_, i) => <Cell key={i} fill={CAT_PALETTE[i % CAT_PALETTE.length]} />)}
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          innerRadius={48}
+          outerRadius={78}
+          paddingAngle={2}
+          stroke="none"
+          isAnimationActive={false}
+          activeIndex={activeIndex == null ? [] : [activeIndex]}
+          activeShape={(props) => <ActiveDonutSlice {...props} />}
+          onClick={(_, i) => setActiveIndex(prev => (prev === i ? null : i))}
+          style={{ cursor: 'pointer', outline: 'none' }}
+        >
+          {data.map((_, i) => (
+            <Cell
+              key={i}
+              fill={chartColorAt(i)}
+              fillOpacity={activeIndex == null || activeIndex === i ? 1 : 0.4}
+              style={{ outline: 'none' }}
+            />
+          ))}
         </Pie>
         <Tooltip content={<ChartTooltip />} />
         <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />
@@ -237,32 +340,56 @@ function DonutChart({ data, height = 200 }) {
 // Whisker shape for BoxPlotChart. Hoisted to module scope so it isn't recreated
 // on every render; the box color `c` is threaded in as an explicit prop while
 // Recharts injects the geometry props (x, y, width, height, payload).
+//
+// The visible bar spans the FULL min→max range (so it's never zero-width unless a
+// member's scores are all identical). That lets us recover the real pixel scale
+// and place q1/q3/median at their true positions — fixing the bug where members
+// whose q1===q3 collapsed and made every median appear to line up.
 function BoxWhisker({ c, x, y, width, height: bh, payload }) {
   if (!payload) return null
-  const range = payload.q3 - payload.q1
-  const scaleX = range === 0 ? 0 : width / range
+  const span = payload.max - payload.min
   const cx = x + width / 2
-  const px = (val) => range === 0 ? cx : x + (val - payload.q1) * scaleX
   const cy = y + bh / 2
+  // pixels-per-score-unit recovered from the full min→max bar geometry.
+  const scaleX = span === 0 ? 0 : width / span
+  const px = (val) => span === 0 ? cx : x + (val - payload.min) * scaleX
+  const xMin = px(payload.min)
+  const xMax = px(payload.max)
+  const xQ1 = px(payload.q1)
+  const xQ3 = px(payload.q3)
+  const xMed = px(payload.median)
+  const boxTop = y + 3
+  const boxH = Math.max(2, bh - 6)
   return (
-    <g stroke={c} strokeWidth={1.5}>
-      <line x1={px(payload.min)} x2={px(payload.q1)} y1={cy} y2={cy} />
-      <line x1={px(payload.q3)} x2={px(payload.max)} y1={cy} y2={cy} />
-      <line x1={px(payload.min)} x2={px(payload.min)} y1={y + 4} y2={y + bh - 4} />
-      <line x1={px(payload.max)} x2={px(payload.max)} y1={y + 4} y2={y + bh - 4} />
-      <line x1={px(payload.median)} x2={px(payload.median)} y1={y} y2={y + bh} strokeWidth={2.5} stroke="white" />
+    <g>
+      {/* whisker caps + connecting line */}
+      <g stroke={c} strokeWidth={1.5} fill="none">
+        <line x1={xMin} x2={xQ1} y1={cy} y2={cy} />
+        <line x1={xQ3} x2={xMax} y1={cy} y2={cy} />
+        <line x1={xMin} x2={xMin} y1={y + 4} y2={y + bh - 4} />
+        <line x1={xMax} x2={xMax} y1={y + 4} y2={y + bh - 4} />
+      </g>
+      {/* interquartile box */}
+      <rect
+        x={Math.min(xQ1, xQ3)} y={boxTop}
+        width={Math.max(1, Math.abs(xQ3 - xQ1))} height={boxH}
+        fill={c} fillOpacity={0.28} stroke={c} strokeWidth={1.2} rx={2}
+      />
+      {/* median line — themed (was hardcoded white, invisible in light mode) */}
+      <line x1={xMed} x2={xMed} y1={boxTop} y2={boxTop + boxH} strokeWidth={2.5} stroke="var(--text-strong)" />
     </g>
   )
 }
 
-// Box plot rendered with a floating-bar trick: an invisible base bar to q1, then
-// the visible q1→q3 box, plus whiskers/median drawn as SVG via a custom shape.
-// data: [{ name, min, q1, median, q3, max }]
+// Box plot rendered with a floating-bar trick: an invisible base bar to `min`,
+// then a transparent bar spanning min→max whose custom shape draws the IQR box,
+// whiskers and median. data: [{ name, min, q1, median, q3, max }]
 function BoxPlotChart({ data, height, color }) {
   const c = color || accentColor()
   const h = height || Math.max(120, data.length * 42 + 30)
-  // Recharts can't natively box-plot; we draw bars [q1, q3] with a custom layer.
-  const chartData = data.map(d => ({ ...d, base: d.q1, box: d.q3 - d.q1 }))
+  // Recharts can't natively box-plot; the visible bar spans min→max so the shape
+  // always has a real scale to position quartiles within.
+  const chartData = data.map(d => ({ ...d, base: d.min, span: d.max - d.min }))
   return (
     <ResponsiveContainer width="100%" height={h}>
       <BarChart data={chartData} layout="vertical" margin={{ top: 6, right: 16, left: 4, bottom: 0 }}>
@@ -270,7 +397,7 @@ function BoxPlotChart({ data, height, color }) {
         <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
         <Tooltip
-          cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }}
+          cursor={false}
           content={({ active, payload }) => {
             if (!active || !payload?.length) return null
             const d = payload[0].payload
@@ -285,7 +412,7 @@ function BoxPlotChart({ data, height, color }) {
           }}
         />
         <Bar dataKey="base" stackId="a" fill="transparent" isAnimationActive={false} />
-        <Bar dataKey="box" stackId="a" fill={c} fillOpacity={0.28} stroke={c} radius={2} shape={<BoxWhisker c={c} />} isAnimationActive={false} />
+        <Bar dataKey="span" stackId="a" fill="transparent" shape={<BoxWhisker c={c} />} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -295,15 +422,18 @@ function BoxPlotChart({ data, height, color }) {
 // native heatmap). data: { names: [..], matrix: [[r,..],..] } where r in [-1,1]
 // or null.
 function CorrelationHeatmap({ names, matrix }) {
+  // Positive correlation scales with the member's accent (theme-aligned); negative
+  // uses a single off-theme categorical hue so the two directions stay readable on
+  // both light and dark without hardcoding red/green theme surfaces.
   const cellColor = (v) => {
     if (v == null) return 'rgba(var(--fg-rgb), 0.03)'
-    // -1 (red) → 0 (neutral) → +1 (green)
     if (v >= 0) {
       const a = Math.min(1, v) * 0.55 + 0.08
-      return `rgba(52,211,153,${a.toFixed(3)})`
+      return `rgba(var(--accent-rgb, 168,85,247), ${a.toFixed(3)})`
     }
-    const a = Math.min(1, -v) * 0.55 + 0.08
-    return `rgba(248,113,113,${a.toFixed(3)})`
+    const a = Math.min(1, -v) * 0.5 + 0.06
+    // CHART_CATEGORICAL[1] (#fb923c) as the negative-direction hue, alpha-blended.
+    return `rgba(251,146,60,${a.toFixed(3)})`
   }
   const short = (n) => (n || '?').split(' ')[0]
   const cols = `64px repeat(${names.length}, minmax(0,1fr))`
@@ -353,7 +483,7 @@ function PercentileBar({ data, height }) {
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
         <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} unit="%" />
         <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
-        <Tooltip content={<ChartTooltip suffix="%" />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
+        <Tooltip content={<ChartTooltip suffix="%" />} cursor={false} />
         <Bar dataKey="value" name="Percentile" fill={c} radius={[0, 3, 3, 0]}>
           {data.map((d, i) => <Cell key={i} fill={d._fill || c} />)}
         </Bar>
@@ -559,6 +689,48 @@ function SectionLabel({ children }) {
   )
 }
 
+// ─── Info button ─────────────────────────────────────────────────────────────
+// Small "?" affordance with a click-toggle popover explaining a chart. Themed
+// (no hardcoded surfaces); closes on a second click. Used where a stat needs a
+// definition (e.g. Given vs Received vs Club avg).
+function InfoButton({ label = 'What do these mean?', children }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        type="button"
+        aria-label={label}
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '18px', height: '18px', borderRadius: '50%',
+          border: '1px solid rgba(var(--fg-rgb), 0.18)',
+          background: open ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.05)',
+          color: open ? 'var(--text-strong)' : 'var(--text-dim)',
+          fontFamily: "'DM Mono',monospace", fontSize: '11px', lineHeight: 1,
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 0, marginBottom: '12px',
+        }}
+      >
+        ?
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '22px', right: 0, zIndex: 20,
+          width: 'min(260px, 78vw)',
+          background: 'var(--surface, #0d0e15)',
+          border: '1px solid rgba(var(--fg-rgb), 0.12)',
+          borderRadius: '10px', padding: '10px 12px',
+          boxShadow: '0 8px 28px rgba(0,0,0,0.35)',
+          fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', lineHeight: 1.45,
+          color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 'normal',
+        }}>
+          {children}
+        </div>
+      )}
+    </span>
+  )
+}
+
 // ─── Stat Card (small) ───────────────────────────────────────────────────────
 
 function StatCard({ label, value }) {
@@ -590,9 +762,9 @@ function StatCard({ label, value }) {
 
 // ─── Film row card ───────────────────────────────────────────────────────────
 
-function FilmRowCard({ movie, label, sublabel, onClick }) {
+function FilmRowCard({ movie, label, sublabel, onClick, reserveRight = false }) {
   return (
-    <GlassCard onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px' }}>
+    <GlassCard onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', paddingRight: reserveRight ? '44px' : '12px' }}>
       {/* Poster */}
       <div style={{
         flexShrink: 0, width: '48px', height: '68px',
@@ -655,12 +827,12 @@ function ExpandableFilmStat({ movie, label, sublabel, onFilm, expanded, onToggle
   return (
     <div>
       <div style={{ position: 'relative' }}>
-        <FilmRowCard movie={movie} label={label} sublabel={sublabel} onClick={() => onFilm?.(movie)} />
+        <FilmRowCard movie={movie} label={label} sublabel={sublabel} onClick={() => onFilm?.(movie)} reserveRight />
         <button
           onClick={(e) => { e.stopPropagation(); onToggle() }}
           aria-label={expanded ? 'Hide breakdown' : 'Show per-member breakdown'}
           style={{
-            position: 'absolute', top: '50%', right: '8px', transform: 'translateY(-50%)',
+            position: 'absolute', top: '50%', right: '8px', transform: 'translateY(-50%)', zIndex: 2,
             width: '26px', height: '26px', borderRadius: '8px',
             background: expanded ? 'rgba(var(--fg-rgb), 0.09)' : 'rgba(var(--fg-rgb), 0.04)',
             border: '1px solid rgba(var(--fg-rgb), 0.08)',
@@ -1117,6 +1289,8 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
   }, [movies, guesses])
 
   const [showAll, setShowAll] = useState(false)
+  // Which histogram bar the user tapped (null = none) — highlights just that bar.
+  const [histBin, setHistBin] = useState(null)
 
   const stats = useMemo(() => {
     if (!movies.length && !ratings.length) return null
@@ -1133,9 +1307,10 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
     const recommendations = ratings.filter(r => r.recommend_outside_club != null)
     const wouldRecommend = recommendations.filter(r => r.recommend_outside_club === true)
 
-    // Score distribution buckets — bin count scales with N (Sturges/sqrt blend)
-    // so the histogram stays well-shaped as more films are scored.
-    const bucketCounts = buildScoreBins(scores)
+    // Score distribution buckets. A fixed, finer granularity (1.0-wide → 10 bins
+    // across 0–10) reads far better than the coarse auto bin count, which can
+    // collapse a small score set into just 2–5 buckets.
+    const bucketCounts = buildScoreBins(scores, 10)
 
     // Top 5 and bottom 5
     const scoredWithMovies = scored
@@ -1175,8 +1350,9 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
       value: avg(byMonth[mid]),
     }))
 
-    // Individual scores over time (chronological by submission). x = film title
-    // (truncated). Lets you see your raw scoring sequence, not just the monthly avg.
+    // Individual scores over time (chronological by submission). Each point is a
+    // film; the x-axis labels by MONTH (groupLabel) so it stays clean, while the
+    // tooltip shows the actual film title.
     const scoresOverTime = scored
       .map(r => ({ ...r, movie: movieMap[r.movie_id] }))
       .filter(r => r.movie)
@@ -1185,10 +1361,14 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
         return ta - tb
       })
-      .map(r => ({
-        month: r.movie.title.length > 14 ? r.movie.title.slice(0, 13) + '…' : r.movie.title,
-        value: Number(r.score),
-      }))
+      .map(r => {
+        const my = r.movie.month_id ? monthsById[r.movie.month_id]?.month_year : null
+        return {
+          groupLabel: my ? formatMonthLabel(my) : '—',
+          title: r.movie.title,
+          value: Number(r.score),
+        }
+      })
 
     // Me vs club average (comparison bar)
     const clubScores = allRatings.filter(r => r.score != null).map(r => Number(r.score))
@@ -1314,11 +1494,28 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         <StatCard label="Granularity" value={stats.granularity != null ? stats.granularity.toFixed(2) : '—'} />
       </div>
 
-      {/* Score Distribution Bar Chart */}
+      {/* Score Distribution Bar Chart — tap a bar to see its detail */}
       <div>
         <SectionLabel>Score Distribution</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
-          <ScoreHistogram data={stats.bucketCounts} height={160} />
+          <ScoreHistogram
+            data={stats.bucketCounts}
+            height={160}
+            selectedIndex={histBin}
+            onSelect={(i) => setHistBin(prev => (prev === i ? null : i))}
+          />
+          {histBin != null && stats.bucketCounts[histBin] && (
+            <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-dim)', margin: '8px 0 0', textAlign: 'center' }}>
+              {stats.bucketCounts[histBin].label}: {stats.bucketCounts[histBin].count} film{stats.bucketCounts[histBin].count !== 1 ? 's' : ''}
+              {' · '}
+              <button
+                onClick={() => setHistBin(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: "'DM Mono',monospace", fontSize: '10px', padding: 0 }}
+              >
+                clear
+              </button>
+            </p>
+          )}
         </GlassCard>
       </div>
 
@@ -1352,7 +1549,13 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         <SectionLabel>Your Scores Over Time</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.scoresOverTime.length >= 2 ? (
-            <MonthLineChart data={stats.scoresOverTime} height={190} />
+            <MonthLineChart
+              data={stats.scoresOverTime}
+              height={190}
+              xKey="groupLabel"
+              sparseTicks
+              tooltipLabelKey="title"
+            />
           ) : (
             <ChartPlaceholder>Score a few films to see your scoring sequence.</ChartPlaceholder>
           )}
@@ -1749,7 +1952,7 @@ export function calcGivenVsReceived(userId, ratings, moviePickedBy, scoresByMovi
 
 // ─── Members Tab ─────────────────────────────────────────────────────────────
 
-function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
+function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember, onFilm }) {
   // Which member's card is expanded into its detailed plots (null = none).
   const [expandedId, setExpandedId] = useState(null)
 
@@ -1802,7 +2005,9 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
         const granularity = scoringGranularity(scores)
         const distBins = scores.length ? buildScoreBins(scores) : []
 
-        // This member's scores over time (chronological), as a line.
+        // This member's scores over time (chronological), as a line. Points are
+        // films but the x-axis labels by month (groupLabel) for a clean axis; the
+        // tooltip shows the film title.
         const overTime = scoredWithMovies
           .slice()
           .sort((a, b) => {
@@ -1810,10 +2015,14 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
             const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
             return ta - tb
           })
-          .map(r => ({
-            month: r.movie.title.length > 14 ? r.movie.title.slice(0, 13) + '…' : r.movie.title,
-            value: Number(r.score),
-          }))
+          .map(r => {
+            const my = r.movie.month_id ? monthsById[r.movie.month_id]?.month_year : null
+            return {
+              groupLabel: my ? formatMonthLabel(my) : '—',
+              title: r.movie.title,
+              value: Number(r.score),
+            }
+          })
 
         return {
           ...u,
@@ -1832,7 +2041,7 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
       })
       .filter(u => u.avgScore != null)
       .sort((a, b) => b.avgScore - a.avgScore)
-  }, [movies, ratings, users])
+  }, [movies, ratings, users, monthsById])
 
   if (loading) {
     return (
@@ -2043,7 +2252,14 @@ function MembersTab({ movies, ratings, users, loading, onMember, onFilm }) {
                   Scores Over Time
                 </p>
                 {u.overTime.length >= 2 ? (
-                  <MonthLineChart data={u.overTime} height={170} color={u.color} />
+                  <MonthLineChart
+                    data={u.overTime}
+                    height={170}
+                    color={u.color}
+                    xKey="groupLabel"
+                    sparseTicks
+                    tooltipLabelKey="title"
+                  />
                 ) : (
                   <ChartPlaceholder height={80}>Need 2+ scored films.</ChartPlaceholder>
                 )}
@@ -2121,23 +2337,49 @@ function ClubVsTmdbChart({ candidates }) {
   if (failed || rows.length === 0) {
     return <ChartPlaceholder>TMDB ratings unavailable.</ChartPlaceholder>
   }
+  // Scatter: x = TMDB vote, y = club avg. The y = x reference line makes it
+  // obvious which films we rate above vs below the wider community — far cleaner
+  // than a forest of side-by-side bars with overlapping film labels (those now
+  // live only in the tooltip). Points above the line = we liked it more.
+  const above = rows.filter(r => r.club > r.tmdb).length
   return (
     <>
-      <ComparisonBar
-        data={rows}
-        keys={[{ key: 'club', name: 'Club' }, { key: 'tmdb', name: 'TMDB' }]}
-        layout="horizontal"
-        labelKey="name"
-        height={Math.max(220, rows.length * 30 + 40)}
-      />
+      <ResponsiveContainer width="100%" height={260}>
+        <ScatterChart margin={{ top: 10, right: 16, left: -16, bottom: 18 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
+          <XAxis
+            type="number" dataKey="tmdb" name="TMDB" domain={[0, 10]}
+            tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
+            axisLine={{ stroke: CHART.axisLine }} tickLine={false}
+            label={{ value: 'TMDB vote', position: 'insideBottom', offset: -8, fontSize: 9, fill: CHART.axis }}
+          />
+          <YAxis
+            type="number" dataKey="club" name="Club" domain={[0, 10]}
+            tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
+            axisLine={false} tickLine={false} width={34}
+            label={{ value: 'Club avg', angle: -90, position: 'insideLeft', offset: 16, fontSize: 9, fill: CHART.axis }}
+          />
+          <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 10, y: 10 }]} stroke={CHART.muted} strokeDasharray="4 4" ifOverflow="hidden" />
+          <Tooltip content={<ChartTooltip labelKey="name" />} cursor={{ strokeDasharray: '3 3' }} />
+          <Scatter data={rows} isAnimationActive={false}>
+            {rows.map((r, i) => (
+              <Cell key={i} fill={r.club >= r.tmdb ? CHART_CATEGORICAL[0] : CHART_CATEGORICAL[1]} />
+            ))}
+          </Scatter>
+        </ScatterChart>
+      </ResponsiveContainer>
       <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-        Our club average vs the wider TMDB community vote (both on a 0–10 scale)
+        Each dot is a film · above the dashed line = we rated it higher than TMDB ({above}/{rows.length}) · hover for titles
       </p>
     </>
   )
 }
 
 function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
+  // Trend x-axis mode: monthly average vs per-film (chronological watch order).
+  const [trendMode, setTrendMode] = useState('month')
+  // Collapse the (potentially long) per-film spread list to a few rows by default.
+  const [spreadShowAll, setSpreadShowAll] = useState(false)
   const stats = useMemo(() => {
     if (!movies.length) return null
 
@@ -2260,10 +2502,39 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       }
       return row
     })
+    // Club line is the neutral aggregate — thick + dashed so it's unmistakable
+    // regardless of theme/accent, and can't be confused with any member colour.
     const trendSeries = [
-      { key: 'club', name: 'Club avg', color: accentColor() },
-      ...trendMembers.map(u => ({ key: `u_${u.id}`, name: firstLast(u.name), color: memberColor(u.name) || CAT_PALETTE[0] })),
+      { key: 'club', name: 'Club avg', color: CHART_NEUTRAL, emphasize: true, dashed: true },
+      ...trendMembers.map((u, i) => ({ key: `u_${u.id}`, name: firstLast(u.name), color: memberColor(u.name) || chartColorAt(i) })),
     ]
+
+    // ── By-FILM trend variant: x-axis = films in chronological watch order ──
+    // One row per revealed film (ordered by month then watch order = id ASC),
+    // with the film's club avg + each member's score on that film. Lets users see
+    // per-film club-vs-member detail, not just the monthly average.
+    const orderedFilms = []
+    for (const mid of sortedMonths) {
+      const films = [...(monthMovies[mid] || [])]
+        .filter(m => m.scores_revealed)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      for (const m of films) orderedFilms.push({ movie: m, month_id: mid })
+    }
+    const filmTrendData = orderedFilms.map(({ movie: m, month_id }) => {
+      const sc = ratingsByMovie[m.id] || []
+      const clubAvg = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+      const my = monthsById[month_id]?.month_year ?? null
+      const row = {
+        groupLabel: my ? formatMonthLabel(my) : '—',
+        title: m.title,
+        club: clubAvg,
+      }
+      for (const u of trendMembers) {
+        const r = ratings.find(rr => rr.movie_id === m.id && rr.user_id === u.id && rr.score != null)
+        row[`u_${u.id}`] = r ? Number(r.score) : null
+      }
+      return row
+    }).filter(r => r.club != null)
 
     // ── All-time score distribution histogram (0–10 buckets) ──
     const allScores = ratings.filter(r => r.score != null).map(r => Number(r.score))
@@ -2353,9 +2624,6 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       })
       .sort((a, b) => b.value - a.value)
 
-    // ── Genre bar chart data ──
-    const genreDonut = topGenres.map(([name, value]) => ({ name, value }))
-    const genreBarData = topGenres.map(([name, count]) => ({ genre: name, count }))
 
     // ── Average score per release DECADE ──
     // Group films by release decade; average each film's authoritative average.
@@ -2421,6 +2689,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
     return {
       monthAvgs,
       trendData,
+      filmTrendData,
       trendSeries,
       decadeData,
       granularityData,
@@ -2432,8 +2701,6 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
       streaks,
       activeUsers,
       topGenres,
-      genreDonut,
-      genreBarData,
       hasAnyGenreData,
       totalFilmsForGenre,
       avgExcitement,
@@ -2476,19 +2743,58 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
 
       {/* Score Over Time — TREND overlay (club avg + each member) */}
       <div>
-        <SectionLabel>Score Over Time · Club vs Members</SectionLabel>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <SectionLabel>Score Over Time · Club vs Members</SectionLabel>
+          <div style={{ display: 'flex', gap: '4px', background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: '8px', padding: '3px', marginBottom: '12px', flexShrink: 0 }}>
+            {['month', 'film'].map(mode => (
+              <button
+                key={mode}
+                onClick={() => setTrendMode(mode)}
+                style={{
+                  padding: '4px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                  background: trendMode === mode ? 'rgba(var(--fg-rgb), 0.1)' : 'transparent',
+                  color: trendMode === mode ? 'var(--text-strong)' : 'var(--text-faint)',
+                  fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'capitalize',
+                  fontWeight: trendMode === mode ? 600 : 400,
+                }}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </div>
         <GlassCard style={{ padding: '16px 12px' }}>
-          {stats.trendData.length >= 2 ? (
-            <>
-              <MonthLineChart data={stats.trendData} series={stats.trendSeries} height={230} />
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-                Thick accent line = club average · others = each member's monthly average
-              </p>
-            </>
-          ) : stats.trendData.length === 1 ? (
-            <ChartPlaceholder>Only one month of data — need 2+ for a trend.</ChartPlaceholder>
+          {trendMode === 'month' ? (
+            stats.trendData.length >= 2 ? (
+              <>
+                <MonthLineChart data={stats.trendData} series={stats.trendSeries} height={230} />
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                  Thick dashed line = club average · others = each member's monthly average
+                </p>
+              </>
+            ) : stats.trendData.length === 1 ? (
+              <ChartPlaceholder>Only one month of data — need 2+ for a trend.</ChartPlaceholder>
+            ) : (
+              <ChartPlaceholder>No monthly data yet.</ChartPlaceholder>
+            )
           ) : (
-            <ChartPlaceholder>No monthly data yet.</ChartPlaceholder>
+            stats.filmTrendData.length >= 2 ? (
+              <>
+                <MonthLineChart
+                  data={stats.filmTrendData}
+                  series={stats.trendSeries}
+                  height={230}
+                  xKey="groupLabel"
+                  sparseTicks
+                  tooltipLabelKey="title"
+                />
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                  Per film, in watch order · thick dashed line = club average · others = each member
+                </p>
+              </>
+            ) : (
+              <ChartPlaceholder>Need 2+ revealed films for a per-film trend.</ChartPlaceholder>
+            )
           )}
         </GlassCard>
       </div>
@@ -2577,6 +2883,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
               keys={[{ key: 'value', name: 'Std dev' }]}
               layout="vertical"
               cellFill="_fill"
+              /* Auto-scale to the data so member differences are visible — a fixed
+                 0–10 axis flattens std devs that are usually well under 2. */
+              domain={[0, Math.max(0.5, Math.max(...stats.stdDevData.map(d => d.value)) * 1.2)]}
               height={Math.max(120, stats.stdDevData.length * 30 + 20)}
             />
           ) : (
@@ -2590,33 +2899,54 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
         <SectionLabel>Per-Film Score Spread</SectionLabel>
         <GlassCard style={{ padding: '4px 0' }}>
           {stats.perMovieStats.length > 0 ? (
-            stats.perMovieStats.slice(0, 12).map((m, i) => (
-              <div key={m.id} style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '10px 16px',
-                borderBottom: i < Math.min(12, stats.perMovieStats.length) - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
-              }}>
-                <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {m.title}
-                </p>
-                <span style={{ flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)' }}>
-                  μ {fmt(m.mean)}
-                </span>
-                <span style={{
-                  flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '11px',
-                  color: (m.sd ?? 0) >= 1.5 ? '#f87171' : (m.sd ?? 0) <= 0.6 ? '#86efac' : 'var(--text-dim)',
-                  minWidth: '52px', textAlign: 'right',
+            (() => {
+              const list = spreadShowAll ? stats.perMovieStats : stats.perMovieStats.slice(0, 8)
+              return list.map((m, i) => (
+                <div key={m.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '10px 16px',
+                  borderBottom: i < list.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
                 }}>
-                  σ {fmt(m.sd)}
-                </span>
-              </div>
-            ))
+                  <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.title}
+                  </p>
+                  <span style={{ flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)' }}>
+                    μ {fmt(m.mean)}
+                  </span>
+                  {/* σ colour encodes spread: high (divisive) = warm, low (unanimous) = cool, mid = neutral. */}
+                  <span style={{
+                    flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '11px',
+                    color: (m.sd ?? 0) >= 1.5 ? CHART_CATEGORICAL[1] : (m.sd ?? 0) <= 0.6 ? CHART_CATEGORICAL[2] : 'var(--text-dim)',
+                    minWidth: '52px', textAlign: 'right',
+                  }}>
+                    σ {fmt(m.sd)}
+                  </span>
+                </div>
+              ))
+            })()
           ) : (
             <div style={{ padding: '16px' }}>
               <ChartPlaceholder height={70}>Need at least 2 member scores on a film.</ChartPlaceholder>
             </div>
           )}
         </GlassCard>
+        {stats.perMovieStats.length > 0 && (
+          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '6px 2px 0' }}>
+            σ = score spread across members · higher = more divisive, lower = more unanimous
+          </p>
+        )}
+        {stats.perMovieStats.length > 8 && (
+          <button
+            onClick={() => setSpreadShowAll(v => !v)}
+            style={{
+              marginTop: '10px', width: '100%', padding: '10px', borderRadius: '10px',
+              border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'transparent',
+              color: 'var(--text-dim)', fontFamily: "'DM Sans',sans-serif", fontSize: '13px', cursor: 'pointer',
+            }}
+          >
+            {spreadShowAll ? 'Show less' : `Show all ${stats.perMovieStats.length} films`}
+          </button>
+        )}
       </div>
 
       {/* Picker Power Rankings */}
@@ -2661,14 +2991,28 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
 
       {/* Avg Given vs Received vs Club */}
       <div>
-        <SectionLabel>Given vs. Received vs. Club Avg</SectionLabel>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+          <SectionLabel>Given vs. Received vs. Club Avg</SectionLabel>
+          <InfoButton label="What do Given, Received and Club avg mean?">
+            <strong style={{ color: 'var(--text-strong)' }}>Given</strong> = avg score this member gives others' films.<br />
+            <strong style={{ color: 'var(--text-strong)' }}>Received</strong> = avg score this member's own picks get from everyone.<br />
+            <strong style={{ color: 'var(--text-strong)' }}>Club avg</strong> = overall baseline across all scores.
+          </InfoButton>
+        </div>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.givenReceived.length > 0 ? (
             <ComparisonBar
               data={stats.givenReceived}
               keys={stats.havePickerData
-                ? [{ key: 'given', name: 'Given' }, { key: 'received', name: 'Received' }, { key: 'club', name: 'Club avg' }]
-                : [{ key: 'given', name: 'Given' }, { key: 'club', name: 'Club avg' }]}
+                ? [
+                    { key: 'given', name: 'Given', color: CHART_CATEGORICAL[0] },
+                    { key: 'received', name: 'Received', color: CHART_CATEGORICAL[1] },
+                    { key: 'club', name: 'Club avg', color: CHART_NEUTRAL },
+                  ]
+                : [
+                    { key: 'given', name: 'Given', color: CHART_CATEGORICAL[0] },
+                    { key: 'club', name: 'Club avg', color: CHART_NEUTRAL },
+                  ]}
               layout="horizontal"
               labelKey="name"
               height={210}
@@ -2711,44 +3055,6 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
             <CorrelationHeatmap names={stats.corrNames} matrix={stats.corrMatrix} />
           ) : (
             <ChartPlaceholder>Need at least 2 members with overlapping scores.</ChartPlaceholder>
-          )}
-        </GlassCard>
-      </div>
-
-      {/* Genre Breakdown */}
-      <div>
-        <SectionLabel>Genre Breakdown</SectionLabel>
-        <GlassCard style={{ padding: '16px 12px' }}>
-          {stats.genreBarData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={stats.genreBarData} margin={{ top: 8, right: 8, left: -22, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-                <XAxis
-                  dataKey="genre"
-                  tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
-                  axisLine={{ stroke: CHART.axisLine }}
-                  tickLine={false}
-                  interval={0}
-                  angle={-35}
-                  textAnchor="end"
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  content={<ChartTooltip suffix=" films" />}
-                  cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }}
-                />
-                <Bar dataKey="count" name="Films" fill={accentColor()} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : stats.hasAnyGenreData === false ? (
-            <ChartPlaceholder>Run genre backfill in Admin to see this chart.</ChartPlaceholder>
-          ) : (
-            <ChartPlaceholder>No revealed films with genre data yet.</ChartPlaceholder>
           )}
         </GlassCard>
       </div>
@@ -2859,12 +3165,14 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {} }) {
         </GlassCard>
       </div>
 
-      {/* Genre Breakdown */}
+      {/* Genres — single genre visualization (Genre Breakdown duplicate removed) */}
       <div>
-        <SectionLabel>Top Genres</SectionLabel>
+        <SectionLabel>Genres</SectionLabel>
         <GlassCard style={{ padding: '16px' }}>
           {stats.topGenres.length === 0 ? (
-            <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>No genre data yet.</p>
+            <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
+              {stats.hasAnyGenreData === false ? 'Run genre backfill in Admin to see this chart.' : 'No genre data yet.'}
+            </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {stats.topGenres.map(([genre, count]) => {
@@ -3101,6 +3409,11 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
     )
   }
 
+  // Disambiguated labels — there are two Ryans, so a bare first name ("Ryan vs
+  // Ryan") is ambiguous. firstLast() → "Ryan M." / "Ryan B." everywhere.
+  const nameA = userA ? firstLast(userA.name) : '—'
+  const nameB = userB ? firstLast(userB.name) : '—'
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
@@ -3148,7 +3461,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
               <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', marginBottom: '10px' }}>
                 <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
                   <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {userA?.name.split(' ')[0]}
+                    {nameA}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
                     {fmt(h2h.avgA)}
@@ -3159,7 +3472,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
                   <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {userB?.name.split(' ')[0]}
+                    {nameB}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '2.2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
                     {fmt(h2h.avgB)}
@@ -3171,8 +3484,8 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                   {Math.abs(h2h.avgA - h2h.avgB) < 0.005
                     ? 'Identical average scores.'
                     : h2h.avgA > h2h.avgB
-                      ? `${userA?.name} scores higher on average.`
-                      : `${userB?.name} scores higher on average.`}
+                      ? `${nameA} scores higher on average.`
+                      : `${nameB} scores higher on average.`}
                 </p>
               )}
             </GlassCard>
@@ -3185,7 +3498,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
                   <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {userA?.name.split(' ')[0]}
+                    {nameA}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
                     {h2h.record.winsA}
@@ -3201,7 +3514,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                 </div>
                 <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
                   <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {userB?.name.split(' ')[0]}
+                    {nameB}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
                     {h2h.record.winsB}
@@ -3232,14 +3545,14 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
 
           {/* Per-film score delta */}
           <div>
-            <SectionLabel>Score Delta Per Film ({userA?.name.split(' ')[0]} − {userB?.name.split(' ')[0]})</SectionLabel>
+            <SectionLabel>Score Delta Per Film ({nameA} − {nameB})</SectionLabel>
             <GlassCard style={{ padding: '16px 12px' }}>
               <ResponsiveContainer width="100%" height={Math.max(160, h2h.deltaData.length * 22 + 30)}>
                 <BarChart data={h2h.deltaData} layout="vertical" margin={{ top: 6, right: 16, left: 4, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
                   <XAxis type="number" domain={[-10, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 9, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} interval={0} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(var(--fg-rgb), 0.04)' }} />
+                  <Tooltip content={<ChartTooltip />} cursor={false} />
                   <ReferenceLine x={0} stroke={CHART.muted} />
                   <Bar dataKey="delta" name="Δ" radius={[0, 3, 3, 0]}>
                     {h2h.deltaData.map((d, i) => (
@@ -3249,7 +3562,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                 </BarChart>
               </ResponsiveContainer>
               <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-                Bars right = {userA?.name.split(' ')[0]} scored higher · left = {userB?.name.split(' ')[0]} scored higher
+                Bars right = {nameA} scored higher · left = {nameB} scored higher
               </p>
             </GlassCard>
           </div>
@@ -3550,6 +3863,22 @@ export default function Stats() {
 
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
+        /* Kill the stray "bounding box" Recharts draws on hover/keyboard-focus:
+           the SVG surface, its wrappers, and individual sectors/bars/dots all
+           receive a browser focus outline that reads as a rectangle around the
+           whole graph. We never want that — only the hovered datum should react. */
+        .recharts-wrapper:focus,
+        .recharts-wrapper *:focus,
+        .recharts-surface:focus,
+        .recharts-surface *:focus,
+        .recharts-sector:focus,
+        .recharts-layer:focus,
+        .recharts-bar-rectangle:focus,
+        .recharts-dot:focus,
+        .recharts-pie *:focus {
+          outline: none !important;
+        }
+        .recharts-wrapper, .recharts-surface { outline: none !important; }
       `}</style>
     </div>
   )

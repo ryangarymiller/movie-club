@@ -7,6 +7,7 @@ import CommentThread from '../components/CommentThread'
 import GuessThePicker from '../components/GuessThePicker'
 import VetoControl from '../components/VetoControl'
 import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
+import AwardsBadges from '../components/AwardsBadges'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 import { memberColor, MEMBER_COLORS } from '../lib/colors'
 
@@ -130,10 +131,12 @@ function SortButton({ label, active, onClick }) {
 
 // ─── PosterCard ───────────────────────────────────────────────────────────────
 
-function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
+function PosterCard({ movie, vault = false, onClick, pickerBorderColor, showStddev = false }) {
   const score = movie.historical_avg_score
   const [hovered, setHovered] = useState(false)
   const scored = score != null
+  // In divisive/unanimous context, surface the film's score spread (σ) on the card.
+  const stddev = showStddev ? filmStddev(movie) : null
 
   return (
     <div
@@ -220,6 +223,25 @@ function PosterCard({ movie, vault = false, onClick, pickerBorderColor }) {
             }}>?</span>
           )}
         </div>
+
+        {/* Stddev (σ) badge — shown only in the divisive/unanimous sort context */}
+        {stddev != null && (
+          <div style={{ position: 'absolute', bottom: '6px', left: '6px' }}>
+            <span style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.65)',
+              color: 'rgba(var(--fg-rgb), 0.55)',
+              border: '1px solid rgba(var(--fg-rgb), 0.12)',
+              display: 'block',
+            }}>
+              σ {stddev.toFixed(2)}
+            </span>
+          </div>
+        )}
 
         {/* Vault star badge */}
         {vault && (
@@ -313,7 +335,7 @@ function PickerLegend({ movies, userById }) {
 
 // ─── PosterGrid ───────────────────────────────────────────────────────────────
 
-function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSelect, userById = {} }) {
+function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSelect, userById = {}, showStddev = false }) {
   return (
     <div>
       <div
@@ -338,6 +360,7 @@ function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSele
                   vault={vault || isVault(m)}
                   onClick={onSelect}
                   pickerBorderColor={borderColor}
+                  showStddev={showStddev}
                 />
               )
             })
@@ -490,8 +513,29 @@ function PlotSummary({ text }) {
   )
 }
 
+// Resolve a clickable "where to watch" URL for a provider.
+//  - Prefer the TMDB/JustWatch deep link for the film (passed as `watchLink`).
+//  - Otherwise fall back to a sensible search URL for the provider + film title.
+function providerWatchUrl(provider, watchLink, title) {
+  if (watchLink) return watchLink
+  const name = (provider?.provider_name ?? '').toLowerCase()
+  const t = title ?? ''
+  const q = encodeURIComponent(t)
+  // Known platforms get a direct in-app search; everything else gets a Google
+  // "<provider> <title>" search so the link always lands somewhere useful.
+  if (name.includes('netflix')) return `https://www.netflix.com/search?q=${q}`
+  if (name.includes('disney')) return `https://www.disneyplus.com/search?q=${q}`
+  if (name.includes('hulu')) return `https://www.hulu.com/search?q=${q}`
+  if (name.includes('max') || name.includes('hbo')) return `https://play.max.com/search?q=${q}`
+  if (name.includes('paramount')) return `https://www.paramountplus.com/search/?query=${q}`
+  if (name.includes('peacock')) return `https://www.peacocktv.com/search?q=${q}`
+  if (name.includes('apple')) return `https://tv.apple.com/search?term=${q}`
+  if (name.includes('prime') || name.includes('amazon')) return `https://www.amazon.com/s?k=${q}&i=instant-video`
+  return `https://www.google.com/search?q=${encodeURIComponent(`${provider?.provider_name ?? ''} ${t}`.trim())}`
+}
+
 // Hoisted out of StreamingSection so it isn't recreated on every render.
-function ProviderRow({ label, items }) {
+function ProviderRow({ label, items, watchLink, title }) {
   if (!items || items.length === 0) return null
   return (
     <div style={{ marginBottom: '12px' }}>
@@ -500,7 +544,14 @@ function ProviderRow({ label, items }) {
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
         {items.map(p => (
-          <div key={p.provider_id ?? p.provider_name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <a
+            key={p.provider_id ?? p.provider_name}
+            href={providerWatchUrl(p, watchLink, title)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Watch on ${p.provider_name}`}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
+          >
             {p.logo_path ? (
               <img
                 src={`https://image.tmdb.org/t/p/w45${p.logo_path}`}
@@ -522,14 +573,14 @@ function ProviderRow({ label, items }) {
                 {p.provider_name}
               </span>
             )}
-          </div>
+          </a>
         ))}
       </div>
     </div>
   )
 }
 
-function StreamingSection({ providers }) {
+function StreamingSection({ providers, title }) {
   // providers may be stored in three shapes:
   //  1. full TMDB response: { results: { US: {flatrate,rent,buy} } }
   //  2. region-keyed:       { US: {flatrate,rent,buy} }
@@ -543,6 +594,8 @@ function StreamingSection({ providers }) {
   const flatrate = us?.flatrate ?? []
   const rent = us?.rent ?? []
   const buy = us?.buy ?? []
+  // TMDB exposes a JustWatch deep link for the film at the region level.
+  const watchLink = us?.link ?? null
 
   const hasAny = flatrate.length > 0 || rent.length > 0 || buy.length > 0
 
@@ -560,9 +613,9 @@ function StreamingSection({ providers }) {
   return (
     <div>
       <SectionLabel>Where to Watch</SectionLabel>
-      <ProviderRow label="Stream" items={flatrate} />
-      <ProviderRow label="Rent" items={rent} />
-      <ProviderRow label="Buy" items={buy} />
+      <ProviderRow label="Stream" items={flatrate} watchLink={watchLink} title={title} />
+      <ProviderRow label="Rent" items={rent} watchLink={watchLink} title={title} />
+      <ProviderRow label="Buy" items={buy} watchLink={watchLink} title={title} />
     </div>
   )
 }
@@ -1107,6 +1160,11 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const myUserId = profile?.id
   const myRating = ratings.find(r => r.user_id === myUserId)
   const myHasSubmitted = myRating != null
+  // A rating row can exist with ONLY a pre-watch excitement value and score=NULL.
+  // The backfill CTA must gate on the FINAL SCORE, not on row existence, so an
+  // excitement-only row never traps the viewer out of submitting their score.
+  const myHasFinalScore = myRating?.score != null
+  const myHasExcitementOnly = !myHasFinalScore && myRating?.pre_watch_excitement != null
 
   // Build user lookup
   const userById = {}
@@ -1354,7 +1412,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
           {/* ── SUBMIT YOUR SCORE (backfill CTA) ──
               Only after the detail load confirms there's genuinely no score for the
               viewer — never while the overlay is still loading (ratings empty mid-fetch). */}
-          {!detailLoading && m.scores_revealed && !myHasSubmitted && (
+          {!detailLoading && m.scores_revealed && !myHasFinalScore && (
             <>
               <Divider />
               <div style={{
@@ -1379,7 +1437,9 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   color: 'var(--text-dim)',
                   margin: '0 0 12px',
                 }}>
-                  You haven't scored this film yet.
+                  {myHasExcitementOnly
+                    ? 'You set your excitement — submit your final score.'
+                    : "You haven't scored this film yet."}
                 </p>
                 <button
                   onClick={() => setShowScoreModal(true)}
@@ -1494,49 +1554,15 @@ export function FilmDetailOverlay({ movie, onClose }) {
           {filmAwards.length > 0 && (
             <>
               <Divider />
-              <div>
-                <SectionLabel>Awards</SectionLabel>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {filmAwards.map((a, i) => (
-                    <div
-                      key={`${a.scope}-${a.key}-${a.periodRef ?? i}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        background: 'rgba(var(--fg-rgb), 0.03)',
-                        border: '1px solid rgba(var(--fg-rgb), 0.06)',
-                      }}
-                    >
-                      <span style={{ fontSize: '18px', flexShrink: 0 }}>{a.emoji}</span>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <p style={{
-                          fontFamily: "'DM Sans', sans-serif",
-                          fontSize: '14px',
-                          color: 'var(--text-strong)',
-                          margin: 0,
-                          lineHeight: 1.2,
-                        }}>
-                          {a.label}
-                        </p>
-                        {a.period && (
-                          <p style={{
-                            fontFamily: "'DM Mono', monospace",
-                            fontSize: '10px',
-                            letterSpacing: '0.08em',
-                            color: 'rgba(var(--fg-rgb), 0.3)',
-                            margin: '3px 0 0',
-                          }}>
-                            {a.period}{a.metric ? ` · ${a.metric}` : ''}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <AwardsBadges
+                awards={filmAwards}
+                onAwardClick={(award) => {
+                  const scope = award.scope ?? ''
+                  const key = award.award_key ?? award.key ?? ''
+                  const ref = award.period_ref ?? award.periodRef ?? ''
+                  navigate(`/awards?scope=${scope}&key=${key}&ref=${encodeURIComponent(ref || '')}`)
+                }}
+              />
             </>
           )}
 
@@ -1639,7 +1665,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
 
           {/* ── STREAMING ── */}
           <Divider />
-          <StreamingSection providers={streamingProviders} />
+          <StreamingSection providers={streamingProviders} title={m.title} />
 
           {/* ── PLOT ── */}
           {m.plot_summary && (
@@ -1955,7 +1981,13 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
         </div>
       </div>
 
-      <PosterGrid movies={sorted} loading={loading} onSelect={onSelect} userById={userById} />
+      <PosterGrid
+        movies={sorted}
+        loading={loading}
+        onSelect={onSelect}
+        userById={userById}
+        showStddev={sort === 'divisive' || sort === 'unanimous'}
+      />
     </div>
   )
 }
@@ -2132,7 +2164,13 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById }) {
             )}
           </div>
 
-          <PosterGrid movies={sMovies} loading={false} onSelect={onSelect} userById={userById} />
+          <PosterGrid
+            movies={sMovies}
+            loading={false}
+            onSelect={onSelect}
+            userById={userById}
+            showStddev={filmSort === 'divisive' || filmSort === 'unanimous'}
+          />
         </div>
       ))}
     </div>

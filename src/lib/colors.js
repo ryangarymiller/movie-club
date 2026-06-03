@@ -24,3 +24,26 @@ export const USER_COLOR_PALETTE = [
   '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
   '#f43f5e', '#64748b', '#a16207', '#7c3aed',
 ]
+
+// Categorical palette for non-member chart series (secondary/tertiary bars, TMDB vs club,
+// correlation scales, etc.). 8 hues spread across the wheel, distinct from each other and
+// from the 5 member colors above. Works on both light and dark backgrounds.
+export const CHART_CATEGORICAL = [
+  '#38bdf8', // sky-400      — light blue (distinct from Chris's #3b82f6)
+  '#fb923c', // orange-400   — warm orange (distinct from Zack's amber #f59e0b)
+  '#4ade80', // green-400    — lime-green (distinct from Andrew's emerald #10b981)
+  '#e879f9', // fuchsia-400  — magenta (distinct from Ryan M's purple #a855f7)
+  '#facc15', // yellow-400   — golden yellow
+  '#2dd4bf', // teal-400     — teal/cyan (distinct from #14b8a6 palette entry)
+  '#f472b6', // pink-400     — pink (lighter than Ryan B's rose #f43f5e)
+  '#a3e635', // lime-400     — chartreuse
+]
+
+// Neutral single-series color for the "club average" aggregate line/bar.
+// CSS token so it automatically adapts to light/dark mode (dark-on-light, light-on-dark).
+export const CHART_NEUTRAL = 'var(--text-strong)'
+
+// Safe categorical indexer — wraps around if i >= palette length.
+export function chartColorAt(i) {
+  return CHART_CATEGORICAL[i % CHART_CATEGORICAL.length]
+}

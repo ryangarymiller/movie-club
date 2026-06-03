@@ -123,6 +123,8 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
   const [targetId, setTargetId] = useState('')
   const [activeDate, setActiveDate] = useState('')
   const [busy, setBusy] = useState(false)
+  // Post-activation confirmation state
+  const [activationResult, setActivationResult] = useState(null) // null | { filmCount, deadlinesSet, statusConfirmed }
 
   const target = months.find(m => m.id === targetId) || null
 
@@ -136,6 +138,7 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
   function onSelectMonth(id) {
     setTargetId(id)
     setActiveDate(defaultActiveDate(months.find(m => m.id === id)))
+    setActivationResult(null)
   }
 
   async function saveActiveDate() {
@@ -150,6 +153,7 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
   async function activateNow() {
     if (!target) return
     setBusy(true)
+    setActivationResult(null)
     // 1) Set status + active_date.
     const { error: updErr } = await supabase
       .from('months')
@@ -162,11 +166,26 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
     }
     // 2) Materialize upcoming picks into movies + split deadlines evenly by film count.
     const { error: rpcErr } = await supabase.rpc('materialize_and_split_month', { p_month_id: target.id })
-    setBusy(false)
     if (rpcErr) {
+      setBusy(false)
       setError('Month set active, but materialize/split failed: ' + rpcErr.message)
+      onRefresh()
+      return
+    }
+    // 3) Re-fetch to verify status and count films/deadlines.
+    const [{ data: verifiedMonth }, { data: newFilms }] = await Promise.all([
+      supabase.from('months').select('status').eq('id', target.id).single(),
+      supabase.from('movies').select('id, scoring_deadline').eq('month_id', target.id),
+    ])
+    setBusy(false)
+    const filmCount = newFilms?.length ?? 0
+    const deadlinesSet = (newFilms ?? []).filter(f => f.scoring_deadline).length
+    const statusConfirmed = verifiedMonth?.status === 'active'
+    setActivationResult({ filmCount, deadlinesSet, statusConfirmed, monthYear: target.month_year })
+    if (!statusConfirmed) {
+      setError(`Activation may not have persisted — status is still "${verifiedMonth?.status ?? 'unknown'}". Check RLS on months.`)
     } else {
-      setSuccess(`${target.month_year} is now active — picks materialized and deadlines split.`)
+      setSuccess(`${target.month_year} is now ACTIVE — ${filmCount} film${filmCount !== 1 ? 's' : ''} materialized, ${deadlinesSet} deadline${deadlinesSet !== 1 ? 's' : ''} split.`)
     }
     onRefresh()
   }
@@ -232,6 +251,33 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
           Save active date only
         </button>
       </div>
+
+      {/* Post-activation confirmation panel */}
+      {activationResult && (
+        <div style={{
+          marginTop: '14px', padding: '12px 14px', borderRadius: '10px',
+          background: activationResult.statusConfirmed ? 'rgba(20,83,45,0.35)' : 'rgba(69,10,10,0.4)',
+          border: `1px solid ${activationResult.statusConfirmed ? '#166534' : '#7f1d1d'}`,
+        }}>
+          {activationResult.statusConfirmed ? (
+            <>
+              <p style={{ color: '#4ade80', fontSize: '13px', fontWeight: 600, margin: '0 0 6px', fontFamily: "'DM Sans',sans-serif" }}>
+                {activationResult.monthYear} is now ACTIVE
+              </p>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <Badge color="green">{activationResult.filmCount} film{activationResult.filmCount !== 1 ? 's' : ''} materialized</Badge>
+                <Badge color={activationResult.deadlinesSet === activationResult.filmCount && activationResult.filmCount > 0 ? 'green' : 'yellow'}>
+                  {activationResult.deadlinesSet}/{activationResult.filmCount} deadlines split
+                </Badge>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: '#f87171', fontSize: '13px', margin: 0, fontFamily: "'DM Sans',sans-serif" }}>
+              Warning: activation may not have persisted — status did not verify as &quot;active&quot;. Check DB / RLS on months table.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -418,6 +464,7 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
   const [saving, setSaving] = useState(false)
   const [refreshingId, setRefreshingId] = useState(null)
   const [refetchingId, setRefetchingId] = useState(null)
+  const [autoFetchingGenreId, setAutoFetchingGenreId] = useState(null)
   const [backfillStatus, setBackfillStatus] = useState(null) // null | 'running' | 'done'
   const [backfillMsg, setBackfillMsg] = useState('')
 
@@ -437,7 +484,7 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
   })
   const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a))
 
-  function startEdit(movie) {
+  async function startEdit(movie) {
     setEditingId(movie.id)
     let deadlineLocal = ''
     if (movie.scoring_deadline) {
@@ -445,6 +492,7 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
       const pad = n => String(n).padStart(2, '0')
       deadlineLocal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
     }
+    const existingGenre = Array.isArray(movie.genre) ? movie.genre.join(', ') : (movie.genre ?? '')
     setEditForm({
       scoring_deadline: deadlineLocal,
       scores_revealed: movie.scores_revealed ?? false,
@@ -458,8 +506,34 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
       director: movie.director ?? '',
       runtime: movie.runtime ?? '',
       tmdb_id: movie.tmdb_id ?? '',
-      genre: Array.isArray(movie.genre) ? movie.genre.join(', ') : (movie.genre ?? ''),
+      genre: existingGenre,
     })
+
+    // Auto-fetch genre from TMDB if genre is missing and we have a TMDB ID.
+    if (!existingGenre && movie.tmdb_id) {
+      setAutoFetchingGenreId(movie.id)
+      try {
+        const tmdbToken = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
+        const resp = await fetch(
+          `https://api.themoviedb.org/3/movie/${movie.tmdb_id}`,
+          { headers: { Authorization: `Bearer ${tmdbToken}` } }
+        )
+        if (resp.ok) {
+          const data = await resp.json()
+          const genreNames = (data.genres ?? []).map(g => g.name)
+          if (genreNames.length > 0) {
+            setEditForm(f => ({ ...f, genre: genreNames.join(', ') }))
+            // Persist immediately so it's saved even if the admin just closes the editor.
+            await supabase.from('movies').update({ genre: genreNames }).eq('id', movie.id)
+          }
+        }
+      } catch (e) {
+        // Non-fatal — the admin can still fill it in manually or use Re-fetch from TMDB.
+        console.warn('[auto-genre] fetch failed for', movie.title, e)
+      } finally {
+        setAutoFetchingGenreId(null)
+      }
+    }
   }
 
   async function saveEdit(movieId) {
@@ -929,20 +1003,29 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
                       </div>
 
                       <div>
-                        <Label>Genres (comma-separated)</Label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Label>Genres (comma-separated)</Label>
+                          {autoFetchingGenreId === movie.id && (
+                            <span style={{ fontSize: '9px', color: 'var(--text-faint)', fontFamily: "'DM Mono',monospace" }}>
+                              fetching from TMDB…
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="text"
                           value={editForm.genre}
                           onChange={e => setEditForm(f => ({ ...f, genre: e.target.value }))}
                           placeholder="e.g. Drama, Thriller, Crime"
+                          disabled={autoFetchingGenreId === movie.id}
                           style={{
                             display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
                             background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
-                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box'
+                            color: 'var(--text-strong)', fontSize: '13px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box',
+                            opacity: autoFetchingGenreId === movie.id ? 0.5 : 1,
                           }}
                         />
                         <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '4px', fontFamily: "'DM Mono',monospace" }}>
-                          Stored as an array. Separate multiple genres with commas.
+                          Stored as an array. Separate multiple genres with commas. Auto-fetched from TMDB when empty.
                         </p>
                       </div>
 
@@ -1181,7 +1264,7 @@ function InviteCard({ onRefresh, currentProfile }) {
             <Label>Name</Label>
             <input
               type="text"
-              placeholder="e.g. Alex Jones"
+              placeholder="e.g. Jordan Smith"
               value={name}
               onChange={e => setName(e.target.value)}
               style={{ ...inputStyle, marginTop: '6px' }}
@@ -1192,7 +1275,7 @@ function InviteCard({ onRefresh, currentProfile }) {
             <Label>Email</Label>
             <input
               type="email"
-              placeholder="e.g. alex@example.com"
+              placeholder="e.g. jordan@example.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
               style={{ ...inputStyle, marginTop: '6px' }}
