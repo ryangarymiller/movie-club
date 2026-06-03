@@ -2,7 +2,71 @@
 
 > Living document. Update status as work completes.
 > Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
-> Last updated: 2026-06-02 (session 6)
+> Last updated: 2026-06-03 (session 8)
+
+---
+
+## Session 8 — Browser-test fixes & features
+
+### OP role & admin user management
+- [x] **`users.is_op` boolean** — new column; Ryan Miller is the sole op. An op IS an admin (role stays 'admin') plus the exclusive power to promote/demote other members. Admin Members tab now shows Op / Admin / Member tiers with promote/demote UI (op-only).
+- [x] **Admin user management RLS** — admins can update any `users` row; fixes Deactivate not persisting. Test account, when deactivated, drops from all member lists.
+
+### Discussion redesign (Reddit-style threads)
+- [x] **Multi-review model** — a user may post multiple reviews per film; reviews are thread roots (supersedes "one primary review per user + flat comments" model).
+- [x] **`comments.review_id`** — comments now nest under a review (and under each other via `parent_comment_id`). DB migration applied.
+- [x] **Polymorphic reactions** — `reactions` table gains `target_type` ('review'|'comment') + `target_id`; works on both reviews and comments.
+- [x] **Up/down votes** — new `votes` table (`target_type`, `target_id`, `user_id`, `value` ±1; one per user per target) on both reviews and comments.
+- [x] **15-min edit window; member delete own / admin delete any; @mentions preserved** — carried forward into new model.
+- [x] Film overlay renders a single `<CommentThread>`; the old separate Reviews section removed.
+
+### Pick → film lifecycle
+- [x] **`months.active_date`** — new column (date the month goes active; defaults to 1st; admin-adjustable).
+- [x] **`materialize_and_split_month(p_month_id)` RPC** — SECURITY DEFINER; materializes upcoming picks into `movies` for the active month and auto-splits scoring deadlines evenly by film count.
+- [x] **Admin "Activate / Trigger now" button** — calls the RPC on demand.
+- [x] **Picks tab self-pick** — your own pick shown inline (clickable → justification + change-pick); picks flow through to Films + Deadlines tabs. June is now the active month.
+- [x] **Deadlines computed/displayed; enforcement deferred** — display-only until launch/July (Phase 4).
+
+### User colors & theme
+- [x] **`src/lib/colors.js`** — centralized `MEMBER_COLORS` map, `USER_COLOR_PALETTE` (20 distinct options), `memberColor()` helper. Ryan Miller → purple `#a855f7` (distinct from Chris's blue). Profile color picker strikes out taken colors.
+- [x] **Light/dark mode root-cause fix** — Tailwind v4 was defaulting to `prefers-color-scheme`; fixed by binding `dark:` variant to the `.dark` class. Theme now actually works.
+- [x] **Modal safety** — global CSS classes `.mc-modal-backdrop` / `.mc-modal-panel` ensure modals never overflow the viewport top. Applied to ScoreModal (mobile keyboard/off-screen fix).
+
+### Films page
+- [x] **Sort options expanded** — Most/Least Recent, Highest/Lowest Rated, Most/Least Divisive, By Member. "Most Recent" orders months descending and reverses within-month watch order (latest-watched first).
+- [x] **By Season tab sortable** — sort applies per-season; seasons orderable newest/oldest.
+- [x] **Genre deep-link** — genre tags link to All Films filtered by that genre (genre filter added).
+- [x] **Vault badge** — links to the Vault tab.
+- [x] **"Pickers" legend** renamed "Club Members" with profile links.
+- [x] **History tab mobile grid** overflow fixed; streaming providers now display correctly (flat-shape read fix).
+- [x] **Member names/avatars in overlay** — link to /profile/:id.
+
+### Stats page
+- [x] **Posters open film overlay** everywhere in Stats.
+- [x] **Clicking a stat expands a chart** — per-member bars, mean/stddev for divisive/unanimous.
+- [x] **"First L." member names** applied throughout Stats.
+- [x] **Dynamic histogram bins**; trend charts (scores over time, avg/month).
+- [x] **Expandable per-member cards**; Club "score over time" is now a trend line (club avg + members).
+- [x] **New stats** — avg score per release decade, per-user scoring granularity, per-user std dev, per-movie breakdown, club-vs-TMDB comparison (uses TMDB `vote_average`).
+
+### Smart linking throughout
+- [x] Films open the overlay and members open /profile/:id across Home, Stats, Awards, Films.
+- [x] Home "all caught up" box links to Stats Me tab; Home stats link to film/Films page.
+- [x] Awards click-through verified; "Zack joined late" note shows only on Winter 2026.
+
+### ScoreModal
+- [x] **Mobile keyboard/off-screen** fixed (modal-safety classes).
+- [x] **"Would you recommend outside the club?"** yes/no added to rating flow.
+- [x] **Review/discussion opens automatically** after submitting a score.
+- [x] **"X/Y would recommend"** counts members who submitted (not /1).
+
+### Admin
+- [x] **Missing-scores rows** link to the Scores tab.
+- [x] **Manual score entry** can overwrite an existing score.
+- [x] **Score matrix** missing-only rendering fixed; Zack backfillable for pre-join months.
+
+### DB state after session 8
+Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `ratings`, `upcoming_picks`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `reviews` (multi/film), `comments` (+`review_id`, `parent_comment_id`), `reactions` (polymorphic `target_type`/`target_id`), `votes` (new). RPC: `materialize_and_split_month(uuid)`. All tracked in `supabase/migrations/`.
 
 ---
 
@@ -190,11 +254,12 @@
 ## Phase 4 — Notifications & Scheduling
 - [ ] Email notifications via Resend (server-side Edge Function)
 - [ ] Web push notifications (iOS "Add to Home Screen" prompt)
-- [ ] Per-film watch/scoring deadlines and grace period logic
-- [ ] Grace period auto-trigger and admin manual override
+- [ ] **Deadline enforcement** — deadlines are currently display-only; Phase 4 wires up actual enforcement (score submission blocked after deadline + grace period passes). Deferred from session 8 (dev mode until launch/July).
+- [ ] **Grace period** — invisible to members; results reveal after deadline from their perspective; auto-trigger when all scores are in before deadline. Admin manual override. Deferred from session 8.
+- [ ] **Auto month-activation on the 1st** — currently admin-triggered via "Activate / Trigger now" button calling `materialize_and_split_month()`; Phase 4 automates this on the month's `active_date`. Deferred from session 8.
 - [ ] Watch schedule with suggested dates and reminders
 - [ ] Quiet hours (12am–8am local, toggleable per user, timing admin-adjustable globally)
-- [ ] All notification types (see spec §11 for full list)
+- [ ] All notification types (see spec §11 for full list) — includes score-change approval notices and other events deferred from session 8
 
 ## Phase 5 — Stats & Visualizations
 - [ ] Recharts stubs needing data: genre/cast (genre not on movies table), guess-the-picker accuracy, director/actor connection web
@@ -202,6 +267,7 @@
 - [ ] Genre blindspot tracker (requires genre field on movies)
 - [ ] Taste compatibility heatmap (member × member score correlation)
 - [ ] Winning streak tracker
+- [ ] **Rotten Tomatoes comparison** — RT API/scrape; Stats currently uses TMDB `vote_average` as a proxy. Deferred from session 8 (RT API access TBD).
 
 ## Phase 6 — Awards & Recaps
 - [ ] Automated award calculation written to DB on reveal (monthly, seasonal, annual, all-time)

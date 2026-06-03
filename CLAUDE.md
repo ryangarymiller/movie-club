@@ -120,6 +120,18 @@ Before a film's scoring deadline: you can only see scores and discussions for me
 
 ---
 
+## Architecture: Discussion Model (Reddit-style Threads)
+
+The old "one primary review per user + flat comments" model is **superseded**. The current model:
+
+- A user may post **multiple reviews** per film; each review is a **thread root** rendered in a single `<CommentThread>` component on the film overlay (the separate Reviews section was removed).
+- **Comments** nest under a review (`comments.review_id`) and under each other (`parent_comment_id`), forming a tree.
+- Both reviews and comments support **emoji reactions** (polymorphic `reactions` table: `target_type 'review'|'comment'` + `target_id`) and **up/down votes** (`votes` table: same polymorphic shape, `value +1|-1`, one per user per target).
+- **Edit window:** 15 minutes. Members may delete their own content; admins may delete any content.
+- **@mentions** are preserved.
+
+---
+
 ## Architecture: Scoring Rules
 
 - Range: 0.01–10.00 (two decimal places, always displayed as X.XX)
@@ -129,15 +141,27 @@ Before a film's scoring deadline: you can only see scores and discussions for me
 - Scores locked on submission; changes outside the seasonal readjustment window require admin approval via `score_change_requests` table
 - During seasonal readjustment window: score changes allowed freely
 - Missing scores after deadline = absent (not zero); group averages calculated from available scores only
+- Score submission modal includes a "Would you recommend outside the club?" yes/no prompt; "X/Y would recommend" counts only members who have submitted (not the full member count)
+- After submitting a score the review/discussion thread opens automatically
 - Late scores trigger stat recalculation + notifications to all members
 - **Back-calculation:** If exactly one member's score is missing for a film and `historical_avg_score` is set, back-calculate the missing score as `(historical_avg * expected_count) - sum(known_scores)`. Store as a real rating entry attributed to that user. Only apply if result is within 0.01–10.00.
 
 ---
 
+## Architecture: Pick → Film Lifecycle
+
+When a month is activated, a member's `upcoming_picks` row materializes into a `movies` row for that month. The RPC `public.materialize_and_split_month(p_month_id)` handles materialization and auto-splits scoring deadlines evenly across the resulting film count. Admins trigger this via an "Activate / Trigger now" button on the Admin panel; automatic activation on `active_date` is deferred to Phase 4.
+
+**Deadlines are display-only for now (dev mode, until launch/July).** Enforcement, grace periods, and auto month-activation on the 1st are Phase 4 work.
+
+The Picks tab shows the signed-in user's own pick inline (clickable → justification + change-pick flow). Once materialized, picks populate the Films and Deadlines sub-tabs.
+
+---
+
 ## Architecture: Deadline & Timezone Logic
 
-- All deadlines stored and enforced in **Pacific Time (PT)** (for fairness to Chris Deschenes, the west coast member)
-- Displayed in each user's local timezone using the browser's `Intl` API
+- All deadlines stored in **Pacific Time (PT)** (for fairness to Chris Deschenes, the west coast member); displayed in each user's local timezone via the browser's `Intl` API
+- **Deadlines are currently display-only** — enforcement, grace periods, and auto-reveal on deadline passage are Phase 4
 - Grace period (default 1–2 days, configurable) is invisible to regular members — results appear after deadline from their perspective
 - If all scores submitted before deadline, results reveal immediately
 
@@ -146,22 +170,29 @@ Before a film's scoring deadline: you can only see scores and discussions for me
 ## Key Data Models
 
 ```
-users          — id, name, email, avatar_id, user_color, role, timezone, joined_at,
+users          — id, name, email, avatar_id, user_color, role, is_op (bool), timezone, joined_at,
                  is_active, has_completed_onboarding, admin_mode_enabled,
                  last_online_at, show_last_online, created_at
+                 (is_op: sole power to grant/revoke admin; an op is also an admin — role stays 'admin')
 seasons        — id, name, start_date, end_date
                  (Quarterly: Winter Dec–Feb · Spring Mar–May · Summer Jun–Aug · Autumn Sep–Nov.
                   First season = Winter 2026, partial from the club founding date Jan 5 2026.)
-months         — id, season_id, month_year, reveal_date, end_of_month_reveal_date, status
+months         — id, season_id, month_year, reveal_date, end_of_month_reveal_date, status,
+                 active_date (date the month goes active; defaults to the 1st; admin-adjustable)
 movies         — id, month_id, title, tmdb_id, picked_by_user_id, pick_justification,
                  scores_revealed (bool), picker_revealed (bool), scoring_deadline,
                  streaming_providers (json), historical_avg_score,
                  poster_url, year_released, director, runtime, overview
 ratings        — id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club,
                  submitted_at
-reviews        — id, movie_id, user_id, body (one primary review per user per film)
-comments       — id, movie_id, user_id, parent_comment_id (nullable), body, reaction_counts
-reactions      — id, comment_id, user_id, emoji (aggregated into comments.reaction_counts at query time)
+reviews        — id, movie_id, user_id, body
+                 (multiple reviews per user per film; each review is a thread root in the discussion)
+comments       — id, movie_id, review_id, user_id, parent_comment_id (nullable), body
+                 (comments nest under a review via review_id, and under each other via parent_comment_id)
+reactions      — id, target_type ('review'|'comment'), target_id, user_id, emoji
+                 (polymorphic — applies to both reviews and comments)
+votes          — id, target_type ('review'|'comment'), target_id, user_id, value (+1|-1)
+                 (one vote per user per target; Reddit-style up/down)
 picker_guesses — id, movie_id, guessing_user_id, guessed_user_id
 score_predictions — id, movie_id, predicting_user_id, target_user_id, predicted_score
                  (picker-only: only the film's picker predicts the other members' scores for their own pick)
@@ -176,6 +207,10 @@ score_change_requests — id, rating_id, user_id, requested_score, status (pendi
 month_absences — id, month_id, user_id (excludes member from picker stats that month)
 notifications  — id, user_id, type, payload, channel (email|push)
 awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltime), period_ref
+
+RPC: public.materialize_and_split_month(p_month_id uuid) SECURITY DEFINER
+     — materializes upcoming_picks into movies for the given month and auto-splits scoring
+       deadlines evenly by film count
 ```
 
 ---
@@ -202,31 +237,45 @@ awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltim
 ### This Month sub-tabs
 Films · Deadlines · Picks · Reveal *(active only after end-of-month reveal)*
 
-- **Films tab:** Shows current month's films with scoring status
-- **Deadlines tab:** Countdown timers per film
-- **Picks tab:** Shows all active members' upcoming picks for the *next* month (hidden until reveal — could be 4 or 5 depending on who sits out). A "Pick your next movie" CTA button triggers the TMDB search → disambiguation → justification → confirm submission flow. No search/filter bar on the picks display.
-- If current month has no films yet (e.g. picks not entered yet): show "No picks yet for [Month]" state
+- **Films tab:** Shows current month's films with scoring status; populated once picks are materialized
+- **Deadlines tab:** Countdown timers per film (display-only until Phase 4 enforcement)
+- **Picks tab:** Shows all active members' upcoming picks for the *next* month (hidden until reveal — could be 4 or 5 depending on who sits out). The signed-in user's own pick shows inline (clickable → justification + change-pick flow). A "Pick your next movie" CTA triggers the TMDB search → disambiguation → justification → confirm flow. No search/filter bar.
+- If current month has no films yet: show "No picks yet for [Month]" state
 - **June 2026 exception:** Picks are being entered manually by the admin — the Picks tab may show an incomplete list until all picks are in.
 
 ### Films sub-tabs
 All Films · The Vault · By Season · History
 
-- **History tab:** Browse revealed months one at a time (month pills → 2-up film grid with picker labels). Complements All Films (flat wall) with a month-by-month view.
+- **All Films:** Sort options — Most/Least Recent (months desc, watch-order reversed within month), Highest/Lowest Rated, Most/Least Divisive, By Member. Genre tags deep-link to All Films filtered by that genre (genre filter active). Vault badge links to the Vault tab. "Pickers" legend renamed "Club Members" with profile links. Member names/avatars in the film overlay link to profiles.
+- **By Season tab:** Sortable (newest/oldest season order; sort applies within every season).
+- **History tab:** Browse revealed months one at a time (month pills → 2-up film grid with picker labels).
+- Streaming providers display correctly (flat-shape read fix applied).
 
 **Film ordering within each month:** follows the watch-order established in the group chat (earliest deadline first). Films are ordered by their DB insertion order (id ASC within a month).
 
 ### Stats sub-tabs
 Overview · Me · Members · Club · Head to Head
 
-- Clicking a film anywhere in Stats navigates to that film's page
-- Clicking a member name anywhere in Stats navigates to their profile page
+- Clicking a film anywhere in Stats opens the film overlay; clicking a member name navigates to their profile
+- Member names shown as "First L." in Stats (guest-style abbreviation)
 - Member names are clickable throughout the app (scores, stats, reviews, etc.)
+- Clicking a stat value expands a relevant chart (per-member bars, mean/stddev for divisive/unanimous)
+- **Additional stats implemented:** avg score per release decade, per-user scoring granularity, per-user std dev, per-movie breakdown, club-vs-TMDB comparison (uses `tmdb_vote_average`), expandable per-member cards, dynamic histogram bins, Club "score over time" trend line (club avg + per-member lines)
 
 ### Awards sub-tabs
 Monthly · Season · Annual · All-Time
 
 - Awards are also shown on individual film pages (awards that film won)
 - Awards are also shown on user profile pages (awards that user has won, including awards for films they picked)
+- Award film/member click-throughs verified: films open the overlay, members open `/profile/:id`
+
+### Smart Linking (global)
+
+Films open the film overlay and member names/avatars navigate to `/profile/:id` throughout the app — Home, Stats, Awards, Films, the film overlay. Home "all caught up" box links to Stats Me tab; Home stats link to the relevant film or Films page.
+
+### Modal Safety
+
+Global CSS classes `.mc-modal-backdrop` / `.mc-modal-panel` ensure modals never overflow the viewport top (mobile keyboard / off-screen safety). Apply these to all modals. ScoreModal uses these classes; mobile keyboard push-up is fixed.
 
 ---
 
@@ -234,9 +283,11 @@ Monthly · Season · Annual · All-Time
 
 14 combinations: Light/Dark × 7 accent colors (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet). Implemented via CSS variables. Each member independently sets their own theme.
 
-Light/dark mode toggle must be accessible from the Profile page.
+Light/dark mode is bound to the `.dark` CSS class (not `prefers-color-scheme`) — toggled by adding/removing `.dark` on `<html>`. Toggle accessible from the Profile page.
 
-User colors: 20 distinct options, one per member enforced (taken colors shown with strikethrough). Displayed as a colored ring around the member's avatar and as the color of the initials text when no avatar is set.
+**User colors:** Centralized in `src/lib/colors.js` — `MEMBER_COLORS` map, `USER_COLOR_PALETTE` of 20 hue-separated options, and `memberColor()` helper. Colors are hue-separated so no two members' colors are confusable (e.g. Ryan Miller = purple `#a855f7`, distinct from Chris's blue). One color per member enforced; Profile color picker strikes out colors already taken by other members.
+
+Displayed as a colored ring around the member's avatar and as the color of the initials text when no avatar is set.
 
 **Vault films:** Gold star indicator only — no gold border (would clash with user color border on picks).
 
@@ -275,13 +326,17 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
 - Trigger `scores_revealed` and `picker_revealed` by **individual film** or by **entire month**
 - Edit all film metadata including TMDB-sourced fields (title, poster, plot, year, director, runtime, etc.)
 - Refresh streaming providers for any film
-- Manual score entry for any user/film
-- Member management (email, joined_at, activate/deactivate)
+- Manual score entry for any user/film (can overwrite an existing score)
+- Member management (email, joined_at, activate/deactivate); deactivated members drop out of all member lists
 - "Films with missing scores" matrix:
+  - Rows link to the film's Scores tab
   - Expected count based on members active at that time (pre-Zack = 4, post-Zack = 5)
   - Test accounts excluded from counts
   - Cells marked N/A (crossed out) when a member wasn't in the club for that film's month
+  - Zack is backfillable for pre-join months via the matrix
 - Trigger by month: bulk-reveal scores or pickers for all films in a month
+- **Activate / Trigger now:** runs `materialize_and_split_month` for a month, materializing picks into films and splitting deadlines
+- **Op-only (Ryan Miller):** Admin Members tab shows Op / Admin / Member tiers; op can promote members to admin or demote admins to member. No other admin can change roles.
 
 ---
 
