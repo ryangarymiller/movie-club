@@ -1873,6 +1873,7 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
   const [filterMinScore, setFilterMinScore] = useState('')
   const [filterMaxScore, setFilterMaxScore] = useState('')
   const [filterGenre, setFilterGenre] = useState(initialGenre || 'all')
+  const [filterMember, setFilterMember] = useState('all')
 
   // Apply an incoming genre filter (e.g. from clicking a genre tag in the overlay).
   useEffect(() => {
@@ -1894,6 +1895,24 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
     return [...set].sort((a, b) => a.localeCompare(b))
   })()
 
+  // Build member options: members who have at least one revealed pick in the current
+  // film list. Only revealed picks have a non-null picked_by_user_id so this naturally
+  // avoids leaking unrevealed pickers.
+  const memberOptions = (() => {
+    const seen = new Set()
+    const entries = []
+    for (const m of movies) {
+      if (m.picker_revealed && m.picked_by_user_id) {
+        const id = m.picked_by_user_id
+        if (!seen.has(id) && userById[id]) {
+          seen.add(id)
+          entries.push({ id, name: userById[id].name })
+        }
+      }
+    }
+    return entries.sort((a, b) => a.name.localeCompare(b.name))
+  })()
+
   // Apply filters first
   let filtered = [...movies]
   if (filterSeason !== 'all') {
@@ -1901,6 +1920,12 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
   }
   if (filterGenre !== 'all') {
     filtered = filtered.filter(m => Array.isArray(m.genre) && m.genre.includes(filterGenre))
+  }
+  // Member filter: only show films whose picker_revealed pick matches the selected member.
+  // Films with picker_revealed === false have picked_by_user_id = null from the view,
+  // so they simply won't match — correct, no unrevealed picker is exposed.
+  if (filterMember !== 'all') {
+    filtered = filtered.filter(m => m.picker_revealed && m.picked_by_user_id === filterMember)
   }
   const minScore = filterMinScore !== '' ? parseFloat(filterMinScore) : null
   const maxScore = filterMaxScore !== '' ? parseFloat(filterMaxScore) : null
@@ -1944,6 +1969,23 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
     flexShrink: 0,
   }
 
+  // Accent the member select with the selected member's color when one is chosen.
+  const activeMemberColor = filterMember !== 'all'
+    ? memberColor(userById[filterMember]?.name ?? '')
+    : null
+  const memberSelectStyle = {
+    ...selectStyle,
+    border: activeMemberColor
+      ? `1px solid ${activeMemberColor}`
+      : '1px solid rgba(var(--fg-rgb), 0.1)',
+    color: activeMemberColor ?? 'rgba(var(--fg-rgb), 0.55)',
+    background: activeMemberColor
+      ? `${activeMemberColor}18`
+      : 'var(--surface-3)',
+  }
+
+  const anyFilterActive = filterSeason !== 'all' || filterGenre !== 'all' || filterMember !== 'all' || filterMinScore !== '' || filterMaxScore !== ''
+
   return (
     <div>
       {/* Sort + filter bar */}
@@ -1984,6 +2026,19 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
               ))}
             </select>
           )}
+          {/* Member filter — only shown when at least one pick is revealed */}
+          {memberOptions.length > 0 && (
+            <select
+              value={filterMember}
+              onChange={e => setFilterMember(e.target.value)}
+              style={memberSelectStyle}
+            >
+              <option value="all">All members</option>
+              {memberOptions.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          )}
           {/* Score range */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <input
@@ -2009,9 +2064,9 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
             />
           </div>
           {/* Clear filters if any active */}
-          {(filterSeason !== 'all' || filterGenre !== 'all' || filterMinScore !== '' || filterMaxScore !== '') && (
+          {anyFilterActive && (
             <button
-              onClick={() => { setFilterSeason('all'); setFilterGenre('all'); setFilterMinScore(''); setFilterMaxScore('') }}
+              onClick={() => { setFilterSeason('all'); setFilterGenre('all'); setFilterMember('all'); setFilterMinScore(''); setFilterMaxScore('') }}
               style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '9px',

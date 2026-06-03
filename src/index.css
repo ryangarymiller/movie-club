@@ -47,10 +47,13 @@
   --surface-3: #fafafb;
   --text-strong: #0b0d12;
   --text: #1f2937;
-  --text-muted: #4b5563;
-  --text-dim: #6b7280;
-  --text-faint: #9ca3af;
-  --hairline: #d9dce1;
+  --text-muted: #3f4753;
+  --text-dim: #4b5563;
+  --text-faint: #64748b;
+  /* --hairline is dual-use (subtle borders AND faint label text). Darkened from the
+     old near-invisible #d9dce1 so hairline-as-text is legible in light mode while
+     still reading as a light divider. */
+  --hairline: #94a3b8;
   color-scheme: light;
 }
 

@@ -353,7 +353,9 @@ export default function Home() {
             </p>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', scrollbarWidth: 'none' }}>
+              {/* Vertical padding so the cards' drop shadow isn't clipped by the
+                  horizontal-scroll container (overflowX:auto also clips overflow-y). */}
+              <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '8px 2px 26px', scrollbarWidth: 'none' }}>
                 {activeMovies.map(m => {
                   const pickerName = m.picker_revealed
                     ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)

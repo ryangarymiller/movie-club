@@ -221,6 +221,10 @@ function MonthLineChart({
         {lines.length > 1 && <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />}
         {lines.map(l => {
           const emphasize = l.emphasize ?? (l.key === 'club')
+          // A reference series (e.g. the TMDB community line) is a thin, neutral,
+          // dotless overlay — present for comparison but kept visually quiet so it
+          // never competes with the club average or the per-member lines.
+          const isRef = !!l.reference
           return (
             <Line
               key={l.key}
@@ -228,11 +232,11 @@ function MonthLineChart({
               dataKey={l.key}
               name={l.name}
               stroke={l.color}
-              strokeWidth={emphasize ? 3 : 1.6}
-              strokeDasharray={l.dashed ? '6 4' : undefined}
-              strokeOpacity={lines.length > 1 && !emphasize ? 0.75 : 1}
-              dot={{ r: emphasize ? 3 : 2, fill: l.color }}
-              activeDot={{ r: 4 }}
+              strokeWidth={isRef ? 1.4 : (emphasize ? 3 : 1.6)}
+              strokeDasharray={l.dashArray ?? (l.dashed ? '6 4' : undefined)}
+              strokeOpacity={isRef ? 0.9 : (lines.length > 1 && !emphasize ? 0.75 : 1)}
+              dot={isRef ? false : { r: emphasize ? 3 : 2, fill: l.color }}
+              activeDot={isRef ? { r: 3 } : { r: 4 }}
               connectNulls
               isAnimationActive={false}
             />
@@ -2423,6 +2427,97 @@ function formatMonthLabel(monthYear) {
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
+// Score-over-time trend (club avg + per-member) with a TMDB community reference
+// line layered on top. The TMDB values are fetched live per tmdb_id from the
+// TMDB API (client-safe read token) — the SAME source the Club-vs-TMDB scatter
+// uses — and merged into the trend rows under a `tmdb` key.
+//
+//   mode='month' : each row carries `tmdbIds` (the month's films); the TMDB value
+//                  is the average of those films' vote_averages (nulls skipped).
+//   mode='film'  : each row carries `tmdbId`; the TMDB value is that one film's
+//                  vote_average.
+//
+// Points with no TMDB data get `tmdb: undefined` so the dotted line SKIPS them
+// (connectNulls) rather than dropping to 0. Degrades gracefully: if the token is
+// missing or every fetch fails, the chart simply renders without the TMDB line.
+function ClubTrendChart({ data, series, mode, ...rest }) {
+  // tmdb_id -> vote_average (number), once loaded. null = not yet loaded.
+  const [voteById, setVoteById] = useState(null)
+
+  // All distinct tmdb_ids referenced by the current dataset.
+  const ids = useMemo(() => {
+    const set = new Set()
+    for (const row of data) {
+      if (mode === 'month') {
+        for (const id of (row.tmdbIds || [])) if (id) set.add(id)
+      } else if (row.tmdbId) {
+        set.add(row.tmdbId)
+      }
+    }
+    return [...set]
+  }, [data, mode])
+
+  const sig = useMemo(() => [...ids].sort((a, b) => a - b).join(','), [ids])
+
+  useEffect(() => {
+    const token = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
+    if (!token || ids.length === 0) { setVoteById({}); return }
+    let cancelled = false
+    ;(async () => {
+      setVoteById(null)
+      try {
+        const subset = ids.slice(0, 60)
+        const results = await Promise.all(subset.map(async (id) => {
+          try {
+            const resp = await fetch(`https://api.themoviedb.org/3/movie/${id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (!resp.ok) return [id, null]
+            const j = await resp.json()
+            const va = typeof j?.vote_average === 'number' ? j.vote_average : null
+            return [id, va == null || va === 0 ? null : va]
+          } catch { return [id, null] }
+        }))
+        if (cancelled) return
+        const map = {}
+        for (const [id, va] of results) if (va != null) map[id] = va
+        setVoteById(map)
+      } catch {
+        if (!cancelled) setVoteById({})
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig])
+
+  // Merge the resolved TMDB value into each row under `tmdb`. Undefined (not 0)
+  // for points without data so the line skips them.
+  const mergedData = useMemo(() => {
+    const map = voteById || {}
+    return data.map(row => {
+      let tmdb
+      if (mode === 'month') {
+        const vals = (row.tmdbIds || []).map(id => map[id]).filter(v => v != null)
+        tmdb = vals.length ? Number((avg(vals)).toFixed(2)) : undefined
+      } else {
+        const v = row.tmdbId != null ? map[row.tmdbId] : null
+        tmdb = v != null ? Number(v.toFixed(2)) : undefined
+      }
+      return { ...row, tmdb }
+    })
+  }, [data, voteById, mode])
+
+  // Only include the TMDB series once at least one point resolved — avoids an
+  // empty legend entry when TMDB is unavailable.
+  const hasTmdb = useMemo(() => mergedData.some(r => r.tmdb != null), [mergedData])
+  const effectiveSeries = useMemo(
+    () => (hasTmdb ? series : series.filter(s => s.key !== 'tmdb')),
+    [series, hasTmdb],
+  )
+
+  return <MonthLineChart data={mergedData} series={effectiveSeries} {...rest} />
+}
+
 // Club average vs TMDB community vote_average. Fetches vote_average per film from
 // TMDB (client-safe read token). Degrades gracefully: if the token is missing or
 // requests fail, renders a placeholder rather than erroring. candidates:
@@ -2797,6 +2892,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       const row = {
         month: m.month_year ? formatMonthLabel(m.month_year) : 'm',
         club: m.avgScore,
+        // tmdb_ids of this month's films — the TMDB community line is the average
+        // of these films' vote_averages (fetched live, same source as the scatter).
+        tmdbIds: (m.films || []).map(f => f.tmdb_id).filter(Boolean),
       }
       for (const u of trendMembers) {
         const arr = memberMonthScores[u.id]?.[m.month_id]
@@ -2809,6 +2907,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     const trendSeries = [
       { key: 'club', name: 'Club avg', color: CHART_NEUTRAL, emphasize: true, dashed: true },
       ...trendMembers.map((u, i) => ({ key: `u_${u.id}`, name: firstLast(u.name), color: memberColor(u.name) || chartColorAt(i) })),
+      // Neutral grey dotted reference line for the wider TMDB community rating.
+      // Distinct from the (strong, solid, thick) club line and the saturated
+      // per-member colours; rendered thin + dotless via the `reference` flag.
+      { key: 'tmdb', name: 'TMDB', color: 'rgba(var(--fg-rgb), 0.45)', reference: true, dashArray: '3 3' },
     ]
 
     // ── By-FILM trend variant: x-axis = films in chronological watch order ──
@@ -2833,6 +2935,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         // distinct; the month label is recovered for the tick via `xLabel`.
         idx: i,
         movieId: m.id,
+        tmdbId: m.tmdb_id || null,
         xLabel: my ? formatMonthLabel(my) : '—',
         groupLabel: my ? formatMonthLabel(my) : '—',
         title: m.title,
@@ -3098,9 +3201,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
           {trendMode === 'month' ? (
             stats.trendData.length >= 2 ? (
               <>
-                <MonthLineChart data={stats.trendData} series={stats.trendSeries} height={230} />
+                <ClubTrendChart data={stats.trendData} series={stats.trendSeries} mode="month" height={230} />
                 <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-                  Thick dashed line = club average · others = each member's monthly average
+                  Thick dashed line = club average · grey dotted = TMDB community · others = each member's monthly average
                 </p>
               </>
             ) : stats.trendData.length === 1 ? (
@@ -3111,9 +3214,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
           ) : (
             stats.filmTrendData.length >= 2 ? (
               <>
-                <MonthLineChart
+                <ClubTrendChart
                   data={stats.filmTrendData}
                   series={stats.trendSeries}
+                  mode="film"
                   height={230}
                   xKey="idx"
                   xLabelKey="xLabel"
@@ -3121,7 +3225,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   tooltipLabelKey="title"
                 />
                 <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-                  Per film, in watch order · thick dashed line = club average · others = each member
+                  Per film, in watch order · thick dashed line = club average · grey dotted = TMDB community · others = each member
                 </p>
               </>
             ) : (
