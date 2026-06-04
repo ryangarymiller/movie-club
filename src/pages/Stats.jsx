@@ -242,61 +242,92 @@ function MonthLineChart({
     : undefined
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-        <XAxis
-          dataKey={xKey}
-          type={xLabelKey ? 'number' : 'category'}
-          domain={xLabelKey ? ['dataMin', 'dataMax'] : undefined}
-          tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
-          axisLine={{ stroke: CHART.axisLine }}
-          tickLine={false}
-          interval={sparseTicks ? 0 : 'preserveStartEnd'}
-          ticks={xLabelKey ? data.map(d => d[xKey]) : undefined}
-          tickFormatter={tickFormatter}
-          minTickGap={sparseTicks ? 0 : 5}
-        />
-        <YAxis domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
-        <Tooltip content={<ChartTooltip labelKey={tooltipLabelKey} />} cursor={{ stroke: CHART.muted }} />
-        {lines.length > 1 && (
-          <Legend
-            wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono', cursor: 'pointer' }}
-            onClick={(o) => toggleKey(o?.dataKey ?? o?.value)}
-            formatter={(value, entry) => {
-              const k = entry?.dataKey
-              const on = !hasSel || selectedKeys.has(k)
-              return <span style={{ color: on ? 'var(--text-muted)' : 'var(--text-faint)', opacity: on ? 1 : 0.45 }}>{value}</span>
-            }}
+    <div>
+      <ResponsiveContainer width="100%" height={height}>
+        <LineChart data={data} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+          <XAxis
+            dataKey={xKey}
+            type={xLabelKey ? 'number' : 'category'}
+            domain={xLabelKey ? ['dataMin', 'dataMax'] : undefined}
+            tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
+            axisLine={{ stroke: CHART.axisLine }}
+            tickLine={false}
+            interval={sparseTicks ? 0 : 'preserveStartEnd'}
+            ticks={xLabelKey ? data.map(d => d[xKey]) : undefined}
+            tickFormatter={tickFormatter}
+            minTickGap={sparseTicks ? 0 : 5}
           />
-        )}
-        {lines.map(l => {
-          const emphasize = l.emphasize ?? (l.key === 'club')
-          // A reference series (e.g. the TMDB community line) is a thin, neutral,
-          // dotless overlay — present for comparison but kept visually quiet so it
-          // never competes with the club average or the per-member lines.
-          const isRef = !!l.reference
-          // When the legend has an active selection, lines not in it are dimmed.
-          const on = !hasSel || selectedKeys.has(l.key)
-          return (
-            <Line
-              key={l.key}
-              type="monotone"
-              dataKey={l.key}
-              name={l.name}
-              stroke={l.color}
-              strokeWidth={!on ? 1.2 : (isRef ? 1.4 : (emphasize ? 3 : 1.6))}
-              strokeDasharray={l.dashArray ?? (l.dashed ? '6 4' : undefined)}
-              strokeOpacity={!on ? 0.1 : (isRef ? 0.9 : (lines.length > 1 && !emphasize ? 0.75 : 1))}
-              dot={(isRef || !on) ? false : { r: emphasize ? 3 : 2, fill: l.color }}
-              activeDot={isRef ? { r: 3 } : { r: 4 }}
-              connectNulls
-              isAnimationActive={false}
-            />
-          )
-        })}
-      </LineChart>
-    </ResponsiveContainer>
+          <YAxis domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
+          <Tooltip content={<ChartTooltip labelKey={tooltipLabelKey} />} cursor={{ stroke: CHART.muted }} />
+          {lines.map(l => {
+            const emphasize = l.emphasize ?? (l.key === 'club')
+            // A reference series (e.g. the TMDB community line) is a thin, neutral,
+            // dotless overlay — present for comparison but kept visually quiet so it
+            // never competes with the club average or the per-member lines.
+            const isRef = !!l.reference
+            // When the legend has an active selection, lines not in it are dimmed.
+            const on = !hasSel || selectedKeys.has(l.key)
+            return (
+              <Line
+                key={l.key}
+                type="monotone"
+                dataKey={l.key}
+                name={l.name}
+                stroke={l.color}
+                strokeWidth={!on ? 1.2 : (isRef ? 1.4 : (emphasize ? 3 : 1.6))}
+                strokeDasharray={l.dashArray ?? (l.dashed ? '6 4' : undefined)}
+                strokeOpacity={!on ? 0.1 : (isRef ? 0.9 : (lines.length > 1 && !emphasize ? 0.75 : 1))}
+                dot={(isRef || !on) ? false : { r: emphasize ? 3 : 2, fill: l.color }}
+                activeDot={isRef ? { r: 3 } : { r: 4 }}
+                connectNulls
+                isAnimationActive={false}
+              />
+            )
+          })}
+        </LineChart>
+      </ResponsiveContainer>
+
+      {/* Custom legend (replaces Recharts <Legend>) so tapping a series highlights
+          it and dims BOTH the swatch and the label of the others. The dotted
+          underline + caption signal that the items are tappable. */}
+      {lines.length > 1 && (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', justifyContent: 'center', marginTop: '8px' }}>
+            {lines.map(l => {
+              const on = !hasSel || selectedKeys.has(l.key)
+              return (
+                <button
+                  key={l.key}
+                  onClick={() => toggleKey(l.key)}
+                  title={`Highlight ${l.name}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer',
+                    fontFamily: "'DM Mono',monospace", fontSize: '10px',
+                    color: on ? 'var(--text-muted)' : 'var(--text-faint)',
+                    opacity: on ? 1 : 0.5,
+                    textDecoration: 'underline', textDecorationStyle: 'dotted',
+                    textDecorationColor: 'rgba(var(--fg-rgb),0.35)', textUnderlineOffset: '3px',
+                  }}
+                >
+                  <span style={{
+                    width: '11px', height: '11px', borderRadius: '2px', flexShrink: 0,
+                    background: l.reference ? 'transparent' : l.color,
+                    border: l.reference ? `1.5px dashed ${l.color}` : 'none',
+                    opacity: on ? 1 : 0.3,
+                  }} />
+                  {l.name}
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-faint)', margin: '4px 0 0', letterSpacing: '0.04em' }}>
+            tap a series to highlight it
+          </p>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -431,13 +462,20 @@ function DonutChart({ data, height = 200, onLegendClick }) {
               )
             })}
           </Pie>
-          <Tooltip content={<ChartTooltip />} />
+          {/* No Recharts <Tooltip> here: it's hover/touch-driven and on mobile it
+              stuck to the first-touched slice and never cleared. The selection info
+              line below is driven purely by selectedIndex, so it always matches the
+              tapped slice and clears on deselect. */}
         </PieChart>
       </ResponsiveContainer>
       </div>
 
       {/* Selected-slice info line — always reflects the current single selection. */}
-      <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--text-dim)', margin: '4px 0 10px', minHeight: '14px' }}>
+      <p style={{
+        textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '11px',
+        color: sel ? 'var(--text-strong)' : 'var(--text-dim)', margin: '4px 0 10px', minHeight: '14px',
+        transition: 'color 0.15s ease',
+      }}>
         {sel
           ? `${sel.name}: ${sel.value} film${sel.value !== 1 ? 's' : ''}${total ? ` · ${Math.round((sel.value / total) * 100)}%` : ''}`
           : 'Tap a slice to see its share'}
@@ -810,7 +848,7 @@ function GlassCard({ children, style = {}, onClick }) {
 
 // ─── Section label ───────────────────────────────────────────────────────────
 
-function SectionLabel({ children }) {
+function SectionLabel({ children, style }) {
   return (
     <p style={{
       fontFamily: "'DM Mono',monospace",
@@ -819,6 +857,7 @@ function SectionLabel({ children }) {
       letterSpacing: '0.18em',
       color: 'var(--hairline)',
       margin: '0 0 12px',
+      ...style,
     }}>
       {children}
     </p>
@@ -3338,10 +3377,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       }
       return row
     })
-    // Club line is the neutral aggregate — thick + dashed so it's unmistakable
+    // Club line is the neutral aggregate — thick + solid so it's unmistakable
     // regardless of theme/accent, and can't be confused with any member colour.
     const trendSeries = [
-      { key: 'club', name: 'Club avg', color: CHART_NEUTRAL, emphasize: true, dashed: true },
+      { key: 'club', name: 'Club avg', color: CHART_NEUTRAL, emphasize: true },
       ...trendMembers.map((u, i) => ({ key: `u_${u.id}`, name: firstLast(u.name), color: userColor(u) || chartColorAt(i) })),
       // Neutral grey dotted reference line for the wider TMDB community rating.
       // Distinct from the (strong, solid, thick) club line and the saturated
@@ -3639,7 +3678,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
               <>
                 <ClubTrendChart data={stats.trendData} series={stats.trendSeries} mode="month" height={230} />
                 <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-                  Thick dashed line = club average · grey dotted = TMDB community · others = each member's monthly average
+                  Thick solid line = club average · grey dotted = TMDB community · others = each member's monthly average
                 </p>
               </>
             ) : stats.trendData.length === 1 ? (
@@ -3661,7 +3700,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   tooltipLabelKey="title"
                 />
                 <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-                  Per film, in watch order · thick dashed line = club average · grey dotted = TMDB community · others = each member
+                  Per film, in watch order · thick solid line = club average · grey dotted = TMDB community · others = each member
                 </p>
               </>
             ) : (
@@ -4245,6 +4284,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
 
   const [userA, setUserA] = useState(null)
   const [userB, setUserB] = useState(null)
+  const [showRecordHelp, setShowRecordHelp] = useState(false)
 
   // Set defaults once users load
   useEffect(() => {
@@ -4410,7 +4450,35 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
 
           {/* Head to head record */}
           <div>
-            <SectionLabel>Head to Head Record</SectionLabel>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+              <SectionLabel style={{ margin: 0 }}>Head to Head Record</SectionLabel>
+              <button
+                onClick={() => setShowRecordHelp(v => !v)}
+                aria-label="What does this mean?"
+                aria-expanded={showRecordHelp}
+                style={{
+                  flexShrink: 0, width: '16px', height: '16px', borderRadius: '50%',
+                  border: '1px solid rgba(var(--fg-rgb),0.25)', background: showRecordHelp ? 'var(--accent)' : 'transparent',
+                  color: showRecordHelp ? 'var(--text-strong)' : 'var(--text-dim)',
+                  fontFamily: "'DM Mono',monospace", fontSize: '10px', lineHeight: 1, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                }}
+              >
+                ?
+              </button>
+            </div>
+            {showRecordHelp && (
+              <div style={{
+                marginBottom: '10px', padding: '12px 14px', borderRadius: '12px',
+                background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)',
+              }}>
+                <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '12.5px', color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
+                  Across the <strong>{h2h.record.films}</strong> film{h2h.record.films === 1 ? '' : 's'} {nameA} and {nameB} have both scored, this counts who scored each film higher.
+                  Each name's number is how many films they rated above the other; <strong>Ties</strong> are films they scored within 0.01 of each other.
+                  It's a head-to-head tally of whose score was higher film-by-film — not a sum of points.
+                </p>
+              </div>
+            )}
             <GlassCard style={{ padding: '16px 20px' }}>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>

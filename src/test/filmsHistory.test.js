@@ -9,15 +9,15 @@ describe('MEMBER_COLORS', () => {
   })
 
   it('returns correct color for Ryan Bey', () => {
-    expect(MEMBER_COLORS['Ryan Bey']).toBe('#f43f5e')
+    expect(MEMBER_COLORS['Ryan Bey']).toBe('#ef4444')
   })
 
   it('returns correct color for Andrew Bond', () => {
-    expect(MEMBER_COLORS['Andrew Bond']).toBe('#10b981')
+    expect(MEMBER_COLORS['Andrew Bond']).toBe('#22c55e')
   })
 
   it('returns correct color for Zack Anjoorian', () => {
-    expect(MEMBER_COLORS['Zack Anjoorian']).toBe('#f59e0b')
+    expect(MEMBER_COLORS['Zack Anjoorian']).toBe('#eab308')
   })
 
   it('returns correct color for Chris Deschenes', () => {
@@ -29,7 +29,7 @@ describe('MEMBER_COLORS', () => {
 
 describe('pickerColor', () => {
   it('returns the correct color for a known member', () => {
-    expect(pickerColor('Andrew Bond')).toBe('#10b981')
+    expect(pickerColor('Andrew Bond')).toBe('#22c55e')
   })
 
   it('returns undefined for an unknown member name', () => {

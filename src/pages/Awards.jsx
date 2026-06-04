@@ -238,17 +238,20 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
         )}
       </div>
 
-      {/* Poster — fills full card height on the right edge */}
+      {/* Poster — full 2:3 thumbnail (whole poster visible, not a cropped strip) */}
       {hasPoster && !noData && (
         <div
           onClick={clickable ? onWinnerClick : undefined}
           style={{
             flexShrink: 0,
-            width: '56px',
+            width: '64px',
+            aspectRatio: '2 / 3',
+            alignSelf: 'center',
+            marginRight: '14px',
+            borderRadius: '8px',
             cursor: clickable ? 'pointer' : 'default',
             overflow: 'hidden',
             background: 'rgba(var(--fg-rgb), 0.05)',
-            alignSelf: 'stretch',
           }}
         >
           {posterUrl ? (

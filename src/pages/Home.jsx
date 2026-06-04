@@ -98,7 +98,29 @@ function PosterCard({ movie, pending, pickerName }) {
   )
 }
 
+// "2026-05" → "May 2026". Falls back to "this month" when no month is set.
+function monthName(monthYear) {
+  if (!monthYear) return 'this month'
+  return new Date(monthYear + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+// Compact deadline label for the Your-Turn cards. Shows the remaining time when
+// the deadline is in the future, or the date once it's passed.
+function deadlineLabel(iso) {
+  if (!iso) return null
+  const diff = new Date(iso).getTime() - Date.now()
+  const date = new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (diff <= 0) return { text: `Due ${date}`, past: true }
+  const days = Math.floor(diff / 86400000)
+  const hours = Math.floor((diff % 86400000) / 3600000)
+  if (days > 0) return { text: `${days}d ${hours}h left · ${date}`, past: false }
+  if (hours > 0) return { text: `${hours}h left · ${date}`, past: false }
+  const mins = Math.floor((diff % 3600000) / 60000)
+  return { text: `${mins}m left`, past: false }
+}
+
 function ActionCard({ movie, existingRating, onScorePress }) {
+  const dl = deadlineLabel(movie.scoring_deadline)
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.03]">
       <div className="shrink-0 w-10 h-14 rounded-md overflow-hidden bg-gray-900">
@@ -113,6 +135,11 @@ function ActionCard({ movie, existingRating, onScorePress }) {
       <div className="flex-1 min-w-0">
         <p className="text-gray-500 uppercase mb-0.5" style={{ fontSize: '10px', letterSpacing: '0.1em', fontFamily: "'DM Mono', monospace" }}>Score needed</p>
         <p className="text-white font-medium text-sm leading-tight truncate">{movie.title}</p>
+        {dl && (
+          <p className="mt-0.5 truncate" style={{ fontSize: '10px', fontFamily: "'DM Mono', monospace", color: dl.past ? '#f87171' : 'var(--text-dim)' }}>
+            ⏱ {dl.text}
+          </p>
+        )}
       </div>
       <button
         onClick={() => onScorePress(movie, existingRating ?? null)}
@@ -211,7 +238,7 @@ export default function Home() {
       { data: recentComments },
     ] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
-      supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed'),
+      supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scoring_deadline'),
       supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
       supabase.from('users').select('id, name, email, is_active, user_color'),
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
@@ -317,10 +344,23 @@ export default function Home() {
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.07)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.03)' }}
             >
-              <span style={{ fontSize: '20px' }}>✓</span>
+              <span style={{ fontSize: '20px' }}>{activeMovies.length === 0 ? '🎬' : '✓'}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium">You're all caught up</p>
-                <p className="text-gray-500 text-xs">All scores submitted for this month</p>
+                {activeMovies.length === 0 ? (
+                  <>
+                    <p className="text-white text-sm font-medium">No films to score right now</p>
+                    <p className="text-gray-500 text-xs">
+                      {activeMonthYear
+                        ? `${monthName(activeMonthYear)} has no films yet`
+                        : 'No active month — check back when the next one starts'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-white text-sm font-medium">You're all caught up</p>
+                    <p className="text-gray-500 text-xs">All {monthName(activeMonthYear)} scores submitted</p>
+                  </>
+                )}
               </div>
               <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>View this month →</span>
             </div>
@@ -341,9 +381,7 @@ export default function Home() {
         {/* This Month's Films */}
         <section className="mb-8" style={{ animation: 'fadeUp 0.5s 0.2s ease both' }}>
           <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
-            {activeMonthYear
-              ? new Date(activeMonthYear + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-              : 'This Month'}
+            {activeMonthYear ? monthName(activeMonthYear) : 'This Month'}
           </p>
           {loading ? (
             <div className="flex gap-3 overflow-hidden">
@@ -351,9 +389,7 @@ export default function Home() {
             </div>
           ) : activeMovies.length === 0 ? (
             <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: 0 }}>
-              No picks yet for {activeMonthYear
-                ? new Date(activeMonthYear + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-                : 'this month'}.
+              No picks yet for {monthName(activeMonthYear)}.
             </p>
           ) : (
             <>
