@@ -282,19 +282,25 @@ function MonthLineChart({
   // When sparse, show the group label only at its first occurrence so each
   // month/season is labelled once instead of once per film. Keyed by the LABEL
   // (month), not the unique x value, so a month appears exactly once.
-  const firstSeen = useMemo(() => {
+  // For sparse (per-film) trends we emit ONE tick per month — at its first film —
+  // as the actual x-axis ticks (not a tick at every film with most blanked). With
+  // only a handful of ticks, Recharts' minTickGap can then drop any that are still
+  // too close, so month labels never overlap (the old interval={0} forced every
+  // tick to render, which disabled that dropping → the overlap on the Me page).
+  const sparse = useMemo(() => {
     if (!sparseTicks) return null
     const seen = new Set()
-    const set = new Set()
-    data.forEach((d, i) => {
+    const vals = []
+    const labelByVal = new Map()
+    data.forEach(d => {
       const k = d[labelKey]
-      if (!seen.has(k)) { seen.add(k); set.add(i) }
+      if (!seen.has(k)) { seen.add(k); vals.push(d[xKey]); labelByVal.set(d[xKey], k) }
     })
-    return set
-  }, [data, labelKey, sparseTicks])
+    return { vals, labelByVal }
+  }, [data, labelKey, xKey, sparseTicks])
 
   const tickFormatter = sparseTicks
-    ? (_val, idx) => (firstSeen && firstSeen.has(idx) ? (data[idx]?.[labelKey] ?? '') : '')
+    ? (val) => (sparse?.labelByVal.get(val) ?? '')
     : undefined
 
   return (
@@ -309,10 +315,10 @@ function MonthLineChart({
             tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
             axisLine={{ stroke: CHART.axisLine }}
             tickLine={false}
-            interval={sparseTicks ? 0 : 'preserveStartEnd'}
-            ticks={xLabelKey ? data.map(d => d[xKey]) : undefined}
+            interval="preserveStartEnd"
+            ticks={xLabelKey ? (sparseTicks ? sparse?.vals : data.map(d => d[xKey])) : undefined}
             tickFormatter={tickFormatter}
-            minTickGap={sparseTicks ? 12 : 5}
+            minTickGap={sparseTicks ? 44 : 5}
             // Inset the plot so the first/last month labels aren't clipped at the edges.
             padding={{ left: 12, right: 12 }}
           />
