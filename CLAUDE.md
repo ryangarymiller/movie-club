@@ -160,6 +160,35 @@ Do not attempt to build everything at once. Phases in order:
 
 ---
 
+## Architecture: Notifications (Phase 4a + 4b done; 4c deferred)
+
+### In-app notification engine
+A `public.notifications` table (see Key Data Models) stores all in-app notifications. Rows are created **only** by `SECURITY DEFINER` DB triggers — never by client code. Triggers fire selectively on meaningful events only:
+
+- `movies.scores_revealed` flips to `true` (film scores now visible)
+- `months.status` transitions to `'active'` (new month activated) or `'revealed'` (end-of-month reveal)
+- A reply to your review or comment
+- An `@mention` in a review/comment body (parsed against each member's FirstLast handle)
+- A `score_change_requests` decision (`approved`/`denied`) delivered to the requester
+
+### Notification center
+- `src/context/NotificationsContext.jsx` — loads notifications, subscribes to Supabase Realtime for live updates, exposes `markRead`/`markAllRead`, and surfaces preference state (muted types gate the unread badge count).
+- `src/components/NotificationCenter.jsx` — bell icon with unread badge; desktop sidebar renders as a popover, mobile as a bottom sheet. Per-type glyphs, click-to-navigate + mark-read, "mark all read" action, empty state.
+
+### Notification preferences
+Profile page ("Notifications" settings section, own profile only): per-event-type mute toggles, quiet-hours from/until, and Email + Browser-push delivery toggles. Preferences stored in `notification_preferences`; muting filters the in-app center + unread badge immediately.
+
+### Email delivery (Resend via pg_net)
+A DB trigger (`email_notification`) POSTs to the Resend API via the `pg_net` extension when the recipient has `channel_email = true`, has not muted the event type, and is outside quiet hours (evaluated in their timezone). The Resend API key and app base URL are stored in `supabase_vault` (never in code). Verified end-to-end (HTTP 200 from Resend). Note: full multi-member delivery requires a verified sending domain in Resend; test mode reaches the account owner only.
+
+### Web Push delivery
+`public.push_subscriptions` stores each browser's subscription object. A `push_notification` DB trigger gathers the recipient's subscriptions + VAPID private key (from vault) and POSTs to the `send-push` Edge Function via `pg_net`. The Edge Function (Deno, `npm:web-push`) sends to each subscription and prunes expired ones (404/410). Client: `NotificationsContext` exposes `pushSupported`/`pushEnabled` + `enablePush()`/`disablePush()` (permission gate → SW register → `PushManager.subscribe` → store subscription → flip `channel_push`). `public/sw.js` is the service worker. Profile's "Browser push" row is a live toggle (shown as disabled with a note where unsupported — iOS requires Add to Home Screen). Needs a real browser to validate end-to-end.
+
+### Scheduling (4c — deferred)
+Auto month-activation on the 1st and deadline enforcement/auto-reveal via `pg_cron` are **intentionally deferred** until closer to launch so they don't change behavior mid-dev. Deadlines remain display-only.
+
+---
+
 ## Architecture: Anonymity & Reveal System
 
 This is the most architecturally significant system — it affects RLS policies, queries, and UI throughout the app.
@@ -251,7 +280,9 @@ months         — id, season_id, month_year, reveal_date, end_of_month_reveal_d
 movies         — id, month_id, title, tmdb_id, picked_by_user_id, pick_justification,
                  scores_revealed (bool), picker_revealed (bool), scoring_deadline,
                  streaming_providers (json), historical_avg_score,
-                 poster_url, year_released, director, runtime, overview
+                 poster_url, year_released, director, runtime, overview,
+                 tmdb_vote_average (numeric), tmdb_vote_count (int), tmdb_popularity (numeric),
+                 tmdb_cast (text[], top-billed cast; backfilled from TMDB, exposed via movies_safe)
 ratings        — id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club,
                  submitted_at
 reviews        — id, movie_id, user_id, body
@@ -275,7 +306,13 @@ auteur_votes   — id, season_id, voter_user_id, rankings (json array, ranked ch
 season_rankings — id, season_id, user_id, movie_id, rank, locked_score (locked at end of window)
 score_change_requests — id, rating_id, user_id, requested_score, status (pending|approved|denied)
 month_absences — id, month_id, user_id (excludes member from picker stats that month)
-notifications  — id, user_id, type, payload, channel (email|push)
+notifications  — id, user_id, type, title, body, link, payload (jsonb), read_at, created_at
+                 (RLS: recipient reads/updates own rows; rows created only by SECURITY DEFINER triggers)
+notification_preferences — user_id (pk), muted_types (text[]), channel_push (bool), channel_email (bool),
+                 quiet_start (time), quiet_end (time), updated_at
+                 (RLS: own only; channel_email default false — opt-in)
+push_subscriptions — id, user_id, endpoint, p256dh, auth, created_at
+                 (stores Web Push subscription objects; expired subs pruned by the send-push Edge Function)
 awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltime), period_ref
 auth_events    — id, user_id (nullable), event, user_initiated (bool), detail (jsonb), user_agent, created_at
                  (admins read; open insert so signed-out events still log;
@@ -286,6 +323,11 @@ auth_events    — id, user_id (nullable), event, user_initiated (bool), detail 
 RPC: public.materialize_and_split_month(p_month_id uuid) SECURITY DEFINER
      — materializes upcoming_picks into movies for the given month and auto-splits scoring
        deadlines evenly by film count; accepts service/privileged context (auth.uid() null)
+
+Extensions / infra: pg_net (HTTP from DB triggers); supabase_vault secrets: resend_api_key,
+     app_base_url, vapid_private_key, vapid_subject
+Edge Function: 'send-push' (Deno, npm:web-push) — sends Web Push to a user's subscriptions
+     with VAPID; prunes expired (404/410) subscriptions
 ```
 
 ---
@@ -319,10 +361,12 @@ This Month is a **single scrolling page** (sub-tabs removed as of Session 9). It
 
 **June 2026 exception:** Picks are being entered manually by the admin — the picks section may show an incomplete list until all picks are in.
 
+**Anonymity/notifications note:** The member-facing This Month view never shows others' upcoming picks, even to admins (the Admin dashboard has a separate "Upcoming Picks" preview panel for that). MonthReveal guess/prediction rows exclude the test account.
+
 ### Films sub-tabs
 All Films · The Vault · By Season · History
 
-- **All Films:** Sort options — Most/Least Recent (months desc, watch-order reversed within month), Highest/Lowest Rated, Most/Least Divisive, By Member. Group average computed from actual ratings when `scores_revealed` and `historical_avg_score` is null (fixes missing May 2026 scores). Floating "hide scores" toggle hides score, divisive-sort stddev, and the vault gold star. Film title rendered under each poster. Genre tags deep-link to All Films filtered by that genre (genre filter active). Vault badge links to the Vault tab. Divisive sort shows stddev. "Where to watch" entries are links. "Pickers" legend renamed "Club Members" with profile links. Member names/avatars in the film overlay link to profiles. Upcoming-month films excluded (no pre-activation pick leak).
+- **All Films:** Sort options — Most/Least Recent (months desc, watch-order reversed within month), Highest/Lowest Rated, Most/Least Divisive, By Member. Filter-by-member control (revealed picks only). Group average computed from actual ratings when `scores_revealed` and `historical_avg_score` is null (fixes missing May 2026 scores). Floating "hide scores" toggle hides score, divisive-sort stddev, and the vault gold star. Film title rendered under each poster. Genre tags deep-link to All Films filtered by that genre (genre filter active). Vault badge links to the Vault tab. Divisive sort shows stddev. "Where to watch" entries are links. "Pickers" legend renamed "Club Members" with profile links. Member names/avatars in the film overlay link to profiles. Upcoming-month films excluded (no pre-activation pick leak).
 - **By Season tab:** Sortable (newest/oldest season order; sort applies within every season). Same group-average fix applied.
 - **History tab:** Browse revealed months one at a time (month pills → 2-up film grid with picker labels).
 - Streaming providers display correctly (flat-shape read fix applied).
@@ -337,8 +381,11 @@ Overview · Me · Members · Club · Head to Head
 - Member names shown as "First L." in Stats (guest-style abbreviation)
 - Member names are clickable throughout the app (scores, stats, reviews, etc.) and open the member overlay
 - Clicking a stat value expands a relevant chart (per-member bars, mean/stddev for divisive/unanimous)
-- **Additional stats implemented:** avg score per release decade, per-user scoring granularity, per-user std dev, per-movie breakdown, club-vs-TMDB comparison (uses `tmdb_vote_average`), expandable per-member cards, dynamic histogram bins, Club "score over time" trend line (club avg + per-member lines)
+- **Additional stats implemented:** avg score per release decade, per-user scoring granularity, per-user std dev, per-movie breakdown, club-vs-TMDB comparison (uses `tmdb_vote_average`), expandable per-member cards, dynamic histogram bins, Club "score over time" trend line (club avg + per-member lines + neutral grey dotted TMDB average line)
 - **Session 9 stat polish:** Member names in scoring granularity, scoring variation, picker power rankings, score percentile generosity, most active scorer, and scoring streaks all link to the member overlay. Film titles in per-film spread, season/year rankings, and excitement-vs-final open the film overlay. Season/year ranking lists are collapsible. Genres link to the genre-filtered Films page. Genre pie single-selects + updates tooltip + legend links out. Club by-film trend chart click maps to the correct film (keyed by id). Histogram selected bar glows. Club-vs-TMDB scatter auto-scales to the data. Given/Received/Club-avg has y-axis labels + a data-driven domain. Taste-correlation uses the accent color. Std-dev/mean overlay lines are visually distinct with numeric values. Scoring-variation x-axis labels rounded.
+- **Connection Web · 6 Degrees:** Films linked by a shared actor or director, rendered as a custom radial SVG node-link graph. Hover/tap a film node lights its connections and shows who bridges them (actor/director name). Nodes open the film overlay. Backed by `movies.tmdb_cast` (top-billed cast backfilled from TMDB).
+- **Genre Blindspot Grid:** Per-member genre coverage — shows which genres each member has and hasn't scored.
+- **All Films member filter:** A filter-by-member control on the All Films view (revealed picks only).
 
 ### Awards sub-tabs
 Monthly · Season · Annual · All-Time
@@ -374,9 +421,11 @@ Global CSS classes `.mc-modal-backdrop` / `.mc-modal-panel` ensure modals never 
 
 Light/dark mode is bound to the `.dark` CSS class (not `prefers-color-scheme`) — toggled by adding/removing `.dark` on `<html>`. Toggle accessible from the Profile page.
 
-**User colors:** Centralized in `src/lib/colors.js` — `MEMBER_COLORS` map, `USER_COLOR_PALETTE` of 20 hue-separated options, `memberColor()` helper, plus `CHART_CATEGORICAL`, `CHART_NEUTRAL`, and `chartColorAt()` for chart series. Colors are hue-separated so no two members' colors are confusable (e.g. Ryan Miller = purple `#a855f7`, distinct from Chris's blue). One color per member enforced; Profile color picker strikes out colors already taken by other members. The color picker collapses after a color is chosen.
+**User colors:** Centralized in `src/lib/colors.js` — `MEMBER_COLORS` map, `USER_COLOR_PALETTE` of 20 hue-separated options, `memberColor()` helper (reads `user_color` from the DB first, falling back to the static map — so a chosen color propagates into Stats, the Films member filter, and everywhere else), plus `CHART_CATEGORICAL`, `CHART_NEUTRAL`, and `chartColorAt()` for chart series. Colors are hue-separated so no two members' colors are confusable (e.g. Ryan Miller = purple `#a855f7`, distinct from Chris's blue). One color per member enforced; Profile color picker strikes out colors already taken by other members. The color picker collapses after a color is chosen.
 
 Displayed as a colored ring around the member's avatar and as the color of the initials text when no avatar is set.
+
+**Light-mode accent overrides:** Each accent color has a vibrant `--accent` CSS variable + a dark accent-text companion in light mode so all 7 accents remain legible (dark mode unchanged). Active bottom-nav tab uses the accent color. Home poster-row shadow no longer clips.
 
 **Vault films:** Gold star indicator only — no gold border (would clash with user color border on picks).
 
@@ -425,6 +474,8 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
   - Zack is backfillable for pre-join months via the matrix
 - Trigger by month: bulk-reveal scores or pickers for all films in a month
 - **Activate / Trigger now:** runs `materialize_and_split_month` for a month, materializing picks into films and splitting deadlines. The `status='active'` update now persists correctly — admin INSERT/UPDATE RLS policies were added to `months` in Session 9 to fix a silent block that previously prevented persistence.
+- **Upcoming Picks preview:** Admin-only section (behind a "Reveal" toggle on the Admin dashboard) showing all pending `upcoming_picks` before materialization. Regular members — including admins in their member-facing view — never see others' picks pre-reveal; this preview is strictly the admin panel.
+- Auto genre backfill runs on the Admin dashboard when any film is missing a genre (fetches from TMDB and updates `movies` in the background).
 - **Op-only (Ryan Miller):** Admin Members tab shows Op / Admin / Member tiers; op can promote members to admin or demote admins to member. No other admin can change roles. **DB-enforced:** the `trg_enforce_op_role` trigger rejects any `role`/`is_op` change by a non-op, so it can't be bypassed via the API (the `materialize_and_split_month` RPC is likewise authorization-gated).
 
 ---
@@ -447,15 +498,15 @@ Opens automatically at the start of each new season for the previous season (def
 > `src/lib/awards.js`; ⏳ = catalogued but not yet implemented (needs AI, the Auteur vote,
 > guess-the-picker data, or multi-period trends — Phase 6).
 
-**Monthly:** Pick of the Month ✅, Flop of the Month ✅, The Contrarian ✅, The Oracle ✅, Hype Machine ✅, The Letdown ✅, The Surprise ✅, Most Divisive ✅, Most Unanimous ✅, Best Review (AI-assisted) ⏳
+**Monthly:** Pick of the Month ✅, Flop of the Month ✅, The Contrarian ✅, The Oracle ✅, Hype Machine ✅, The Letdown ✅, The Surprise ✅, Most Divisive ✅, Most Unanimous ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅, Best Review (AI-assisted) ⏳
 
-**Season:** Film of the Season ✅, Flop of the Season ✅, Picker of the Season ✅, Ice Cold ✅, Most Divisive Film ✅, Most Unanimous Film ✅, Harshest Critic ✅, Most Generous ✅, The Contrarian ✅, The Oracle ✅, Most Consistent Picker ✅, Easy Crowd ✅, Auteur Award (member vote) ⏳
+**Season:** Film of the Season ✅, Flop of the Season ✅, Picker of the Season ✅, Ice Cold ✅, Most Divisive Film ✅, Most Unanimous Film ✅, Harshest Critic ✅, Most Generous ✅, The Contrarian ✅, The Oracle ✅, Most Consistent Picker ✅, Easy Crowd ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅, Auteur Award (member vote) ⏳
 
-**Annual:** Film of the Year ✅, Worst Film of the Year ✅, Picker of the Year ✅, Harshest Critic ✅, Most Generous ✅, Most Divisive Film of the Year ✅, The Oracle of the Year ✅, Most Consistent ✅, The Wildcard ✅, Master of Disguise ✅, Most Evolved ✅ (dormant until the year spans ≥8 months of data)
+**Annual:** Film of the Year ✅, Worst Film of the Year ✅, Picker of the Year ✅, Harshest Critic ✅, Most Generous ✅, Most Divisive Film of the Year ✅, The Oracle of the Year ✅, Most Consistent ✅, The Wildcard ✅, Master of Disguise ✅, Most Evolved ✅ (dormant until the year spans ≥8 months of data), The Underrated 💎 ✅, The Deep Cut 🕳️ ✅
 
-**All-Time:** Continuously updated — Greatest Film Ever Shown ✅, Worst Film Ever ✅, Most Divisive Film Ever ✅, Most Unanimous Film Ever ✅, Picker GOAT ✅, Coldest Critic Ever ✅, Biggest Softie Ever ✅, The Wildcard ✅, The Oracle (All-Time) ✅, Master of Disguise ✅
+**All-Time:** Continuously updated — Greatest Film Ever Shown ✅, Worst Film Ever ✅, Most Divisive Film Ever ✅, Most Unanimous Film Ever ✅, Picker GOAT ✅, Coldest Critic Ever ✅, Biggest Softie Ever ✅, The Wildcard ✅, The Oracle (All-Time) ✅, Master of Disguise ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅
 
-> Definitions added this session (no spec definition existed): **Easy Crowd** = member with fewest low scores (≤4.0), tie-break highest avg (distinct from Most Generous). **Master of Disguise** = picker whose films were correctly guessed least often (min 3 guesses). **Most Evolved** = member with the biggest avg shift between the year's first and second half (activates once ≥8 distinct months exist). Only **Auteur Award** (ranked-choice member vote) remains ⏳ — needs the Phase 6 voting system.
+> Definitions added this session (no spec definition existed): **Easy Crowd** = member with fewest low scores (≤4.0), tie-break highest avg (distinct from Most Generous). **Master of Disguise** = picker whose films were correctly guessed least often (min 3 guesses). **Most Evolved** = member with the biggest avg shift between the year's first and second half (activates once ≥8 distinct months exist). **The Underrated** 💎 = film where club average minus TMDB average is the largest positive gap (the club valued it most above mainstream consensus). **The Deep Cut** 🕳️ = film scoring highest on genre rarity within the club catalog + obscurity (log-scaled inverse `tmdb_vote_count`). Both backed by `movies.tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`; badge appears on film + profile pages; computed across all four scopes. Only **Auteur Award** (ranked-choice member vote) remains ⏳ — needs the Phase 6 voting system.
 
 The Vault: films averaging ≥ 8.5 (configurable). Auto-removes if average drops below threshold after score updates.
 
@@ -469,3 +520,11 @@ The Vault: films averaging ≥ 8.5 (configurable). Auto-removes if average drops
 - `src/context/MemberOverlayContext.jsx` — global context that opens the member profile overlay from anywhere in the app
 - `src/lib/authLog.js` — `logAuthEvent()` and `deliberateSignOut()` for auth diagnostics
 - `supabase/migrations/` — new migration files for: `auth_events` table, `months` admin RLS policies, `reactions` unique constraint, `materialize_and_split_month` service-context support
+
+## New Files (Phase 4 + subsequent sessions)
+
+- `src/context/NotificationsContext.jsx` — notification load, Realtime subscription, markRead/markAllRead, preference state
+- `src/components/NotificationCenter.jsx` — bell + unread badge; desktop popover / mobile bottom sheet
+- `public/sw.js` — service worker for Web Push
+- `supabase/functions/send-push/` — Deno Edge Function (npm:web-push); sends Web Push + prunes expired subscriptions
+- `supabase/migrations/` — additional migrations for: `notifications` table + SECURITY DEFINER triggers, `notification_preferences`, `push_subscriptions`, `movies` TMDB columns (`tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`, `tmdb_cast`), pg_net email trigger, push_notification trigger, vault secrets setup

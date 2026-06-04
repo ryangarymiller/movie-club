@@ -2,7 +2,57 @@
 
 > Living document. Update status as work completes.
 > Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
-> Last updated: 2026-06-03 (session 9)
+> Last updated: 2026-06-04 (session 10)
+
+---
+
+## Session 10 — Phase 4 notifications + awards/stats additions + theme fixes
+
+### Phase 4a — In-app notification engine + center + preferences
+- [x] **`public.notifications` table** — `id, user_id, type, title, body, link, payload jsonb, read_at, created_at`; RLS: recipients read/update their own rows only; rows created exclusively by SECURITY DEFINER triggers (no direct client insert).
+- [x] **Selective DB triggers** — fire only on meaningful events (never on general activity): `movies.scores_revealed` flip; `months.status → 'active'` (new month) and `→ 'revealed'` (end-of-month reveal); reply to your review/comment; `@mention` parsed from body against each member's FirstLast handle; `score_change_requests` decision (approved/denied) delivered to the requester.
+- [x] **`NotificationsContext`** (`src/context/NotificationsContext.jsx`) — loads notifications, subscribes via Supabase Realtime for live updates, exposes `markRead` / `markAllRead`, and surfaces push-support helpers (`pushSupported`, `pushEnabled`, `enablePush`, `disablePush`).
+- [x] **`NotificationCenter`** (`src/components/NotificationCenter.jsx`) — bell icon with unread badge; desktop sidebar popover + mobile bottom sheet; per-type glyphs; click-to-navigate + mark-read; "mark all read"; empty state.
+- [x] **`public.notification_preferences` table** — `user_id` (PK), `muted_types text[]`, `channel_push bool`, `channel_email bool`, `quiet_start / quiet_end time`, `updated_at`; RLS: own row only.
+- [x] **Profile "Notifications" settings section** (own profile only) — per-event-type mute toggles, quiet-hours from/until, Email delivery toggle, Browser Push delivery toggle. Muting filters the in-app center + unread badge immediately.
+
+### Phase 4b — Email + web push delivery
+- [x] **Email via Resend** — a `email_notification` DB trigger (pg_net extension) POSTs to the Resend API when: recipient has `channel_email = true`, hasn't muted the event type, and is not in their quiet-hours window (checked against their timezone). `RESEND_API_KEY` and `APP_BASE_URL` stored in `supabase_vault` (never in code). Opt-in (`channel_email` defaults to `false`). Verified end-to-end (HTTP 200 from Resend). Note: full multi-member delivery requires a verified sending domain in Resend; test mode reaches the account owner only.
+- [x] **Web push** — `public.push_subscriptions` table; `send-push` Supabase Edge Function (Deno, `npm:web-push`) sends to a user's subscriptions with VAPID and prunes expired (404/410) ones; `push_notification` DB trigger gathers subscriptions + VAPID private key (from vault) and POSTs to the function via pg_net. Client-side: `NotificationsContext` exposes `enablePush` / `disablePush` (permission gate → SW register → `PushManager.subscribe` → store subscription → flip `channel_push`); `public/sw.js` service worker. Profile's Browser Push row is a live toggle (shows a note where unsupported, e.g. iOS without Add to Home Screen). End-to-end requires a real browser with push support.
+- [x] **`supabase_vault` secrets added:** `resend_api_key`, `app_base_url`, `vapid_private_key`, `vapid_subject`.
+- [x] **New Edge Function:** `send-push` (deployed).
+
+### Phase 4c — Scheduling / enforcement (deferred)
+- [ ] **Auto month-activation on the 1st** via pg_cron — intentionally deferred until closer to launch so dev behavior is unchanged; deadlines remain display-only.
+- [ ] **Deadline enforcement + grace periods + auto-reveal** — same deferral rationale; Phase 4c parked until launch window.
+
+### Awards — new
+- [x] **"The Underrated" (💎)** — club average minus TMDB average; biggest positive gap. Monthly / Season / Annual / All-Time. Badge on film + profile pages.
+- [x] **"The Deep Cut" (🕳️)** — genre rarity (vs club catalog) + obscurity (log-scaled inverse TMDB `vote_count`). Same scopes. Badge on film + profile pages.
+- [x] **New `movies` columns:** `tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity` — backfilled from TMDB, exposed via `movies_safe`.
+
+### Stats — new
+- [x] **Connection Web / 6 Degrees** — films linked by shared actor or director; custom radial SVG node-link graph (hover/tap a film lights its connections + shows who bridges them; nodes open the film overlay). Backed by `movies.tmdb_cast text[]` (top-billed cast backfilled from TMDB, exposed via `movies_safe`).
+- [x] **Genre Blindspot Grid** — per-member genre coverage heatmap implemented.
+- [x] **Club "score over time" TMDB line** — neutral grey dotted TMDB average line added to the trend chart.
+- [x] **Films member filter** — "All Films" gains a filter-by-member control (revealed picks only); member color propagates via `userColor()` helper reading `user_color` from the DB.
+
+### Theme / misc
+- [x] **Light-mode accent overrides** — vibrant `--accent` + dark accent text per accent variant so light mode is legible; dark mode unchanged.
+- [x] **`userColor()` reads DB `user_color` first** — chosen color now propagates correctly into Stats charts and the Films member filter.
+- [x] **Active bottom-nav tab uses accent color.**
+- [x] **Home poster-row shadow no longer clips.**
+- [x] **Admin: "Upcoming Picks" preview** — admin-only panel behind a Reveal toggle; members never see others' pre-reveal picks.
+- [x] **Admin: auto genre backfill** — dashboard detects films missing a genre and backfills from TMDB automatically.
+- [x] **Notifications/anonymity fix** — This Month member view never exposes others' upcoming picks (even to admins in non-admin view); end-of-month reveal path handles that. `MonthReveal` guess/prediction rows exclude the test account.
+
+### DB / Migrations (session 10)
+- [x] New tables: `notifications`, `notification_preferences`, `push_subscriptions`.
+- [x] New `movies` columns: `tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`, `tmdb_cast`.
+- [x] New extension: `pg_net` (for DB → HTTP delivery of email + push).
+- [x] `supabase_vault` secrets: `resend_api_key`, `app_base_url`, `vapid_private_key`, `vapid_subject`.
+- [x] New Edge Function: `send-push` (deployed).
+- [x] All changes tracked as new migrations under `supabase/migrations/`.
 
 ---
 
@@ -173,6 +223,9 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 | Supabase project | ✅ See PRIVATE.md |
 | Vitest + React Testing Library | ✅ 124 tests passing |
 | TMDB env vars in Vercel | ✅ Added session 4 |
+| pg_net extension | ✅ Enabled session 10 (email + push delivery) |
+| supabase_vault secrets | ✅ resend_api_key, app_base_url, vapid_private_key, vapid_subject (session 10) |
+| send-push Edge Function | ✅ Deployed session 10 |
 
 ---
 
@@ -185,6 +238,8 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 | All members is_active = true | ✅ Fixed session 4 |
 | auth.users NULL columns fixed | ✅ Fixed session 4 |
 | Back-calculate missing scores (1 missing) | ✅ | Smashing Machine: Andrew=7.00; Spirited Away: Ryan Bey=8.50 |
+| notifications + notification_preferences + push_subscriptions | ✅ Added session 10 |
+| movies: tmdb_vote_average, tmdb_vote_count, tmdb_popularity, tmdb_cast | ✅ Added + backfilled session 10 |
 
 ---
 
@@ -214,8 +269,10 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 | Awards — Annual | ✅ | |
 | Awards on film pages | ✅ | FilmDetailOverlay awards section (computed via src/lib/awards.js) |
 | Awards on profile pages | ✅ | Includes awards for films the user picked |
-| Profile | ✅ | Light/dark toggle added; user_color on avatar; awards section |
+| Profile | ✅ | Light/dark toggle; user_color on avatar; awards section; Notifications settings section (mute/quiet-hours/email/push) |
 | Profile — Admin mode toggle | ✅ | Was already built |
+| Notifications — bell + center | ✅ | `NotificationCenter.jsx`; desktop popover + mobile sheet; unread badge; per-type glyphs; mark-read / mark-all-read |
+| Notifications — preferences | ✅ | `notification_preferences` table; per-type mute; quiet hours; email + push toggles; live in Profile |
 | Members directory / clickable names | ✅ | MemberOverlayContext: any member click opens popup; /profile/:id deep-link kept |
 | Admin — Dashboard | ✅ | Score count fix + N/A cells |
 | Admin — Films | ✅ | Full TMDB metadata editing + bulk month reveal |
@@ -320,34 +377,36 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] **DB tracked in repo**: `supabase/migrations/` (session-7 data fixes, Phase 2 tables+RLS, predictions RLS) + README. Baseline of pre-session-7 schema still needs `supabase db pull` (CLI not installed here)
 
 ## Phase 3 — Themes & Personalisation
-- [ ] Full light mode
-- [ ] 7 accent colors via CSS variables (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet)
-- [ ] 20 user colors with ring display and one-per-member enforcement
+- [x] Full light mode — CSS-variable token system; light-mode accent overrides (vibrant per-accent colors + dark accent text for legibility); dark mode preserved
+- [x] 7 accent colors via CSS variables (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet) — active bottom-nav tab uses accent color
+- [x] 20 user colors with ring display and one-per-member enforcement — `userColor()` reads DB `user_color` first so chosen color propagates into Stats + Films member filter; Profile picker strikes out taken colors and collapses after selection
 - [ ] Avatar library (all 18 packs — see spec for full asset list)
-- [ ] Settings page: all options (theme, accent, user color, avatar, notifications, quiet hours, sort default, last online, timezone, tour replay, admin mode toggle)
+- [~] Settings page: theme ✅, accent ✅, user color ✅, notifications + quiet hours ✅ (Profile "Notifications" section, session 10); avatar, sort default, last online, timezone, tour replay, admin mode toggle — remaining
 - [ ] Last online tracking and visibility toggle
 
 ## Phase 4 — Notifications & Scheduling
-- [ ] Email notifications via Resend (server-side Edge Function)
-- [ ] Web push notifications (iOS "Add to Home Screen" prompt)
-- [ ] **Deadline enforcement** — deadlines are currently display-only; Phase 4 wires up actual enforcement (score submission blocked after deadline + grace period passes). Deferred from session 8 (dev mode until launch/July).
-- [ ] **Grace period** — invisible to members; results reveal after deadline from their perspective; auto-trigger when all scores are in before deadline. Admin manual override. Deferred from session 8.
-- [ ] **Auto month-activation on the 1st** — currently admin-triggered via "Activate / Trigger now" button calling `materialize_and_split_month()`; Phase 4 automates this on the month's `active_date`. Deferred from session 8.
+- [x] **4a — In-app notification engine + center + preferences** (session 10): `notifications` table + selective SECURITY DEFINER triggers; `NotificationsContext` + `NotificationCenter` (bell/badge, popover/sheet, per-type glyphs, mark-read); `notification_preferences` table with per-type mute, quiet hours, email + push toggles; Profile "Notifications" settings section
+- [x] **4b — Email delivery via Resend** (session 10): `email_notification` DB trigger via pg_net; Resend key + app URL in `supabase_vault`; opt-in; verified end-to-end (full multi-member delivery needs verified sending domain in Resend)
+- [x] **4b — Web push delivery** (session 10): `push_subscriptions` table; `send-push` Edge Function (Deno + npm:web-push + VAPID); `push_notification` DB trigger via pg_net; `public/sw.js` service worker; Profile Browser Push toggle; `enablePush`/`disablePush` in context; end-to-end requires real browser
+- [ ] **4c — Auto month-activation on the 1st** via pg_cron — intentionally deferred until closer to launch; deadlines remain display-only
+- [ ] **4c — Deadline enforcement + grace periods + auto-reveal** — same deferral rationale; parked until launch window
 - [ ] Watch schedule with suggested dates and reminders
-- [ ] Quiet hours (12am–8am local, toggleable per user, timing admin-adjustable globally)
-- [ ] All notification types (see spec §11 for full list) — includes score-change approval notices and other events deferred from session 8
 
 ## Phase 5 — Stats & Visualizations
-- [ ] Recharts stubs needing data: genre/cast (genre not on movies table), guess-the-picker accuracy, director/actor connection web
-- [ ] Director/actor connection web — interactive force-directed graph with 6 Degrees of Separation mode
-- [ ] Genre blindspot tracker (requires genre field on movies)
+- [x] **Connection Web / 6 Degrees** (session 10) — custom radial SVG node-link graph linking films by shared actor or director; hover/tap lights connections + shows bridging members; nodes open the film overlay; backed by `movies.tmdb_cast` (backfilled from TMDB)
+- [x] **Genre Blindspot Grid** (session 10) — per-member genre coverage heatmap implemented
+- [x] **Club trend chart TMDB line** (session 10) — neutral grey dotted TMDB average overlaid on the "score over time" chart
+- [x] **Films member filter** (session 10) — "All Films" filter-by-member control (revealed picks only); member color from DB propagates correctly
+- [ ] Recharts stubs needing data: guess-the-picker accuracy chart stubs remain
 - [ ] Taste compatibility heatmap (member × member score correlation)
 - [ ] Winning streak tracker
 - [ ] **Rotten Tomatoes comparison** — RT API/scrape; Stats currently uses TMDB `vote_average` as a proxy. Deferred from session 8 (RT API access TBD).
 
 ## Phase 6 — Awards & Recaps
+- [x] **"The Underrated" award (💎)** (session 10) — biggest positive club-avg minus TMDB-avg gap; Monthly / Season / Annual / All-Time; badge on film + profile pages; backed by new `movies.tmdb_vote_average` column
+- [x] **"The Deep Cut" award (🕳️)** (session 10) — genre rarity + log-scaled inverse TMDB `vote_count` obscurity score; same scopes; backed by `movies.tmdb_vote_count` + `tmdb_popularity`
 - [ ] Automated award calculation written to DB on reveal (monthly, seasonal, annual, all-time)
-- [ ] **Auteur Award** — ranked-choice (instant runoff) member vote + notification flow. ⭐ This is the **only remaining award** in the catalog (all 43 others implemented in session 7); add it once the voting system exists. Award key/scope already reserved: `auteur_award`, season scope, backed by the `auteur_votes` table.
+- [ ] **Auteur Award** — ranked-choice (instant runoff) member vote + notification flow. ⭐ This is the **only remaining award** in the catalog (all 45 others now implemented); add it once the voting system exists. Award key/scope already reserved: `auteur_award`, season scope, backed by the `auteur_votes` table.
 - [ ] AI monthly recap (Claude API via Edge Function, admin editable before publish)
 - [ ] AI best review detection (Claude API)
 - [ ] The Vault — auto-add/remove based on configurable threshold (default 8.5)

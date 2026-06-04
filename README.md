@@ -23,13 +23,16 @@ A private web app for a 5-person movie club. Each month every member picks one f
 - **@Mentions** — Inline mentions preserved throughout
 
 ### Stats and Charts
-- Score distribution histogram, scores over time (trend line, per-member overlay), member comparison bar chart, excitement vs. final scatter, head-to-head score delta matrix
+- Score distribution histogram, scores over time (trend line, per-member overlay, neutral grey dotted TMDB line), member comparison bar chart, excitement vs. final scatter, head-to-head score delta matrix
 - Per-user scoring granularity and standard deviation, avg score per release decade, club-vs-TMDB vote average comparison (auto-scaled scatter), genre pie chart with filter link-outs
+- **Connection Web / 6 Degrees** — radial SVG node-link graph linking films by shared actor or director; hover/tap a film to highlight its connections and see who bridges them; nodes open the film overlay. Backed by `movies.tmdb_cast` (top-billed cast, backfilled from TMDB)
+- **Genre Blindspot Grid** — per-member genre coverage matrix showing which genres each member has (or hasn't) scored
+- All Films has a filter-by-member control (revealed picks only); member colors in charts now read the DB `user_color` field so a chosen color propagates everywhere
 - Clicking a film anywhere in Stats opens the film overlay; clicking a member name opens the member overlay (profile popup); season/year ranking lists are collapsible
 - Improved chart interactions: histogram selected bar glows, club-by-film trend keyed by id, taste-correlation uses accent color, std-dev/mean overlays show numeric values
 
 ### Awards
-Monthly, seasonal, annual, and all-time awards computed automatically from scoring data (`historical_avg_score` is authoritative in all computations). Awards appear as a collapsible badge grid (`AwardsBadges` component) on film overlay and member profiles. Deep-link to any award via `scope`/`key`/`ref` query params. Categories include: Pick/Flop of the Month, The Contrarian, The Oracle, Hype Machine, Most Divisive, Most Unanimous, Film/Picker of the Season, Harshest Critic, Most Generous, Easy Crowd, Master of Disguise, Most Evolved, and more. The Auteur Award (ranked-choice member vote) is planned for Phase 6.
+Monthly, seasonal, annual, and all-time awards computed automatically from scoring data (`historical_avg_score` is authoritative in all computations). Awards appear as a collapsible badge grid (`AwardsBadges` component) on film overlay and member profiles. Deep-link to any award via `scope`/`key`/`ref` query params. Categories include: Pick/Flop of the Month, The Contrarian, The Oracle, Hype Machine, Most Divisive, Most Unanimous, Film/Picker of the Season, Harshest Critic, Most Generous, Easy Crowd, Master of Disguise, Most Evolved, and more. New awards: **The Underrated** (💎, club avg minus TMDB avg — biggest positive gap) and **The Deep Cut** (🕳️, genre rarity + inverse TMDB vote count). Both backed by new `movies` columns `tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`. The Auteur Award (ranked-choice member vote) is planned for Phase 6.
 
 ### Member Profiles
 - **Member Overlay** — Clicking any member name or avatar anywhere in the app (Home, Stats, Awards, Films legend, film overlay) opens a profile popup via `MemberOverlayContext`; closing it returns you exactly where you were. The bottom-bar Profile tab remains your own profile. `/profile/:id` is kept as a deep-link fallback.
@@ -39,10 +42,19 @@ Monthly, seasonal, annual, and all-time awards computed automatically from scori
 - **Intermittent sign-out fix** — `fetchProfile` now distinguishes a transient network/DB error from a genuine missing user row: it retries once and never blanks an existing session on error; the app shows a Retry screen instead of redirecting to `/not-approved`
 - **Auth diagnostics** — `auth_events` table (admin-read; open insert so sign-out events log even while signed out) + `src/lib/authLog.js` (`logAuthEvent` fire-and-forget; `deliberateSignOut()` tags user-initiated sign-outs)
 
+### Notifications
+- **In-app notification center** — bell icon with unread badge (desktop sidebar popover, mobile bottom sheet); per-type glyphs, click-to-navigate + mark-read, "mark all read", empty state. `NotificationsContext` loads rows and subscribes via Supabase Realtime for live updates.
+- **Notification engine** — `public.notifications` table (RLS: recipient reads/updates own rows; rows created only by SECURITY DEFINER triggers). Triggers fire only on meaningful events: a film's `scores_revealed` flip, `months.status` → `active` (new month) or → `revealed` (end-of-month), a reply to your review/comment, an @mention (parsed from body), and a `score_change_requests` decision (approved/denied).
+- **Preferences** — `public.notification_preferences` table; Profile "Notifications" section lets each member toggle per-event-type mute, set quiet hours (from/until in their timezone), and enable Email or Browser-push delivery. Muting filters the in-app center and badge immediately.
+- **Email delivery (Resend)** — a DB trigger POSTs to Resend via the `pg_net` extension when the recipient has email enabled, hasn't muted the type, and is outside quiet hours. Resend API key and app base URL are stored in `supabase_vault`. Opt-in (default off). *Note: full multi-member delivery requires a verified sending domain in Resend; test mode reaches the account owner only.*
+- **Web Push delivery** — `public.push_subscriptions` table; `send-push` Edge Function (Deno, `npm:web-push`) sends to a user's subscriptions with VAPID and prunes expired ones (404/410); DB trigger gathers subscriptions + VAPID private key from vault and POSTs to the function via `pg_net`; `public/sw.js` service worker. Profile's Browser-push toggle gates on browser permission + service-worker support. *Note: iOS requires Add to Home Screen (PWA) for push to work.*
+- **Scheduling (Phase 4c — auto month-activation + deadline enforcement/auto-reveal via pg_cron) is intentionally deferred** until closer to launch; deadlines remain display-only for now.
+
 ### Personalization
 - Light/dark mode (bound to `.dark` class, not `prefers-color-scheme`)
-- 7 accent colors (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet)
-- 20 distinct user colors (one-per-member enforced; taken colors shown with strikethrough in picker)
+- 7 accent colors (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet); light-mode accent overrides ensure vibrant, legible colors (dark mode unchanged)
+- Active bottom-nav tab uses the accent color
+- 20 distinct user colors (one-per-member enforced; taken colors shown with strikethrough in picker); chosen color propagates into Stats charts and the Films member filter via `userColor()` helper
 
 ### Admin
 - OP role: a single operator (is_op) has exclusive ability to promote/demote admins; admins manage everything else
@@ -50,6 +62,8 @@ Monthly, seasonal, annual, and all-time awards computed automatically from scori
 - Manual score entry (can overwrite existing); missing-score matrix with member-presence awareness
 - Film metadata editing, streaming provider refresh, member management (activate/deactivate)
 - Materialize picks into films and recompute scoring deadlines for a month; month `status='active'` update now correctly persists (RLS INSERT/UPDATE policies added)
+- **Upcoming Picks preview** — admin-only panel behind a Reveal toggle; members never see others' picks pre-reveal
+- **Auto genre backfill** — Admin dashboard auto-fills genre when any film is missing one
 
 ---
 
@@ -105,9 +119,11 @@ Copy `.env.example` to `.env` and fill in values, or contact a maintainer. The o
 
 The full database schema lives in `supabase/migrations/`. Migrations are tracked in order and applied via the Supabase CLI (`supabase db push`) or the Supabase dashboard.
 
-Key tables: `users` (+ `is_op`), `seasons`, `months` (+ `active_date`), `movies`, `ratings`, `upcoming_picks`, `reviews`, `comments` (+ `review_id`, `parent_comment_id`), `reactions` (polymorphic, unique constraint on target_type/target_id/user_id/emoji), `votes`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `film_tags`, `auteur_votes`, `season_rankings`, `notifications`, `auth_events` (admin-read, open insert for sign-out logging).
+Key tables: `users` (+ `is_op`), `seasons`, `months` (+ `active_date`), `movies` (+ `tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`, `tmdb_cast`), `ratings`, `upcoming_picks`, `reviews`, `comments` (+ `review_id`, `parent_comment_id`), `reactions` (polymorphic, unique constraint on target_type/target_id/user_id/emoji), `votes`, `picker_guesses`, `score_predictions`, `score_change_requests`, `month_absences`, `awards`, `film_tags`, `auteur_votes`, `season_rankings`, `notifications` (SECURITY DEFINER triggers only; RLS recipient-own), `notification_preferences`, `push_subscriptions`, `auth_events` (admin-read, open insert for sign-out logging).
 
 Key RPC: `public.materialize_and_split_month(p_month_id uuid)` — materializes picks into films and splits scoring deadlines evenly.
+
+Infrastructure additions: `pg_net` extension (outbound HTTP from DB triggers), `supabase_vault` secrets (`resend_api_key`, `app_base_url`, `vapid_private_key`, `vapid_subject`), Edge Function `send-push`.
 
 > `PRIVATE.md` (member info and infra URLs) and `MOVIE_CLUB_SPEC.md` (authoritative spec) are gitignored and never committed.
 
@@ -121,11 +137,11 @@ Key RPC: `public.materialize_and_split_month(p_month_id uuid)` — materializes 
 |-----|-------------|
 | Home | Your Turn cards, collapsible recent activity, Club Members browse strip, quick stats |
 | This Month | Single consolidated scrolling view: film cards with inline deadline countdowns, Your Pick section (pick CTA / change-pick / others' picks after reveal), Reveal section (picker identities, justifications, guess + prediction results, monthly awards — shown once fully revealed) |
-| Films | All Films (floating hide-scores toggle; upcoming-month films excluded), The Vault, By Season, History |
-| Stats | Overview, Me, Members, Club, Head to Head |
-| Awards | Monthly, Season, Annual, All-Time |
-| Profile | Theme, user color picker (collapses after choosing), films you picked, awards badge grid, settings, sign out |
-| Admin | Dashboard, film editing, member management, score matrix *(admin only)* |
+| Films | All Films (floating hide-scores toggle; filter by member; upcoming-month films excluded), The Vault, By Season, History |
+| Stats | Overview, Me, Members, Club (incl. Connection Web + Genre Blindspot Grid), Head to Head |
+| Awards | Monthly, Season, Annual, All-Time (incl. The Underrated + The Deep Cut) |
+| Profile | Theme, user color picker (collapses after choosing), Notifications settings (per-type mute, quiet hours, email + push toggles), films you picked, awards badge grid, sign out |
+| Admin | Dashboard, film editing, member management, score matrix, Upcoming Picks preview *(admin only)* |
 
 ---
 
@@ -141,7 +157,7 @@ Key RPC: `public.materialize_and_split_month(p_month_id uuid)` — materializes 
 | 6 — Awards and Recaps | Auteur Award (ranked-choice vote), AI recap, seasonal readjustment window |
 | 7 — Polish | Guest mode, export, milestones, veto voting, watchlist, draft queue |
 
-Phases 1–3 are complete. Phase 4 deadline enforcement is display-only until launch; admin "trigger now" is available in the meantime. Sessions 1–9 have also delivered portions of Phases 4–6 work (stats charts, awards computations, auth hardening, member overlays) ahead of their formal phase.
+Phases 1–4a/4b are complete. Phase 4c (pg_cron auto-activation + deadline enforcement) is intentionally deferred until closer to launch; deadlines remain display-only and the admin "trigger now" button is available in the meantime. Sessions 1–9+ have also delivered portions of Phases 5–6 work (Connection Web, Genre Blindspot Grid, The Underrated/The Deep Cut awards, stats charts, auth hardening, member overlays) ahead of their formal phase.
 
 ---
 
