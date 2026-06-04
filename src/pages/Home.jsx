@@ -323,7 +323,7 @@ export default function Home() {
   const topFilm = [...allMovies].filter(m => m.historical_avg_score).sort((a, b) => b.historical_avg_score - a.historical_avg_score)[0]
 
   return (
-    <div style={{ background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)', fontFamily: "'DM Sans',sans-serif", minHeight: '100vh', paddingBottom: '6rem', width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)', fontFamily: "'DM Sans',sans-serif", minHeight: '100vh', paddingBottom: '5rem', width: '100%', boxSizing: 'border-box' }}>
 
       {/* Single padded container — everything inside */}
       <div style={{ padding: '2.5rem 1rem 0', boxSizing: 'border-box', width: '100%' }}>
@@ -524,8 +524,8 @@ export default function Home() {
           )}
         </section>
 
-        {/* Club Members strip */}
-        <section className="mt-8 mb-4" style={{ animation: 'fadeUp 0.5s 0.5s ease both' }}>
+        {/* Club Members strip — last section, no trailing margin (page paddingBottom clears the nav) */}
+        <section className="mt-8" style={{ animation: 'fadeUp 0.5s 0.5s ease both' }}>
           <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
             Club Members
           </p>

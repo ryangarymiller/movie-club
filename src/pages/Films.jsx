@@ -2460,10 +2460,13 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
 
   useEffect(() => {
     async function load() {
+      // Include the current active month alongside revealed ones so members can
+      // browse this month's films here too (scores only show for films whose
+      // weekly reveal has passed — guarded below on scores_revealed).
       const { data: monthsData } = await supabase
         .from('months')
         .select('id, month_year, status')
-        .eq('status', 'revealed')
+        .in('status', ['active', 'revealed'])
         .order('month_year', { ascending: false })
 
       if (!monthsData || monthsData.length === 0) {
@@ -2499,7 +2502,9 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
       const byMonth = {}
       for (const m of (moviesData ?? [])) {
         const scores = ratingsLookup[m.id] ?? []
-        const avgScore = scores.length > 0
+        // Only surface a computed average once the film's scores are revealed —
+        // an active-month film mid-scoring must not show a partial average.
+        const avgScore = (m.scores_revealed && scores.length > 0)
           ? scores.reduce((s, v) => s + v, 0) / scores.length
           : null
         const enriched = { ...m, _avgScore: avgScore }
@@ -2533,7 +2538,7 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
         </div>
       ) : months.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(var(--fg-rgb), 0.25)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px' }}>
-          No revealed months yet.
+          No months to show yet.
         </div>
       ) : (
         <>

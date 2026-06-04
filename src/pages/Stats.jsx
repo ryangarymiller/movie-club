@@ -1281,13 +1281,12 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
-      {/* Top stat cards */}
+      {/* Top stat cards — tight 2×2 grid (no wasted full-width row) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         <StatCard label="Total Films" value={stats.totalFilms} />
         <StatCard label="Scores Cast" value={stats.totalScores} />
-        <div style={{ gridColumn: '1 / -1' }}>
-          <StatCard label="Club Average Score" value={fmt(stats.clubAvg)} />
-        </div>
+        <StatCard label="Club Average" value={fmt(stats.clubAvg)} />
+        <StatCard label="In the Vault" value={stats.vault.length} />
       </div>
 
       {/* All-time Score Distribution (mini) */}

@@ -31,9 +31,11 @@ function countdownLabel(isoString) {
 
 function scoreStatus(rating) {
   if (!rating) return 'excitement'
+  // A final score already submitted → done (excitement is locked/moot, so never
+  // show the excitement CTA for a film that's already scored).
+  if (rating.score != null) return 'done'
   if (!rating.pre_watch_excitement) return 'excitement'
-  if (!rating.score) return 'final'
-  return 'done'
+  return 'final'
 }
 
 function initials(title) {
@@ -288,7 +290,7 @@ function FilmCard({ movie, rating, onScorePress, onOpen, pickerName, profile, al
     ? 'Submit excitement score'
     : status === 'final'
       ? 'Submit final score'
-      : 'Scored'
+      : 'Your score'
 
   const labelColor = status === 'done' ? 'var(--text-faint)' : 'var(--text-muted)'
 
@@ -383,7 +385,9 @@ function FilmCard({ movie, rating, onScorePress, onOpen, pickerName, profile, al
         return (
           <div style={{
             marginTop: '8px',
-            display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+            // Stack deadline + picker so every card lays out the same (some picker
+            // names + deadlines are too long to share one line, which looked uneven).
+            display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px',
           }}>
             {movie.scoring_deadline && (
               <span style={{
@@ -1784,25 +1788,31 @@ export default function ThisMonth() {
           </h1>
         </div>
 
-        {/* Single consolidated view: this month's films (with inline deadlines +
-            picker reveal), then your next pick, then the end-of-month reveal. */}
+        {/* Single consolidated view, ordered by time: your next pick first
+            (the upcoming month), then this month's films + scores, then last
+            month's end-of-month reveal. */}
         <div style={{ animation: 'fadeUp 0.3s ease both', display: 'flex', flexDirection: 'column', gap: '34px' }}>
-          <FilmsTab
-            movies={movies}
-            ratingsMap={ratingsMap}
-            loading={loading}
-            onScorePress={openModal}
-            onOpen={setSelectedMovie}
-            users={users}
-            profile={profile}
-            activeMonth={activeMonth}
-          />
+          <section>
+            <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.18em', margin: '0 0 14px' }}>
+              Next Month
+            </p>
+            <PicksTab profile={profile} onOpenFilm={setSelectedMovie} />
+          </section>
 
           <section>
             <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.18em', margin: '0 0 14px' }}>
-              Your Pick
+              Now Showing · {monthLabel}
             </p>
-            <PicksTab profile={profile} onOpenFilm={setSelectedMovie} />
+            <FilmsTab
+              movies={movies}
+              ratingsMap={ratingsMap}
+              loading={loading}
+              onScorePress={openModal}
+              onOpen={setSelectedMovie}
+              users={users}
+              profile={profile}
+              activeMonth={activeMonth}
+            />
           </section>
 
           {revealMonth && (
