@@ -8,6 +8,7 @@ import CommentThread from '../components/CommentThread'
 import GuessThePicker from '../components/GuessThePicker'
 import VetoControl from '../components/VetoControl'
 import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
+import { PickChangeRequestButton } from '../components/PickChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
 import FilmScoreBars from '../components/FilmScoreBars'
 import FilmTags from '../components/FilmTags'
@@ -961,6 +962,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const [showBreakdown, setShowBreakdown] = useState(false)
   const [predictions, setPredictions] = useState([])
   const [isPicker, setIsPicker] = useState(false) // is the current user the picker of THIS film?
+  const [activeMonthId, setActiveMonthId] = useState(null) // the currently-active month (for pick-change gating)
   const [awardData, setAwardData] = useState(null) // { movies, ratings, users, months, seasons }
   const [filmAwardsState, setFilmAwardsState] = useState(null) // null = not yet loaded
   const scrollRef = useRef(null)
@@ -980,6 +982,15 @@ export function FilmDetailOverlay({ movie, onClose }) {
       .then(({ data }) => { if (!cancelled) setIsPicker(!!data) })
     return () => { cancelled = true }
   }, [movie, profile])
+
+  // The active month — used to gate the "request a different pick" affordance
+  // (only an active-month pick is locked; an upcoming pick is edited directly).
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('months').select('id').eq('status', 'active').maybeSingle()
+      .then(({ data }) => { if (!cancelled) setActiveMonthId(data?.id ?? null) })
+    return () => { cancelled = true }
+  }, [movie])
 
   // Trigger animation
   useEffect(() => {
@@ -1629,6 +1640,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 currentUserId={profile.id}
                 movieTitle={m.title}
               />
+            </div>
+          )}
+
+          {/* ── REQUEST PICK CHANGE (the picker's own locked active-month pick) ── */}
+          {profile && isPicker && activeMonthId && m.month_id === activeMonthId && !m.scores_revealed && !m.picker_revealed && (
+            <div style={{ marginTop: '14px' }}>
+              <PickChangeRequestButton movie={{ id: m.id }} currentUserId={profile.id} />
             </div>
           )}
 

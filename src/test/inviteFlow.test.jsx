@@ -97,6 +97,18 @@ function setupMocks({ insertError = null } = {}) {
           }),
         }
 
+      case 'pick_change_requests':
+      case 'score_change_requests':
+        // Admin request panels: .select().eq('status','pending').order(...)
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({ eq: vi.fn(() => Promise.resolve({ error: null })) }),
+        }
+
       default:
         return {
           select: vi.fn(() => Promise.resolve({ data: [], error: null })),

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { writeAwardsToDb } from '../lib/awards'
 import { ScoreChangeRequestsAdminPanel } from '../components/ScoreChangeRequest'
+import { PickChangeRequestsAdminPanel } from '../components/PickChangeRequest'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -725,6 +726,14 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
         <Label>Score-Change Requests</Label>
         <div style={{ marginTop: '10px' }}>
           <ScoreChangeRequestsAdminPanel />
+        </div>
+      </div>
+
+      {/* Pending pick-change requests (member → admin approval; swaps the film) */}
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px' }}>
+        <Label>Pick-Change Requests</Label>
+        <div style={{ marginTop: '10px' }}>
+          <PickChangeRequestsAdminPanel />
         </div>
       </div>
     </div>
