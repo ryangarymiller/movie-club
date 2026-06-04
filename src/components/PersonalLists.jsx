@@ -163,6 +163,7 @@ function EmptyState({ children }) {
 // ── Watchlist ────────────────────────────────────────────────────────────────
 function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   const [items, setItems] = useState(null) // null = loading
+  const [open, setOpen] = useState(false)  // collapsed by default — it can get long
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -190,11 +191,25 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   }
 
   const existingIds = new Set((items ?? []).map(i => i.tmdb_id))
+  const count = items?.length ?? 0
 
   return (
     <div style={{ marginBottom: '1.75rem' }}>
-      <span style={LABEL}>My Watchlist</span>
-      <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', color: 'var(--text-dim)', margin: '4px 0 12px' }}>
+      {/* Collapsible header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{ color: 'var(--accent)', fontSize: '12px', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}>▸</span>
+        <span style={LABEL}>My Watchlist</span>
+        {items !== null && <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--text-faint)' }}>· {count}</span>}
+      </button>
+      {!open ? null : (
+      <div style={{ marginTop: '12px' }}>
+      <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', color: 'var(--text-dim)', margin: '0 0 12px' }}>
         Films you want to watch — private to you.
       </p>
       <FilmSearchAdd onAdd={add} existingIds={existingIds} placeholder="Search to add a film…" />
@@ -234,6 +249,8 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
             )
           })}
         </div>
+      )}
+      </div>
       )}
     </div>
   )
