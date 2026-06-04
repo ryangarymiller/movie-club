@@ -432,7 +432,7 @@ export default function Profile({ overlayUserId = null } = {}) {
   const userId = overlayUserId ?? params.userId
   const navigate = useNavigate()
   const { profile, isAdmin, fetchProfile } = useAuth()
-  const { accent, setAccent, mode, toggleMode } = useTheme()
+  const { accent, setAccent, mode, setMode, MODE_OPTIONS } = useTheme()
   const { close: closeMemberOverlay } = useMemberOverlay()
   const { openStats: openMemberStats } = useMemberStatsOverlay()
   const {
@@ -1267,50 +1267,36 @@ export default function Profile({ overlayUserId = null } = {}) {
           <span style={SECTION_LABEL}>Appearance</span>
 
           <div style={{ ...CARD, padding: '16px' }}>
-            {/* Dark / Light mode toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <p style={{ ...LABEL_STYLE, margin: 0 }}>
+            {/* Theme mode: Light · Sepia · Grey · Dark (lightest → darkest) */}
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ ...LABEL_STYLE, margin: '0 0 10px' }}>
                 Theme
               </p>
               <div style={{ display: 'flex', gap: '4px', background: 'rgba(var(--fg-rgb), 0.06)', borderRadius: '10px', padding: '4px' }}>
-                <button
-                  onClick={() => mode !== 'light' && toggleMode()}
-                  aria-pressed={mode === 'light'}
-                  style={{
-                    fontFamily: "'DM Mono', monospace",
-                    fontSize: '11px',
-                    letterSpacing: '0.08em',
-                    padding: '5px 14px',
-                    borderRadius: '7px',
-                    border: 'none',
-                    background: mode === 'light' ? 'rgba(var(--fg-rgb), 0.15)' : 'transparent',
-                    color: mode === 'light' ? 'var(--text-strong)' : 'rgba(var(--fg-rgb), 0.35)',
-                    cursor: 'pointer',
-                    transition: 'background 0.15s, color 0.15s',
-                    fontWeight: mode === 'light' ? 600 : 400,
-                  }}
-                >
-                  Light
-                </button>
-                <button
-                  onClick={() => mode !== 'dark' && toggleMode()}
-                  aria-pressed={mode === 'dark'}
-                  style={{
-                    fontFamily: "'DM Mono', monospace",
-                    fontSize: '11px',
-                    letterSpacing: '0.08em',
-                    padding: '5px 14px',
-                    borderRadius: '7px',
-                    border: 'none',
-                    background: mode === 'dark' ? 'rgba(var(--fg-rgb), 0.15)' : 'transparent',
-                    color: mode === 'dark' ? 'var(--text-strong)' : 'rgba(var(--fg-rgb), 0.35)',
-                    cursor: 'pointer',
-                    transition: 'background 0.15s, color 0.15s',
-                    fontWeight: mode === 'dark' ? 600 : 400,
-                  }}
-                >
-                  Dark
-                </button>
+                {(MODE_OPTIONS ?? ['light', 'sepia', 'grey', 'dark']).map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => mode !== opt && setMode(opt)}
+                    aria-pressed={mode === opt}
+                    style={{
+                      flex: 1,
+                      fontFamily: "'DM Mono', monospace",
+                      fontSize: '11px',
+                      letterSpacing: '0.06em',
+                      textTransform: 'capitalize',
+                      padding: '6px 4px',
+                      borderRadius: '7px',
+                      border: 'none',
+                      background: mode === opt ? 'rgba(var(--fg-rgb), 0.15)' : 'transparent',
+                      color: mode === opt ? 'var(--text-strong)' : 'rgba(var(--fg-rgb), 0.4)',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s, color 0.15s',
+                      fontWeight: mode === opt ? 600 : 400,
+                    }}
+                  >
+                    {opt}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -1410,7 +1396,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                         border: '1px solid rgba(var(--fg-rgb), 0.12)',
                         borderRadius: '9px',
                         padding: '8px 10px',
-                        colorScheme: mode === 'dark' ? 'dark' : 'light',
+                        colorScheme: (mode === 'dark' || mode === 'grey') ? 'dark' : 'light',
                       }}
                     />
                   </label>

@@ -28,7 +28,8 @@ const CHART = {
   axisLine: 'rgba(var(--fg-rgb), 0.08)',
   muted: 'rgba(var(--fg-rgb), 0.18)',
   excitement: '#fbbf24',
-  tooltipBg: '#0d0e15',
+  // Theme-aware so the tooltip isn't a dark box on a light/sepia background.
+  tooltipBg: 'var(--surface)',
   tooltipBorder: 'rgba(var(--fg-rgb), 0.12)',
 }
 
@@ -452,7 +453,7 @@ function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey
         {layout === 'vertical' ? (
           <>
             <XAxis type="number" domain={vDomain} ticks={vTicks} tickFormatter={fmtVal} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-            <YAxis type="category" dataKey={labelKey} interval={0} width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
+            <YAxis type="category" dataKey={labelKey} interval={0} width={104} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
           </>
         ) : (
           <>
@@ -749,6 +750,14 @@ export function firstLast(name) {
 export function lastName(name) {
   const parts = (name || '').split(/\s+/).filter(Boolean)
   return parts.length ? parts[parts.length - 1] : '?'
+}
+
+// First + last name in full (drops any middle names) — e.g. "Ryan Miller".
+export function firstLastFull(name) {
+  const parts = (name || '').split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0]
+  return `${parts[0]} ${parts[parts.length - 1]}`
 }
 
 function avg(arr) {
@@ -1303,7 +1312,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
           <SectionLabel>Member Averages</SectionLabel>
           <GlassCard style={{ padding: '14px 10px' }}>
             <ComparisonBar
-              data={stats.memberAvgs.map(u => ({ name: lastName(u.name), value: u.avgScore, _fill: userColor(u) }))}
+              data={stats.memberAvgs.map(u => ({ name: firstLastFull(u.name), value: u.avgScore, _fill: userColor(u) }))}
               keys={[{ key: 'value', name: 'Avg' }]}
               layout="vertical"
               smartDomain

@@ -8,6 +8,25 @@
     <meta name="theme-color" content="#120A24" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Movie Club</title>
+    <script>
+      // Apply the saved theme before first paint (no flash of the default dark).
+      // Keep in sync with ThemeContext: modes light/sepia/grey/dark; grey+dark are
+      // dark-family (.dark + data-base="dark").
+      (function () {
+        try {
+          var modes = ['light', 'sepia', 'grey', 'dark'];
+          var m = localStorage.getItem('theme-mode');
+          if (modes.indexOf(m) === -1) m = 'dark';
+          var a = localStorage.getItem('theme-accent') || 'crimson';
+          var isDark = m === 'dark' || m === 'grey';
+          var el = document.documentElement;
+          el.setAttribute('data-theme', m);
+          el.setAttribute('data-base', isDark ? 'dark' : 'light');
+          el.setAttribute('data-accent', a);
+          if (isDark) el.classList.add('dark');
+        } catch (e) { /* localStorage blocked — fall back to CSS default */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

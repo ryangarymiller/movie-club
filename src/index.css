@@ -49,13 +49,54 @@
   --text-strong: #0b0d12;
   --text: #1f2937;
   --text-muted: #3f4753;
-  --text-dim: #4b5563;
-  --text-faint: #64748b;
-  /* --hairline is dual-use (subtle borders AND faint label text). Darkened from the
-     old near-invisible #d9dce1 so hairline-as-text is legible in light mode while
-     still reading as a light divider. */
-  --hairline: #94a3b8;
+  --text-dim: #475264;
+  /* Darkened (was #64748b / #94a3b8) — captions/labels that use text-faint or
+     hairline-as-text were too light on white. These now clear ~4.5:1 on the
+     light bg while hairline still reads as a subtle divider. */
+  --text-faint: #525c6b;
+  --hairline: #7b8696;
   color-scheme: light;
+}
+
+/* Sepia — a warm, paper-like LIGHT theme (light-family: gets data-base="light"). */
+[data-theme="sepia"] {
+  --accent-muted: #fef2f2;
+
+  --fg-rgb: 60, 47, 33;
+  --bg: #f3ead4;
+  --bg-2: #ede2c9;
+  --bg-3: #f0e6d0;
+  --surface: #fbf4e2;
+  --surface-2: #efe5cd;
+  --surface-3: #f6eeda;
+  --text-strong: #2a2017;
+  --text: #3c2f21;
+  --text-muted: #5f4f39;
+  --text-dim: #6d5b41;
+  --text-faint: #7c6a4d;
+  --hairline: #b29b73;
+  color-scheme: light;
+}
+
+/* Grey — a soft mid-slate DARK theme, gentler than the near-black default dark
+   (dark-family: gets data-base="dark" + the .dark class). */
+[data-theme="grey"] {
+  --accent-muted: #fef2f2;
+
+  --fg-rgb: 255, 255, 255;
+  --bg: #2a2c32;
+  --bg-2: #2f3137;
+  --bg-3: #2c2e34;
+  --surface: #383b42;
+  --surface-2: #44474f;
+  --surface-3: #33353b;
+  --text-strong: #ffffff;
+  --text: #e3e5e9;
+  --text-muted: #bcbfc7;
+  --text-dim: #9a9ea8;
+  --text-faint: #868a94;
+  --hairline: #585c66;
+  color-scheme: dark;
 }
 
 /* Accent color variants (mode-independent) */
@@ -73,13 +114,13 @@
    --accent the vibrant swatch color, and --accent-light a DARK shade so accent text
    stays legible on white. (Dark mode is unchanged.) Two attributes => higher
    specificity than the base [data-accent] rule, so these win in light mode. */
-[data-theme="light"][data-accent="crimson"]    { --accent: #dc2626; --accent-rgb: 220, 38, 38;  --accent-light: #b91c1c; }
-[data-theme="light"][data-accent="ember"]      { --accent: #ea580c; --accent-rgb: 234, 88, 12;  --accent-light: #c2410c; }
-[data-theme="light"][data-accent="amber"]      { --accent: #d97706; --accent-rgb: 217, 119, 6;  --accent-light: #b45309; }
-[data-theme="light"][data-accent="sage"]       { --accent: #16a34a; --accent-rgb: 22, 163, 74;  --accent-light: #15803d; }
-[data-theme="light"][data-accent="slate-blue"] { --accent: #2563eb; --accent-rgb: 37, 99, 235;  --accent-light: #1d4ed8; }
-[data-theme="light"][data-accent="indigo"]     { --accent: #4f46e5; --accent-rgb: 79, 70, 229;  --accent-light: #4338ca; }
-[data-theme="light"][data-accent="violet"]     { --accent: #7c3aed; --accent-rgb: 124, 58, 237; --accent-light: #6d28d9; }
+[data-base="light"][data-accent="crimson"]    { --accent: #dc2626; --accent-rgb: 220, 38, 38;  --accent-light: #b91c1c; }
+[data-base="light"][data-accent="ember"]      { --accent: #ea580c; --accent-rgb: 234, 88, 12;  --accent-light: #c2410c; }
+[data-base="light"][data-accent="amber"]      { --accent: #d97706; --accent-rgb: 217, 119, 6;  --accent-light: #b45309; }
+[data-base="light"][data-accent="sage"]       { --accent: #16a34a; --accent-rgb: 22, 163, 74;  --accent-light: #15803d; }
+[data-base="light"][data-accent="slate-blue"] { --accent: #2563eb; --accent-rgb: 37, 99, 235;  --accent-light: #1d4ed8; }
+[data-base="light"][data-accent="indigo"]     { --accent: #4f46e5; --accent-rgb: 79, 70, 229;  --accent-light: #4338ca; }
+[data-base="light"][data-accent="violet"]     { --accent: #7c3aed; --accent-rgb: 124, 58, 237; --accent-light: #6d28d9; }
 
 body {
   margin: 0;
@@ -102,25 +143,25 @@ body {
  * (Home, AppLayout, Login). Dark mode keeps Tailwind's defaults; these only
  * apply under [data-theme="light"]. !important guards against utility ordering.
  */
-[data-theme="light"] .text-white            { color: var(--text-strong) !important; }
-[data-theme="light"] .text-white\/60        { color: rgba(var(--fg-rgb), 0.6) !important; }
-[data-theme="light"] .text-white\/40        { color: rgba(var(--fg-rgb), 0.4) !important; }
-[data-theme="light"] .text-white\/20        { color: rgba(var(--fg-rgb), 0.2) !important; }
-[data-theme="light"] .text-gray-400         { color: var(--text-muted) !important; }
-[data-theme="light"] .text-gray-500         { color: var(--text-dim) !important; }
-[data-theme="light"] .text-gray-600         { color: var(--text-faint) !important; }
-[data-theme="light"] .text-gray-900         { color: var(--text-strong) !important; }
-[data-theme="light"] .bg-gray-950,
-[data-theme="light"] .bg-gray-900,
-[data-theme="light"] .bg-gray-800           { background-color: var(--surface) !important; }
-[data-theme="light"] .bg-gray-800\/50       { background-color: var(--surface-2) !important; }
-[data-theme="light"] .bg-gray-100           { background-color: var(--surface-2) !important; }
-[data-theme="light"] .bg-white              { background-color: var(--surface) !important; }
-[data-theme="light"] .bg-white\/5           { background-color: rgba(var(--fg-rgb), 0.05) !important; }
-[data-theme="light"] .bg-white\/\[0\.03\]   { background-color: rgba(var(--fg-rgb), 0.03) !important; }
-[data-theme="light"] .border-white\/10      { border-color: rgba(var(--fg-rgb), 0.1) !important; }
-[data-theme="light"] .border-white\/20      { border-color: rgba(var(--fg-rgb), 0.2) !important; }
-[data-theme="light"] .border-gray-800       { border-color: var(--hairline) !important; }
+[data-base="light"] .text-white            { color: var(--text-strong) !important; }
+[data-base="light"] .text-white\/60        { color: rgba(var(--fg-rgb), 0.6) !important; }
+[data-base="light"] .text-white\/40        { color: rgba(var(--fg-rgb), 0.4) !important; }
+[data-base="light"] .text-white\/20        { color: rgba(var(--fg-rgb), 0.2) !important; }
+[data-base="light"] .text-gray-400         { color: var(--text-muted) !important; }
+[data-base="light"] .text-gray-500         { color: var(--text-dim) !important; }
+[data-base="light"] .text-gray-600         { color: var(--text-faint) !important; }
+[data-base="light"] .text-gray-900         { color: var(--text-strong) !important; }
+[data-base="light"] .bg-gray-950,
+[data-base="light"] .bg-gray-900,
+[data-base="light"] .bg-gray-800           { background-color: var(--surface) !important; }
+[data-base="light"] .bg-gray-800\/50       { background-color: var(--surface-2) !important; }
+[data-base="light"] .bg-gray-100           { background-color: var(--surface-2) !important; }
+[data-base="light"] .bg-white              { background-color: var(--surface) !important; }
+[data-base="light"] .bg-white\/5           { background-color: rgba(var(--fg-rgb), 0.05) !important; }
+[data-base="light"] .bg-white\/\[0\.03\]   { background-color: rgba(var(--fg-rgb), 0.03) !important; }
+[data-base="light"] .border-white\/10      { border-color: rgba(var(--fg-rgb), 0.1) !important; }
+[data-base="light"] .border-white\/20      { border-color: rgba(var(--fg-rgb), 0.2) !important; }
+[data-base="light"] .border-gray-800       { border-color: var(--hairline) !important; }
 
 /*
  * Modal safety: prevents any modal/overlay from overflowing the viewport top.
