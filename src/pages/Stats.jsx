@@ -10,7 +10,7 @@ import {
   BarChart, Bar,
   LineChart, Line,
   ScatterChart, Scatter,
-  PieChart, Pie, Cell, Sector,
+  PieChart, Pie, Cell,
   XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
   ReferenceLine,
@@ -126,39 +126,68 @@ function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = n
   )
 }
 
+// Tight axis domain for a set of scores so clustered values (e.g. everyone > 7)
+// spread across the plot instead of wasting the full 0–10 range. Pads, snaps to
+// 0.5, clamps to [0,10]. Falls back to [0,10] when there's nothing to fit.
+function niceScoreDomain(values) {
+  const vs = values.filter(v => Number.isFinite(v))
+  if (!vs.length) return [0, 10]
+  let lo = Math.min(...vs), hi = Math.max(...vs)
+  if (hi - lo < 0.5) { lo -= 0.5; hi += 0.5 } // avoid a degenerate 1-point window
+  const pad = Math.max(0.4, (hi - lo) * 0.18)
+  const dLo = Math.max(0, Math.floor((lo - pad) * 2) / 2)
+  const dHi = Math.min(10, Math.ceil((hi + pad) * 2) / 2)
+  return dLo < dHi ? [dLo, dHi] : [0, 10]
+}
+
 // Per-member score bar chart for a single film, with mean + ±1 std-dev
 // reference lines. data: [{ name, value, fill }]; mean/sd annotate the spread.
-// Used when a film stat (highest / lowest / divisive / unanimous) is expanded.
+// Used when a film stat (highest / lowest / divisive / unanimous) is expanded,
+// and on each film's overlay. The reference lines glow (a wide faint pass under
+// a sharp pass) and use bright tokens so they pop over the colored bars; μ sits
+// at the top and σ at the bottom so their labels never collide. The x-domain is
+// fitted to the data so a tight cluster of scores still reads clearly.
 function MemberScoreBars({ data, mean, sd, height, onMember }) {
   const accent = accentColor()
   const h = height || Math.max(130, data.length * 30 + 40)
   const memberTick = makeMemberTick(data.map(d => d.id), onMember)
+  const domainVals = data.map(d => Number(d.value))
+  if (mean != null) domainVals.push(mean)
+  if (mean != null && sd != null && sd > 0) domainVals.push(mean - sd, mean + sd)
+  const domain = niceScoreDomain(domainVals)
+  const sdLo = (mean != null && sd != null && sd > 0) ? Math.max(domain[0], mean - sd) : null
+  const sdHi = (mean != null && sd != null && sd > 0) ? Math.min(domain[1], mean + sd) : null
   return (
     <ResponsiveContainer width="100%" height={h}>
-      {/* Extra top margin so the μ ReferenceLine label (position:top) isn't clipped. */}
-      <BarChart data={data} layout="vertical" margin={{ top: 18, right: 30, left: 4, bottom: 0 }}>
+      {/* Top/bottom margin so the μ (top) and σ (bottom) labels aren't clipped. */}
+      <BarChart data={data} layout="vertical" margin={{ top: 20, right: 30, left: 4, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
-        <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+        <XAxis type="number" domain={domain} allowDecimals tickFormatter={(v) => Number(v).toFixed(1)} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
         <Tooltip content={<ChartTooltip />} cursor={false} />
-        {/* Club mean: a solid, bright line (distinct from the dashed gridlines)
-            with a numeric μ label so the value is readable at a glance. */}
-        {mean != null && (
-          <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={2}
-            label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 10, fill: 'var(--text-strong)', fontFamily: 'DM Mono', fontWeight: 600 }} />
-        )}
-        {/* ±1 std-dev band: solid accent-colored lines (not faint dashes that
-            match the gridlines), with the σ value labelled on the upper line. */}
-        {mean != null && sd != null && sd > 0 && (
-          <>
-            <ReferenceLine x={Math.max(0, mean - sd)} stroke="var(--accent)" strokeWidth={1.5} strokeOpacity={0.85} />
-            <ReferenceLine x={Math.min(10, mean + sd)} stroke="var(--accent)" strokeWidth={1.5} strokeOpacity={0.85}
-              label={{ value: `σ ${sd.toFixed(2)}`, position: 'top', fontSize: 9, fill: 'var(--accent)', fontFamily: 'DM Mono', fontWeight: 600 }} />
-          </>
-        )}
         <Bar dataKey="value" name="Score" radius={[0, 3, 3, 0]} isAnimationActive={false}>
           {data.map((d, i) => <Cell key={i} fill={d.fill || accent} />)}
         </Bar>
+        {/* ±1 std-dev band — bright accent-light so it pops on dark themes; a wide
+            faint pass gives the "glow". σ label sits at the BOTTOM. Drawn after the
+            bars so the lines overlay them. */}
+        {sdLo != null && (
+          <>
+            <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.18} />
+            <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.18} />
+            <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.95} />
+            <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.95}
+              label={{ value: `σ ${sd.toFixed(2)}`, position: 'bottom', fontSize: 9, fill: 'var(--accent-light)', fontFamily: 'DM Mono', fontWeight: 700 }} />
+          </>
+        )}
+        {/* Club mean — bright, glowing; μ label sits at the TOP. */}
+        {mean != null && (
+          <>
+            <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={7} strokeOpacity={0.22} />
+            <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={2.4}
+              label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 10, fill: 'var(--text-strong)', fontFamily: 'DM Mono', fontWeight: 700 }} />
+          </>
+        )}
       </BarChart>
     </ResponsiveContainer>
   )
@@ -353,43 +382,25 @@ function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey
   )
 }
 
-// Active-slice renderer: the selected slice grows slightly and gets a stroke so
-// it's emphasised on its own — never the whole chart's bounding box.
-function ActiveDonutSlice(props) {
-  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props
-  return (
-    <Sector
-      cx={cx} cy={cy}
-      innerRadius={innerRadius}
-      outerRadius={outerRadius + 7}
-      startAngle={startAngle}
-      endAngle={endAngle}
-      fill={fill}
-      stroke="var(--surface)"
-      strokeWidth={2}
-    />
-  )
-}
-
 // Donut chart. data: [{ name, value }]. Clicking a slice SINGLE-selects it
-// (expand + stroke) and updates the info line below; clicking it again clears.
+// (dims the others + outlines it) and updates the info line below; clicking it
+// again — or clicking empty chart space — clears. Selection is driven purely by
+// `selectedIndex` (no Recharts activeShape/activeIndex, which kept a stale slice
+// highlighted across versions). A hover Tooltip is kept for per-slice detail.
 // The legend is custom-rendered so each genre links to the Films page filtered
 // by that genre via `onLegendClick(name)`.
 function DonutChart({ data, height = 200, onLegendClick }) {
   // selectedIndex is the single source of truth for which slice is highlighted,
   // so exactly one slice ever lights up and the info line always matches it.
   const [selectedIndex, setSelectedIndex] = useState(null)
-  // Set true the instant a slice is clicked so the chart-background click-away
-  // handler — which fires on bubble immediately after — keeps the new selection
-  // instead of clearing it. Ref-based so it's touch-safe and doesn't rely on
-  // event.stopPropagation (unreliable across Recharts versions).
-  const slicePicked = useRef(false)
   const total = useMemo(() => data.reduce((s, d) => s + (Number(d.value) || 0), 0), [data])
   const sel = selectedIndex != null ? data[selectedIndex] : null
   return (
     <div>
-      {/* Click-away: a click that isn't on a slice clears the selection. */}
-      <div onClick={() => { if (slicePicked.current) { slicePicked.current = false; return } setSelectedIndex(null) }} style={{ cursor: 'default' }}>
+      {/* Click-away: a click NOT on a slice clears the selection. Keyed off the
+          real DOM target (.recharts-sector) so it's robust regardless of event
+          bubbling order — a slice click is left to the Pie's own onClick. */}
+      <div onClick={(e) => { if (!e.target.closest('.recharts-sector')) setSelectedIndex(null) }} style={{ cursor: 'default' }}>
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie
@@ -403,20 +414,24 @@ function DonutChart({ data, height = 200, onLegendClick }) {
             paddingAngle={2}
             stroke="none"
             isAnimationActive={false}
-            activeIndex={selectedIndex == null ? [] : [selectedIndex]}
-            activeShape={(props) => <ActiveDonutSlice {...props} />}
-            onClick={(_, i) => { slicePicked.current = true; setSelectedIndex(prev => (prev === i ? null : i)) }}
+            onClick={(_, i) => setSelectedIndex(prev => (prev === i ? null : i))}
             style={{ cursor: 'pointer', outline: 'none' }}
           >
-            {data.map((_, i) => (
-              <Cell
-                key={i}
-                fill={chartColorAt(i)}
-                fillOpacity={selectedIndex == null || selectedIndex === i ? 1 : 0.35}
-                style={{ outline: 'none' }}
-              />
-            ))}
+            {data.map((_, i) => {
+              const isSel = selectedIndex === i
+              return (
+                <Cell
+                  key={i}
+                  fill={chartColorAt(i)}
+                  fillOpacity={selectedIndex == null || isSel ? 1 : 0.3}
+                  stroke={isSel ? 'var(--surface)' : 'none'}
+                  strokeWidth={isSel ? 3 : 0}
+                  style={{ outline: 'none' }}
+                />
+              )
+            })}
           </Pie>
+          <Tooltip content={<ChartTooltip />} />
         </PieChart>
       </ResponsiveContainer>
       </div>
@@ -2674,32 +2689,31 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
   const cellMin = 30
   // grid template: a fixed label column + one min-sized column per genre.
   const gridTemplate = `${labelW}px repeat(${genres.length}, minmax(${cellMin}px, 1fr))`
-  // Truncate long genre names for the header without losing the title tooltip.
-  const shortGenre = (g) => (g.length > 9 ? g.slice(0, 8) + '…' : g)
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ minWidth: `${labelW + genres.length * cellMin}px` }}>
-        {/* Header row — genre labels */}
-        <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '3px', marginBottom: '3px' }}>
+        {/* Header row — genre labels rotated vertical so the full name fits each
+            narrow column instead of truncating to "acti…". */}
+        <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '3px', marginBottom: '4px', alignItems: 'end' }}>
           <div />
           {genres.map(g => (
             <div
               key={g}
               title={g}
-              style={{
-                fontFamily: "'DM Mono',monospace",
-                fontSize: '8px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                color: 'var(--text-faint)',
-                textAlign: 'center',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                padding: '0 1px',
-              }}
+              style={{ height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'visible' }}
             >
-              {shortGenre(g)}
+              <span style={{
+                writingMode: 'vertical-rl',
+                transform: 'rotate(180deg)',
+                fontFamily: "'DM Mono',monospace",
+                fontSize: '9px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'var(--text-faint)',
+                whiteSpace: 'nowrap',
+              }}>
+                {g}
+              </span>
             </div>
           ))}
         </div>
@@ -2735,7 +2749,7 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
               return (
                 <div
                   key={i}
-                  title={`${firstLast(r.name)} · ${genres[i]}: ${c} rated`}
+                  title={`${firstLast(r.name)} · ${genres[i]}: ${c} picked`}
                   style={{
                     height: '26px',
                     borderRadius: '5px',
@@ -2758,7 +2772,7 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
 
         {/* Legend */}
         <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '10px 0 0', textAlign: 'center' }}>
-          Films rated per genre · faint red = blindspot (0 rated) · darker = more coverage
+          Films picked per genre · faint red = never picked (blindspot) · darker = more picks
         </p>
       </div>
     </div>
@@ -2777,13 +2791,14 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
 function shortFilmTitle(title) {
   if (!title) return ''
   let t = String(title).split(':')[0].split(',')[0].trim()
-  if (t.length > 22) t = t.slice(0, 20).trimEnd() + '…'
+  if (t.length > 17) t = t.slice(0, 16).trimEnd() + '…'
   return t
 }
 
 function buildConnectionGraph(movies) {
   // Index people → film ids. Actors are exact, case-sensitive matches on the
-  // tmdb_cast array; a shared non-null director is also a bridge (labelled).
+  // tmdb_cast array; a shared non-null director (dir.) and each screenwriter
+  // (wr., from tmdb_writers) are also bridges (labelled by role).
   const personFilms = new Map() // personLabel -> Set(movieId)
   const add = (label, id) => {
     if (!personFilms.has(label)) personFilms.set(label, new Set())
@@ -2797,6 +2812,14 @@ function buildConnectionGraph(movies) {
     }
     if (typeof m.director === 'string' && m.director.trim()) {
       add(`dir. ${m.director.trim()}`, m.id)
+    }
+    // Screenwriters are bridges too (e.g. Charlie Kaufman links Adaptation,
+    // Being John Malkovich, and Eternal Sunshine). Labelled distinctly from a
+    // same-named director so the caption reads "wr. X" vs "dir. X".
+    if (Array.isArray(m.tmdb_writers)) {
+      for (const name of m.tmdb_writers) {
+        if (typeof name === 'string' && name.trim()) add(`wr. ${name.trim()}`, m.id)
+      }
     }
   }
 
@@ -2855,6 +2878,9 @@ function ConnectionWeb({ movies = [], onFilm }) {
 
   // Radial layout in a fixed viewBox; the SVG scales to its container width.
   const VB = 460
+  // Horizontal padding added to the viewBox so left/right node labels (e.g.
+  // "Kingdom of Heaven") aren't clipped off the edge of the box.
+  const LABEL_PAD = 70
   const cx = VB / 2
   const cy = VB / 2
   const R = VB * 0.34 // ring radius — leaves room for outside labels
@@ -2939,7 +2965,7 @@ function ConnectionWeb({ movies = [], onFilm }) {
       <ConnectionWebHeading />
       <GlassCard style={{ padding: '14px 10px 18px', overflow: 'hidden' }}>
         <svg
-          viewBox={`0 0 ${VB} ${VB}`}
+          viewBox={`${-LABEL_PAD} 0 ${VB + 2 * LABEL_PAD} ${VB}`}
           width="100%"
           role="img"
           aria-label="Connection web of films linked by shared actors or directors"
@@ -3127,7 +3153,7 @@ function ConnectionWebHeading() {
         color: 'var(--text-dim)',
         margin: 0,
       }}>
-        Films your club has watched, linked by a shared actor or director.
+        Films your club has watched, linked by a shared actor, writer, or director.
       </p>
     </div>
   )
@@ -3229,10 +3255,12 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
 
     // ── Genre Blindspot Grid ──────────────────────────────────────────────────
     // For each active member × each genre, count how many films of that genre the
-    // member has actually RATED (has a score). Low/zero cells are a member's
-    // "blindspot" — genres they've barely engaged with. We constrain to the
-    // genres that actually appear (top by overall film count) so the grid stays
-    // readable, and to films that carry genre data.
+    // member has PICKED (their curation). A zero cell is a genre the member has
+    // never picked from — their blindspot as a curator. (Counting picks, not
+    // ratings: everyone rates every film, so "rated" carried little signal — this
+    // shows each member's taste. The Favourite Genres chart covers club-wide mix.)
+    // We constrain to the genres that appear (top by overall film count) so the
+    // grid stays readable, and to films that carry genre data.
     const genreFilmIds = {} // genre -> Set<movie_id> (movies tagged with that genre)
     for (const m of movies) {
       if (!m.genre) continue
@@ -3250,22 +3278,22 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       .slice(0, 12)
       .map(([g]) => g)
 
-    // Which films each member has rated (score present).
-    const ratedFilmsByUser = {} // userId -> Set<movie_id>
-    for (const r of ratings) {
-      if (r.score == null) continue
-      if (!ratedFilmsByUser[r.user_id]) ratedFilmsByUser[r.user_id] = new Set()
-      ratedFilmsByUser[r.user_id].add(r.movie_id)
+    // Which films each member PICKED (revealed picks carry picked_by_user_id).
+    const pickedFilmsByUser = {} // userId -> Set<movie_id>
+    for (const m of movies) {
+      if (!m.picked_by_user_id) continue
+      if (!pickedFilmsByUser[m.picked_by_user_id]) pickedFilmsByUser[m.picked_by_user_id] = new Set()
+      pickedFilmsByUser[m.picked_by_user_id].add(m.id)
     }
 
-    // Build the matrix: rows = active members, cols = genres, cell = # rated in genre.
+    // Build the matrix: rows = active members, cols = genres, cell = # PICKED in genre.
     let blindspotMax = 0
     const blindspotRows = activeUsers.map(u => {
-      const rated = ratedFilmsByUser[u.id] || new Set()
+      const picked = pickedFilmsByUser[u.id] || new Set()
       const counts = blindspotGenres.map(g => {
         const filmsInGenre = genreFilmIds[g] || new Set()
         let c = 0
-        for (const fid of filmsInGenre) if (rated.has(fid)) c++
+        for (const fid of filmsInGenre) if (picked.has(fid)) c++
         if (c > blindspotMax) blindspotMax = c
         return c
       })
@@ -3925,9 +3953,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         </GlassCard>
       </div>
 
-      {/* Genre Blindspot Grid — members × genres heatmap of films RATED per genre.
-          Faint/red cells (0 films rated) are a member's blindspot; cell intensity
-          scales with how many films of that genre they've scored. */}
+      {/* Genre Blindspot Grid — members × genres heatmap of films each member
+          PICKED per genre (their curation). Faint/red cells (0 picked) are a
+          member's blindspot; intensity scales with picks in that genre. */}
       <div>
         <SectionLabel>Genre Blindspot Grid</SectionLabel>
         <GlassCard style={{ padding: '16px' }}>
@@ -4612,7 +4640,7 @@ export default function Stats() {
       ] = await Promise.all([
         supabase
           .from('movies_safe')
-          .select('id, month_id, title, tmdb_id, poster_url, year_released, director, tmdb_cast, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
+          .select('id, month_id, title, tmdb_id, poster_url, year_released, director, tmdb_cast, tmdb_writers, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
         supabase
           .from('ratings')
           .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),

@@ -9,6 +9,7 @@ import GuessThePicker from '../components/GuessThePicker'
 import VetoControl from '../components/VetoControl'
 import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
+import FilmScoreBars from '../components/FilmScoreBars'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 import { memberColor, userColor, MEMBER_COLORS } from '../lib/colors'
 
@@ -955,6 +956,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const [users, setUsers] = useState([])
   const [fullMovie, setFullMovie] = useState(null)
   const [showScoreModal, setShowScoreModal] = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
   const [predictions, setPredictions] = useState([])
   const [isPicker, setIsPicker] = useState(false) // is the current user the picker of THIS film?
   const [awardData, setAwardData] = useState(null) // { movies, ratings, users, months, seasons }
@@ -1577,6 +1579,33 @@ export function FilmDetailOverlay({ movie, onClose }) {
                         ))
                     )}
                   </>
+                )}
+              </div>
+            )}
+
+            {/* Collapsible per-member score breakdown — mean (μ) + ±1 σ, fitted
+                domain. Only when there are visible scores to chart. */}
+            {!detailLoading && scoredRatings.length > 0 && (
+              <div style={{ marginTop: '14px' }}>
+                <button
+                  onClick={() => setShowBreakdown(v => !v)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '7px', width: '100%',
+                    padding: '9px 12px', borderRadius: '10px',
+                    background: 'rgba(var(--fg-rgb), 0.03)',
+                    border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                    fontFamily: "'DM Mono', monospace", fontSize: '11px',
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                  }}
+                >
+                  <span style={{ color: 'var(--accent)' }}>{showBreakdown ? '▾' : '▸'}</span>
+                  Score breakdown
+                </button>
+                {showBreakdown && (
+                  <div style={{ marginTop: '10px' }}>
+                    <FilmScoreBars ratings={scoredRatings} users={users} onMember={goToProfile} />
+                  </div>
                 )}
               </div>
             )}

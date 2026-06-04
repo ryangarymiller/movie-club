@@ -37,6 +37,14 @@
 - [x] **Auteur Award** 🎩 — per Ryan, NOT a vote: best picker by avg score (≥2 picks), finalized only after the season's readjustment window closes. `computeSeasonAwards` + Awards Season card + badge.
 - [x] **Club trend legend** toggle-highlight (click series → dim others, multi-select).
 
+### Visual polish (charts, connection web, blindspot, film popup)
+- [x] **Genre pie** redo — Cell-opacity selection (dropped activeShape/activeIndex that kept a stale slice lit), tooltip restored, click-away keyed off `.recharts-sector`.
+- [x] **MemberScoreBars / FilmScoreBars** — glowing μ/σ lines (bright tokens, wide-faint + sharp pass), μ top / σ bottom (no label collision), data-fitted x-domain (`niceScoreDomain`).
+- [x] **Film overlay** — collapsible "Score breakdown" per-member bar chart (`FilmScoreBars`, self-contained to avoid the Stats↔Films import cycle).
+- [x] **Genre Blindspot** — now counts each member's PICKS per genre (curation, not rated); vertical rotated genre labels.
+- [x] **Connection Web** — added `movies.tmdb_writers` (backfilled from TMDB credits) so screenwriters bridge films (Charlie Kaufman → Adaptation / BJM / Eternal Sunshine); padded viewBox so edge labels aren't clipped.
+- [x] Migration `phase5_movies_writers` (tmdb_writers + movies_safe re-expose).
+
 ---
 
 ## Session 10 — Phase 4 notifications + awards/stats additions + theme fixes
