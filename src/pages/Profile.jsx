@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -198,63 +198,94 @@ function NotifTypeRow({ type, enabled, onToggle, isLast }) {
   )
 }
 
-// A delivery channel placeholder row (Browser push / Email) — disabled with a
-// "Coming soon" tag; the delivery layer isn't wired yet.
-function ChannelPlaceholderRow({ glyph, label, desc, isLast }) {
+// The Browser-push delivery row. When the browser supports push it renders a real
+// NotifToggle (same pattern as Email); otherwise it falls back to a disabled,
+// "Not supported" affordance. `note` shows an inline error/hint below the row.
+function PushChannelRow({ glyph, label, desc, supported, checked, busy, note, onToggle, isLast }) {
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
         padding: '11px 0',
         borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb), 0.06)',
-        opacity: 0.62,
+        opacity: supported ? 1 : 0.62,
       }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          flexShrink: 0,
-          width: 30,
-          height: 30,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '14px',
-          borderRadius: '8px',
-          background: 'rgba(var(--fg-rgb), 0.05)',
-          border: '1px solid rgba(var(--fg-rgb), 0.06)',
-          lineHeight: 1,
-        }}
-      >
-        {glyph}
-      </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 600, color: 'var(--text-muted)', lineHeight: 1.3 }}>
-          {label}
-        </p>
-        <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--text-dim)', lineHeight: 1.3 }}>
-          {desc}
-        </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <span
+          aria-hidden="true"
+          style={{
+            flexShrink: 0,
+            width: 30,
+            height: 30,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '14px',
+            borderRadius: '8px',
+            background: 'rgba(var(--fg-rgb), 0.05)',
+            border: '1px solid rgba(var(--fg-rgb), 0.06)',
+            lineHeight: 1,
+          }}
+        >
+          {glyph}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: '13.5px',
+              fontWeight: 600,
+              color: supported ? 'var(--text-strong)' : 'var(--text-muted)',
+              lineHeight: 1.3,
+            }}
+          >
+            {label}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--text-dim)', lineHeight: 1.3 }}>
+            {supported ? desc : 'Not supported on this browser'}
+          </p>
+        </div>
+        {supported ? (
+          <NotifToggle
+            checked={checked}
+            onChange={onToggle}
+            disabled={busy}
+            label={`${checked ? 'Disable' : 'Enable'} ${label}`}
+          />
+        ) : (
+          <span
+            style={{
+              flexShrink: 0,
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '9px',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--text-dim)',
+              background: 'rgba(var(--fg-rgb), 0.06)',
+              border: '1px solid rgba(var(--fg-rgb), 0.08)',
+              borderRadius: '999px',
+              padding: '3px 9px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Unsupported
+          </span>
+        )}
       </div>
-      <span
-        style={{
-          flexShrink: 0,
-          fontFamily: "'DM Mono', monospace",
-          fontSize: '9px',
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: 'var(--text-dim)',
-          background: 'rgba(var(--fg-rgb), 0.06)',
-          border: '1px solid rgba(var(--fg-rgb), 0.08)',
-          borderRadius: '999px',
-          padding: '3px 9px',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        Coming soon
-      </span>
+      {/* Inline hint: either the supplied error/feedback, or the iOS guidance. */}
+      {(note || !supported) && (
+        <p
+          role={note ? 'alert' : undefined}
+          style={{
+            margin: '8px 0 0 42px',
+            fontSize: '11px',
+            color: note ? 'var(--accent)' : 'var(--text-dim)',
+            lineHeight: 1.4,
+          }}
+        >
+          {note || 'On iOS, add this app to your Home Screen first to allow push notifications.'}
+        </p>
+      )}
     </div>
   )
 }
@@ -401,7 +432,32 @@ export default function Profile({ overlayUserId = null } = {}) {
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, toggleMode } = useTheme()
   const { close: closeMemberOverlay } = useMemberOverlay()
-  const { prefs: notifPrefs, updatePrefs: updateNotifPrefs } = useNotifications()
+  const {
+    prefs: notifPrefs,
+    updatePrefs: updateNotifPrefs,
+    pushSupported,
+    pushEnabled,
+    enablePush,
+    disablePush,
+  } = useNotifications()
+  // Inline error/feedback for the push toggle (e.g. permission denied).
+  const [pushError, setPushError] = useState('')
+  const [pushBusy, setPushBusy] = useState(false)
+
+  const handleTogglePush = useCallback(async (on) => {
+    setPushError('')
+    setPushBusy(true)
+    try {
+      if (on) await enablePush()
+      else await disablePush()
+    } catch (err) {
+      // Revert is implicit: the toggle is bound to pushEnabled (channel_push),
+      // which we never flipped on failure. Just surface the message.
+      setPushError(err?.message || 'Couldn’t change push notifications.')
+    } finally {
+      setPushBusy(false)
+    }
+  }, [enablePush, disablePush])
   const isOverlayMode = !!overlayUserId
 
   // If viewing another member's profile, load their data
@@ -1364,7 +1420,17 @@ export default function Profile({ overlayUserId = null } = {}) {
                 enabled={!!notifPrefs?.channel_email}
                 onToggle={(on) => updateNotifPrefs({ channel_email: on })}
               />
-              <ChannelPlaceholderRow glyph="🔔" label="Browser push" desc="Get notified even when the app is closed" isLast />
+              <PushChannelRow
+                glyph="🔔"
+                label="Browser push"
+                desc="Get notified even when the app is closed"
+                supported={pushSupported}
+                checked={pushEnabled}
+                busy={pushBusy}
+                note={pushError}
+                onToggle={handleTogglePush}
+                isLast
+              />
             </div>
           </div>
         </section>}

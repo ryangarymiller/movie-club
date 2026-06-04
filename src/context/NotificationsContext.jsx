@@ -19,6 +19,32 @@ const NotificationsContext = createContext(null)
 
 const PAGE_SIZE = 50
 
+// VAPID public key (safe to embed client-side) for Web Push subscriptions.
+const VAPID_PUBLIC_KEY =
+  'BPWTm62KWStCugQNiHyZonaZ6eMoaOpo6ZhgmBFw3Wt3z7Cbu8StfGiEuaXalAONbR5OlFEEUX6lK-1QnHRmY6U'
+
+// Standard helper: a base64url VAPID key → the Uint8Array the Push API wants as
+// `applicationServerKey`. (Pads, swaps the URL-safe alphabet, then byte-decodes.)
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
+// Feature-detect Web Push. Guarded for SSR/test environments where these globals
+// may be absent. `pushSupported` is the single gate the UI reads.
+const PUSH_SUPPORTED =
+  typeof navigator !== 'undefined' &&
+  typeof window !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  'PushManager' in window &&
+  'Notification' in window
+
 // A missing preferences row means "all defaults": nothing muted, channels off, no
 // quiet hours. We normalise into this exact shape so consumers never see undefined.
 const DEFAULT_PREFS = Object.freeze({
@@ -245,6 +271,123 @@ export function NotificationsProvider({ children }) {
     }
   }, [userId])
 
+  // ── Web Push ────────────────────────────────────────────────────────────────
+  // `pushSupported` is a static capability check; `pushEnabled` reflects the saved
+  // preference. Both subscribe (enablePush) and unsubscribe (disablePush) are fully
+  // defensive: every browser/IO call is wrapped so a failure surfaces as a readable
+  // Error the UI can show, never an app crash. We only flip `channel_push` AFTER the
+  // subscription is persisted (enable) / removed (disable), so the toggle never lies.
+  const pushSupported = PUSH_SUPPORTED
+  const pushEnabled = !!prefs.channel_push
+
+  const enablePush = useCallback(async () => {
+    if (!pushSupported) {
+      throw new Error('Push notifications aren’t supported on this browser.')
+    }
+    if (!userId) {
+      throw new Error('You need to be signed in to enable push notifications.')
+    }
+
+    // a/b. Permission gate. If the user blocks (or dismisses) the prompt we bail
+    // WITHOUT touching channel_push, so the toggle reverts cleanly.
+    const perm = await Notification.requestPermission()
+    if (perm !== 'granted') {
+      throw new Error('Allow notifications in your browser to enable push.')
+    }
+
+    let sub
+    try {
+      // c. Register the SW and wait until it's active.
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+
+      // d. Reuse an existing subscription if present, else create one.
+      sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        })
+      }
+    } catch (err) {
+      console.error('[NotificationsContext] push subscribe error:', err)
+      throw new Error('Could not subscribe to push notifications. Please try again.', { cause: err })
+    }
+
+    // e. Persist the subscription keyed on its unique endpoint.
+    const j = sub.toJSON()
+    try {
+      const { error } = await supabase.from('push_subscriptions').upsert(
+        {
+          user_id: userId,
+          endpoint: j.endpoint,
+          p256dh: j.keys?.p256dh,
+          auth: j.keys?.auth,
+          user_agent: navigator.userAgent,
+        },
+        { onConflict: 'endpoint' }
+      )
+      if (error) throw error
+    } catch (err) {
+      console.error('[NotificationsContext] push subscription save error:', err)
+      throw new Error('Could not save your push subscription. Please try again.', { cause: err })
+    }
+
+    // f. Only now flip the channel on.
+    await updatePrefs({ channel_push: true })
+    return { ok: true }
+  }, [pushSupported, userId, updatePrefs])
+
+  const disablePush = useCallback(async () => {
+    // Best-effort teardown: remove the row + unsubscribe locally, then flip the
+    // pref off. We turn the pref off regardless of teardown hiccups so the user is
+    // never stuck "on" — but we still report a hard failure if the pref write fails.
+    if (pushSupported) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration('/sw.js')
+        const sub = reg ? await reg.pushManager.getSubscription() : null
+        if (sub) {
+          const endpoint = sub.endpoint
+          if (userId && endpoint) {
+            const { error } = await supabase
+              .from('push_subscriptions')
+              .delete()
+              .eq('endpoint', endpoint)
+            if (error) console.error('[NotificationsContext] push row delete error:', error)
+          }
+          try {
+            await sub.unsubscribe()
+          } catch (err) {
+            console.error('[NotificationsContext] push unsubscribe error:', err)
+          }
+        }
+      } catch (err) {
+        console.error('[NotificationsContext] disablePush teardown error:', err)
+      }
+    }
+    await updatePrefs({ channel_push: false })
+    return { ok: true }
+  }, [pushSupported, userId, updatePrefs])
+
+  // On mount (and when push is already enabled), silently re-register the SW so a
+  // returning, already-permitted user keeps a live registration. Defensive: any
+  // failure is swallowed — this is a nicety, not a requirement.
+  useEffect(() => {
+    if (!pushSupported || !pushEnabled) return
+    if (Notification.permission !== 'granted') return
+    let cancelled = false
+    ;(async () => {
+      try {
+        await navigator.serviceWorker.register('/sw.js')
+        if (cancelled) return
+        await navigator.serviceWorker.ready
+      } catch (err) {
+        console.error('[NotificationsContext] silent SW re-register error:', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [pushSupported, pushEnabled])
+
   const value = {
     notifications,
     unreadCount,
@@ -253,6 +396,10 @@ export function NotificationsProvider({ children }) {
     markAllRead,
     prefs,
     updatePrefs,
+    pushSupported,
+    pushEnabled,
+    enablePush,
+    disablePush,
     refresh: () => load(userId),
   }
 
@@ -275,6 +422,12 @@ export function useNotifications() {
       markAllRead: () => {},
       prefs: { ...DEFAULT_PREFS },
       updatePrefs: async () => {},
+      pushSupported: false,
+      pushEnabled: false,
+      enablePush: async () => {
+        throw new Error('Push notifications aren’t available.')
+      },
+      disablePush: async () => {},
       refresh: () => {},
     }
   )
