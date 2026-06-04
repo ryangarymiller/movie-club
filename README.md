@@ -2,7 +2,7 @@
 
 A private web app for a 5-person movie club. Each month every member picks one film they have not personally seen; all members watch all films and submit scores, reviews, and discussion. The app handles picks, anonymity before reveal, scoring, Reddit-style threaded reviews with votes, guess-the-picker, score predictions, stats and charts, awards, and admin tooling.
 
-**Live:** [movie-club-blond.vercel.app](https://movie-club-blond.vercel.app)
+**Live:** private, invite-only deployment (URL shared with members, not published here).
 
 ---
 

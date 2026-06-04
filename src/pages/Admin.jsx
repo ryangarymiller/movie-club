@@ -1552,7 +1552,7 @@ function InviteCard({ onRefresh, currentProfile }) {
       </form>
 
       <p style={{ color: 'var(--text-faint)', fontSize: '10px', marginTop: '10px', fontFamily: "'DM Mono',monospace" }}>
-        Adds their account — they can then sign in at movie-club-blond.vercel.app using Google with this email.
+        Adds their account — they can then sign in at {typeof window !== 'undefined' ? window.location.origin.replace(/^https?:\/\//, '') : 'this site'} using Google with this email.
       </p>
     </div>
   )

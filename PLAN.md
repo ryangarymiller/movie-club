@@ -260,7 +260,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 |------|--------|
 | Vite + React + Tailwind scaffold | ✅ |
 | GitHub repo | ✅ github.com/ryangarymiller/movie-club |
-| Vercel deployment | ✅ movie-club-blond.vercel.app (auto-deploys) |
+| Vercel deployment | ✅ auto-deploys from main (URL in PRIVATE.md) |
 | Supabase project | ✅ See PRIVATE.md |
 | Vitest + React Testing Library | ✅ 124 tests passing |
 | TMDB env vars in Vercel | ✅ Added session 4 |
