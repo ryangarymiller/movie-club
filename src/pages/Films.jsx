@@ -10,6 +10,7 @@ import VetoControl from '../components/VetoControl'
 import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
 import FilmScoreBars from '../components/FilmScoreBars'
+import FilmTags from '../components/FilmTags'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 import { memberColor, userColor, MEMBER_COLORS } from '../lib/colors'
 
@@ -1610,6 +1611,11 @@ export function FilmDetailOverlay({ movie, onClose }) {
               </div>
             )}
           </div>
+
+          {/* ── TAGS (aggregated; viewer can add/remove their own once they've scored) ── */}
+          {profile && (
+            <FilmTags movieId={m.id} userId={profile.id} canEdit={myHasFinalScore} />
+          )}
 
           {/* ── REQUEST SCORE CHANGE (member's own locked score) ── */}
           {profile && myRating?.score != null && (

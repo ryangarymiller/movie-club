@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useReadjustment } from '../context/ReadjustmentContext'
+import FilmTags from './FilmTags'
 
 function validateScore(val) {
   const n = parseFloat(val)
@@ -459,6 +460,13 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                   Would you recommend this outside the club?
                 </span>
               </label>
+            )}
+
+            {/* Tag this film — applied at rating time, aggregated on the film page */}
+            {(isFinalMode || isReadjustMode) && profile && (
+              <div style={{ marginBottom: '20px' }}>
+                <FilmTags movieId={movie.id} userId={profile.id} canEdit compact />
+              </div>
             )}
 
             {/* Submit */}

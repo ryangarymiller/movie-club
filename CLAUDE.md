@@ -312,7 +312,11 @@ draft_queue    — id, user_id, tmdb_id, title, poster_url, year_released, posit
                  also surfaces as a "From your draft queue" quick-pick list in the This Month
                  pick flow (src/pages/ThisMonth.jsx); promoting a queued film into the monthly
                  pick deletes that draft_queue row.
-film_tags      — id, movie_id, user_id, tag (aggregated at query time with counts)
+film_tags      — id, movie_id, user_id, tag, created_at; unique(movie_id,user_id,tag);
+                 RLS: readable by any member, insert/delete own only. Members tag a film at
+                 rating time (compact picker in ScoreModal) and from the film overlay; tags
+                 render in aggregate (tag · count) via src/components/FilmTags.jsx. Tag text
+                 normalized client-side (trim + lowercase + collapse). Test account filtered.
 auteur_votes   — id, season_id, voter_user_id, rankings (json array, ranked choice)
 season_rankings — id, season_id, user_id, movie_id, rank, locked_score (locked at end of window)
 score_change_requests — id, rating_id, user_id, requested_score, status (pending|approved|denied)
@@ -400,6 +404,7 @@ Overview · Me · Members · Club · Head to Head
 - **Genre Blindspot Grid:** Per-member **curation** coverage — for each member × genre, how many films they've **PICKED** in that genre (a zero cell = a genre they've never picked from = their blindspot as a curator). Switched from "rated" to "picked" (everyone rates every film, so that carried little signal; the Favourite Genres chart covers the club-wide mix). Genre column labels are rotated vertical so the full name fits each narrow column.
 - **Per-film score breakdown:** every film overlay has a collapsible "Score breakdown" dropdown rendering that film's per-member score bar chart with glowing μ (mean) + ±1 σ reference lines and a data-fitted x-domain (`src/components/FilmScoreBars.jsx`) — the same chart shape used for the expandable film stats on Stats Overview.
 - **All Films member filter:** A filter-by-member control on the All Films view (revealed picks only).
+- **Film tags (Phase 7):** every film overlay has a "Tags" section showing member-applied descriptive tags in aggregate (tag · count); a member who has submitted a final score can add/remove their own tags there. Tags are also captured at rating time via a compact picker in `ScoreModal` (final/readjust mode). Backed by `film_tags` + `src/components/FilmTags.jsx`; your own tags are accent-highlighted and removable, curated suggestions lower friction, tag text is normalized (trim + lowercase + collapse), test account excluded.
 
 ### Awards sub-tabs
 Monthly · Season · Annual · All-Time

@@ -6,19 +6,36 @@ import ScoreModal from '../components/ScoreModal'
 // Mock supabase
 vi.mock('../lib/supabase', () => ({
   supabase: {
-    from: vi.fn(() => ({
-      upsert: vi.fn(() =>
-        Promise.resolve({
-          data: [{ id: 'r1', pre_watch_excitement: 7.5, score: null }],
-          error: null,
-        })
-      ),
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+    from: vi.fn((table) => {
+      // FilmTags (final/readjust mode) loads tags via .select().eq(movie_id) and
+      // writes via .insert().select().single(). Resolve both cleanly to empty data.
+      if (table === 'film_tags') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => Promise.resolve({ data: [], error: null })),
+          })),
+          insert: vi.fn(() => ({
+            select: vi.fn(() => ({
+              single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+            })),
+          })),
+          delete: vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) })),
+        }
+      }
+      return {
+        upsert: vi.fn(() =>
+          Promise.resolve({
+            data: [{ id: 'r1', pre_watch_excitement: 7.5, score: null }],
+            error: null,
+          })
+        ),
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+          })),
         })),
-      })),
-    })),
+      }
+    }),
   },
 }))
 

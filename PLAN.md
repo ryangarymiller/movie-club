@@ -50,6 +50,11 @@
 - [x] **`PersonalLists.jsx`** — debounced TMDB add-search; **Watchlist** (saved films) + **Draft Queue** (ranked pick ideas, reorder by drag or ▲▼). Rendered on the member's OWN Profile only (private).
 - [x] Follow-up: surface the draft queue in the This Month pick flow ("pick from your queue") — ranked quick-pick list above the film search; promoting a queued film into the monthly pick consumes (deletes) that queue row.
 
+### Phase 7 — Film tags
+- [x] **Migration** `20260604150000_phase7_film_tags` — `film_tags` table (movie_id/user_id/tag, unique(movie,user,tag)), RLS readable-by-any-member + insert/delete own.
+- [x] **`FilmTags.jsx`** — aggregated tag display (tag · count), own tags accent-highlighted + removable, curated suggestions, client-side tag normalization, test account filtered. Compact variant in `ScoreModal` (final/readjust mode, "applied at rating time"); full variant in the film overlay (add/remove once you've scored).
+- [x] Doc fix: CLAUDE.md previously implied `film_tags` existed before the table did — now created + accurately described.
+
 ---
 
 ## Session 10 — Phase 4 notifications + awards/stats additions + theme fixes
@@ -467,7 +472,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [ ] Admin avatar pack management (upload packs, add individual avatars, organise)
 - [ ] Home page "Your turn" action cards (what user still needs to do this month)
 - [ ] Home page activity feed (recent scores, comments, awards)
-- [ ] Film tags — user-applied at rating time, aggregated with counts on film page
+- [x] Film tags — user-applied at rating time (compact picker in ScoreModal) + add/remove from the film overlay once scored; aggregated with counts on the film page. `film_tags` table (unique(movie,user,tag), own-write RLS) + `src/components/FilmTags.jsx`. (session 11)
 - [ ] "Would recommend outside club" field on ratings, shown as % on film page
 - [ ] Admin Schedule tab — set deadlines, watch schedule, reveal dates, grace period
 - [ ] Admin Readjustment tab — manage readjustment window
