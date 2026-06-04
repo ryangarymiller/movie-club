@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <!-- Full-bleed background (maskable-safe): Android masks to a circle/squircle,
+       so the mark is kept inside the central ~70% safe zone. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#241043"/>
+      <stop offset="1" stop-color="#120A24"/>
+    </linearGradient>
+    <linearGradient id="slate" x1="116" y1="170" x2="396" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2a1850"/>
+      <stop offset="1" stop-color="#1b1036"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Clapperboard, centred in the safe zone -->
+  <g transform="translate(256 262) rotate(-6) translate(-256 -262)">
+    <!-- Board body -->
+    <rect x="120" y="226" width="272" height="158" rx="16" fill="url(#slate)" stroke="#8b5cf6" stroke-width="6"/>
+    <!-- Three "reel-line" slits on the board, accent purple -->
+    <rect x="150" y="300" width="212" height="10" rx="5" fill="#a855f7" opacity="0.55"/>
+    <rect x="150" y="334" width="160" height="10" rx="5" fill="#a855f7" opacity="0.35"/>
+
+    <!-- Clapper top bar (hinged, slightly open) -->
+    <g transform="translate(256 196) rotate(-15) translate(-256 -196)">
+      <rect x="116" y="170" width="280" height="54" rx="12" fill="#3b2466" stroke="#8b5cf6" stroke-width="6"/>
+      <!-- Diagonal clapper stripes -->
+      <g fill="#e9d5ff">
+        <path d="M150 170 l30 0 -34 54 -30 0 z"/>
+        <path d="M210 170 l30 0 -34 54 -30 0 z"/>
+        <path d="M270 170 l30 0 -34 54 -30 0 z"/>
+        <path d="M330 170 l30 0 -34 54 -30 0 z"/>
+      </g>
+    </g>
+  </g>
+</svg>
