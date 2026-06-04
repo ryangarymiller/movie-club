@@ -48,7 +48,7 @@
 ### Phase 7 — Watchlist + Draft Queue (started)
 - [x] **Migration** `phase7_watchlist_draft_queue` — `watchlist` + `draft_queue` tables (tmdb_id/title/poster/year, `position` on draft_queue), unique(user,tmdb), own-only RLS.
 - [x] **`PersonalLists.jsx`** — debounced TMDB add-search; **Watchlist** (saved films) + **Draft Queue** (ranked pick ideas, reorder by drag or ▲▼). Rendered on the member's OWN Profile only (private).
-- [ ] Follow-up: surface the draft queue in the This Month pick flow ("pick from your queue").
+- [x] Follow-up: surface the draft queue in the This Month pick flow ("pick from your queue") — ranked quick-pick list above the film search; promoting a queued film into the monthly pick consumes (deletes) that queue row.
 
 ---
 

@@ -308,7 +308,10 @@ draft_queue    — id, user_id, tmdb_id, title, poster_url, year_released, posit
                  (private per user, ranked via position; unique(user_id,tmdb_id); RLS own-only).
                  Films a member plans to pick next; reorder by drag or up/down arrows.
                  Both rendered by src/components/PersonalLists.jsx on the member's OWN Profile
-                 (Phase 7); add films via a debounced TMDB /search/movie box.
+                 (Phase 7); add films via a debounced TMDB /search/movie box. The draft queue
+                 also surfaces as a "From your draft queue" quick-pick list in the This Month
+                 pick flow (src/pages/ThisMonth.jsx); promoting a queued film into the monthly
+                 pick deletes that draft_queue row.
 film_tags      — id, movie_id, user_id, tag (aggregated at query time with counts)
 auteur_votes   — id, season_id, voter_user_id, rankings (json array, ranked choice)
 season_rankings — id, season_id, user_id, movie_id, rank, locked_score (locked at end of window)
@@ -364,7 +367,7 @@ Edge Function: 'send-push' (Deno, npm:web-push) — sends Web Push to a user's s
 This Month is a **single scrolling page** (sub-tabs removed as of Session 9). It contains three sections in order:
 
 1. **Films section:** This month's film cards with inline deadline countdowns. Once `picker_revealed` is true, the picker's identity appears inline on each card. Populated once picks are materialized; shows "No films yet for [Month]" otherwise.
-2. **Your Pick section:** Pick CTA ("Pick your next movie" → TMDB search → disambiguation → justification → confirm), the signed-in user's own pick inline (clickable → justification + change-pick flow), and — after the end-of-month reveal — other members' picks are shown and guess/predict nudge appears.
+2. **Your Pick section:** Pick CTA ("Pick your next movie" → TMDB search → disambiguation → justification → confirm), the signed-in user's own pick inline (clickable → justification + change-pick flow), and — after the end-of-month reveal — other members' picks are shown and guess/predict nudge appears. **Pick from your queue:** when the member has a Draft Queue, a ranked "From your draft queue" quick-pick list renders above the film search (hidden once they start typing); selecting an entry routes through the same TMDB detail-fetch path as a search result, and a successful save **consumes** that queue row (promoted out of the queue).
 3. **Reveal section:** Shown only after `end_of_month_reveal_date` passes / `picker_revealed` is true for all films. Displays picker identities, pick justifications, guess + prediction results, monthly awards, and the month's recap. Hidden until the month is fully revealed.
 
 **June 2026 exception:** Picks are being entered manually by the admin — the picks section may show an incomplete list until all picks are in.
