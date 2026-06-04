@@ -45,6 +45,29 @@ function formatMonthLabel(monthYear) {
   return new Date(`${monthYear}-02`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
+// Soft scheduled auto-activation (no pg_cron). If an admin marked an upcoming
+// month auto_activate and its date has arrived in Pacific time, activate it. The
+// activate_month RPC authorizes a non-admin caller only when the month is genuinely
+// due, so a member loading the app can safely trigger a scheduled activation but
+// can't force-activate anything else. Returns true if it activated a month.
+async function autoActivateDueMonths() {
+  try {
+    const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }) // YYYY-MM-DD
+    const { data: due } = await supabase
+      .from('months')
+      .select('id, active_date')
+      .eq('status', 'upcoming')
+      .eq('auto_activate', true)
+      .order('month_year', { ascending: true })
+    const target = (due ?? []).find(m => m.active_date && String(m.active_date).slice(0, 10) <= todayPT)
+    if (target) {
+      const { error } = await supabase.rpc('activate_month', { p_month_id: target.id })
+      return !error
+    }
+  } catch { /* best-effort; ignore */ }
+  return false
+}
+
 // ─── Skeleton ───────────────────────────────────────────────────────────────
 
 function Skeleton({ style = {}, className = '' }) {
@@ -473,7 +496,7 @@ async function tmdbFetch(path) {
   return res.json()
 }
 
-function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) {
+function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
   // existing pick (may be pre-loaded by parent)
   const [existingPick, setExistingPick] = useState(null)
   const [pickLoading, setPickLoading] = useState(true)
@@ -647,13 +670,9 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
 
       if (error) throw error
 
-      // If the target month is already active, materialize this pick into a film
-      // and re-split the month's scoring deadlines evenly by film count. SECURITY
-      // DEFINER RPC — idempotent per (month, picker). Deadlines are display-only (dev mode).
-      if (monthIsActive && nextMonth.id) {
-        const { error: rpcErr } = await supabase.rpc('materialize_and_split_month', { p_month_id: nextMonth.id })
-        if (rpcErr) throw rpcErr
-      }
+      // Picks target the upcoming month only; they're materialized into films at
+      // activation, never here. (This removes the old bug where re-picking an active
+      // month re-pointed the existing film row and appeared to move its scores.)
 
       // If this pick was promoted from the draft queue, consume that queue entry —
       // it's no longer a plan to pick, it IS the pick. Only after a successful save.
@@ -1230,7 +1249,7 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
 
 // ─── Pick Submission Modal ────────────────────────────────────────────────────
 
-function PickModal({ profile, nextMonth, monthIsActive, onClose, onPickSaved }) {
+function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
   // Android/browser Back closes the pick modal instead of navigating away.
   useBackClose(true, onClose)
   return (
@@ -1275,7 +1294,6 @@ function PickModal({ profile, nextMonth, monthIsActive, onClose, onPickSaved }) 
           <PickSubmissionFlow
             profile={profile}
             nextMonth={nextMonth}
-            monthIsActive={monthIsActive}
             onPickSaved={onPickSaved}
             onCancel={onClose}
           />
@@ -1291,27 +1309,30 @@ function PickModal({ profile, nextMonth, monthIsActive, onClose, onPickSaved }) 
 
 // ─── Picks Tab ────────────────────────────────────────────────────────────────
 
-function PicksTab({ profile, onOpenFilm, onMaterialized }) {
-  const [nextMonth, setNextMonth] = useState(null)
-  const [monthIsActive, setMonthIsActive] = useState(false)
+function PicksTab({ profile, onOpenFilm }) {
+  const [nextMonth, setNextMonth] = useState(null)       // upcoming month = pick target
+  const [activeMonth, setActiveMonth] = useState(null)   // current scoring month
   const [monthLoading, setMonthLoading] = useState(true)
   const [picks, setPicks] = useState([])
   const [picksLoading, setPicksLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [expandedPickId, setExpandedPickId] = useState(null) // pick whose justification is shown
-  const [myOpenPicks, setMyOpenPicks] = useState([]) // films I picked that still need my score predictions
+  const [myOpenPicks, setMyOpenPicks] = useState([]) // active-month films I picked that still need my score predictions
 
-  // Predictions are picker-only and attach to the movie (which exists once the admin
-  // creates the month). Surface a nudge here routing the picker to the film overlay to predict.
+  // Picker-only score predictions attach to the picker's film in the CURRENT
+  // (active) month — you predict how the club will score the film you picked
+  // once it's the one being watched. Scoped to the active month so a future
+  // month's pick never triggers this nudge.
   useEffect(() => {
-    if (!profile) return
+    if (!profile || !activeMonth) { setMyOpenPicks([]); return }
     let alive = true
     ;(async () => {
       try {
         const { data: mine } = await supabase
           .from('movies')
-          .select('id, title, poster_url, scores_revealed, picker_revealed')
+          .select('id, title, poster_url, scores_revealed')
           .eq('picked_by_user_id', profile.id)
+          .eq('month_id', activeMonth.id)
           .eq('scores_revealed', false)
         if (!alive) return
         if (!mine?.length) { setMyOpenPicks([]); return }
@@ -1328,39 +1349,26 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
       }
     })()
     return () => { alive = false }
-  }, [profile])
+  }, [profile, activeMonth])
 
   async function loadNextMonthAndPicks() {
     setMonthLoading(true)
     setPicksLoading(true)
 
-    // Target month for picking: the active month if one exists (picks materialize into
-    // films immediately), otherwise the next upcoming month (picks stay queued until the
-    // admin activates that month).
-    const { data: active } = await supabase
-      .from('months')
-      .select('id, month_year')
-      .eq('status', 'active')
-      .order('month_year', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // Picks always target the next UPCOMING month — never the active one (the
+    // active month's picks are locked; its films are being watched/scored). The
+    // active month is loaded only for labels + the predict nudge. Materialization
+    // happens at activation, never on pick.
+    const [{ data: active }, { data: upcoming }] = await Promise.all([
+      supabase.from('months').select('id, month_year').eq('status', 'active')
+        .order('month_year', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('months').select('id, month_year').eq('status', 'upcoming')
+        .order('month_year', { ascending: true }).limit(1).maybeSingle(),
+    ])
 
-    let month = active ?? null
-    let isActive = !!active
-    if (!month) {
-      const { data: upcoming } = await supabase
-        .from('months')
-        .select('id, month_year')
-        .eq('status', 'upcoming')
-        .order('month_year', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      month = upcoming ?? null
-      isActive = false
-    }
-
+    setActiveMonth(active ?? null)
+    const month = upcoming ?? null
     setNextMonth(month)
-    setMonthIsActive(isActive)
     setMonthLoading(false)
 
     if (month) {
@@ -1385,6 +1393,7 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
   }, [])
 
   const nextMonthLabel = nextMonth ? formatMonthLabel(nextMonth.month_year) : ''
+  const activeMonthLabel = activeMonth ? formatMonthLabel(activeMonth.month_year) : ''
   const loading = monthLoading || picksLoading
 
   // The viewer's own pick is always visible (RLS guarantees it's readable). Other
@@ -1409,7 +1418,7 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
           }}
         >
           <span style={{ fontSize: '15px' }}>🎬</span>
-          <span style={{ flex: 1 }}>You picked “{film.title}” — predict how everyone will score it</span>
+          <span style={{ flex: 1 }}>You picked “{film.title}”{activeMonthLabel ? ` for ${activeMonthLabel}` : ''} — predict how everyone will score it</span>
           <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
         </button>
       ))}
@@ -1437,7 +1446,7 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
             transition: 'background 0.15s ease',
           }}
         >
-          <span style={{ flex: 1 }}>Pick your next movie</span>
+          <span style={{ flex: 1 }}>Pick your movie for {nextMonthLabel}</span>
           <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
         </button>
       )}
@@ -1493,13 +1502,11 @@ function PicksTab({ profile, onOpenFilm, onMaterialized }) {
         <PickModal
           profile={profile}
           nextMonth={nextMonth}
-          monthIsActive={monthIsActive}
           onClose={() => setShowModal(false)}
           onPickSaved={() => {
+            // Picks target the upcoming month and never materialize here — just
+            // refresh the pick list. Materialization happens only at activation.
             loadNextMonthAndPicks()
-            // If the month is active, the pick just materialized into a film and the
-            // deadlines were re-split — refresh the parent so the Films/Deadlines tabs reflect it.
-            if (monthIsActive && onMaterialized) onMaterialized()
             setShowModal(false)
           }}
         />
@@ -1660,6 +1667,9 @@ export default function ThisMonth() {
     if (!profile) return
     setLoading(true)
 
+    // Trigger any due scheduled auto-activation before reading month state.
+    await autoActivateDueMonths()
+
     const [{ data: month }, { data: revealed }, { data: ratings }, { data: usersData }] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('months').select('id, month_year').eq('status', 'revealed')
@@ -1681,7 +1691,15 @@ export default function ThisMonth() {
         .select('id, month_id, title, poster_url, genre, director, year_released, scores_revealed, picker_revealed, historical_avg_score, scoring_deadline, picked_by_user_id')
         .eq('month_id', month.id)
 
-      setMovies(movieData ?? [])
+      // Order by scoring deadline (watch order) — earliest first; films without a
+      // deadline fall to the end, tie-broken by insertion order (id).
+      const ordered = (movieData ?? []).slice().sort((a, b) => {
+        const da = a.scoring_deadline ? new Date(a.scoring_deadline).getTime() : Infinity
+        const db = b.scoring_deadline ? new Date(b.scoring_deadline).getTime() : Infinity
+        if (da !== db) return da - db
+        return String(a.id).localeCompare(String(b.id))
+      })
+      setMovies(ordered)
     } else {
       setMovies([])
     }
@@ -1784,7 +1802,7 @@ export default function ThisMonth() {
             <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.18em', margin: '0 0 14px' }}>
               Your Pick
             </p>
-            <PicksTab profile={profile} onOpenFilm={setSelectedMovie} onMaterialized={loadData} />
+            <PicksTab profile={profile} onOpenFilm={setSelectedMovie} />
           </section>
 
           {revealMonth && (

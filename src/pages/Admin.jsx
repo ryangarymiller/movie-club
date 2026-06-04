@@ -130,29 +130,51 @@ function fmtPickMonth(my) {
 
 function UpcomingPicksPanel({ months }) {
   const [picks, setPicks] = useState([])
+  const [historical, setHistorical] = useState([])  // past picks from materialized films
   const [loading, setLoading] = useState(true)
   const [show, setShow] = useState(false)
+
+  const monthYearById = {}
+  for (const m of months) monthYearById[m.id] = m.month_year
 
   useEffect(() => {
     let alive = true
     ;(async () => {
-      // Only months whose picks are still secret (not yet revealed).
+      // Secret (not-yet-revealed) months: from the upcoming_picks queue.
       const secretMonths = months.filter(m => m.status !== 'revealed').map(m => m.month_year)
-      if (!secretMonths.length) { if (alive) { setPicks([]); setLoading(false) } return }
-      const { data } = await supabase
-        .from('upcoming_picks')
-        .select('id, user_id, title, month_target, metadata, users(name, email)')
-        .in('month_target', secretMonths)
-        .order('month_target', { ascending: true })
+      // Past months (revealed): pickers are public — read from the materialized films.
+      const revealedIds = months.filter(m => m.status === 'revealed').map(m => m.id)
+
+      const [{ data: up }, { data: hist }] = await Promise.all([
+        secretMonths.length
+          ? supabase.from('upcoming_picks')
+              .select('id, user_id, title, month_target, metadata, users(name, email)')
+              .in('month_target', secretMonths).order('month_target', { ascending: true })
+          : Promise.resolve({ data: [] }),
+        revealedIds.length
+          ? supabase.from('movies')
+              .select('id, title, month_id, picked_by_user_id, picker:picked_by_user_id(name, email)')
+              .in('month_id', revealedIds)
+          : Promise.resolve({ data: [] }),
+      ])
       if (!alive) return
-      setPicks((data ?? []).filter(p => p.users?.email !== TEST_USER_EMAIL))
+      setPicks((up ?? []).filter(p => p.users?.email !== TEST_USER_EMAIL))
+      setHistorical((hist ?? []).filter(m => m.picked_by_user_id && m.picker?.email !== TEST_USER_EMAIL))
       setLoading(false)
     })()
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [months])
 
   const byMonth = {}
   for (const p of picks) { (byMonth[p.month_target] ||= []).push(p) }
+  // Fold historical picks (from films) in under their month_year too, labelled by picker.
+  const histByMonth = {}
+  for (const f of historical) {
+    const my = monthYearById[f.month_id]
+    if (my) (histByMonth[my] ||= []).push({ id: f.id, title: f.title, users: f.picker })
+  }
+  const histKeys = Object.keys(histByMonth).sort().reverse()
   const monthKeys = Object.keys(byMonth).sort()
 
   return (
@@ -205,6 +227,32 @@ function UpcomingPicksPanel({ months }) {
           </div>
         )
       )}
+
+      {/* Historical picks — pickers are public for revealed months, so always shown. */}
+      {!loading && histKeys.length > 0 && (
+        <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px solid rgba(var(--fg-rgb), 0.08)' }}>
+          <Label>Past picks · history</Label>
+          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {histKeys.map(mk => (
+              <div key={mk}>
+                <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em', margin: '0 0 8px' }}>
+                  {fmtPickMonth(mk)} · {histByMonth[mk].length} pick{histByMonth[mk].length === 1 ? '' : 's'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {histByMonth[mk].map(p => (
+                    <div key={p.id} style={{ padding: '10px 12px', borderRadius: '10px', background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
+                      <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-strong)', margin: 0 }}>
+                        <strong>{p.users?.name ?? 'Unknown'}</strong>
+                        <span style={{ color: 'var(--text-muted)' }}> → {p.title}</span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -213,6 +261,7 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
   const sortedMonths = [...months].sort((a, b) => b.month_year.localeCompare(a.month_year))
   const [targetId, setTargetId] = useState('')
   const [activeDate, setActiveDate] = useState('')
+  const [autoActivate, setAutoActivate] = useState(false)
   const [busy, setBusy] = useState(false)
   // Post-activation confirmation state
   const [activationResult, setActivationResult] = useState(null) // null | { filmCount, deadlinesSet, statusConfirmed }
@@ -227,43 +276,42 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
   }
 
   function onSelectMonth(id) {
+    const mo = months.find(m => m.id === id)
     setTargetId(id)
-    setActiveDate(defaultActiveDate(months.find(m => m.id === id)))
+    setActiveDate(defaultActiveDate(mo))
+    setAutoActivate(!!mo?.auto_activate)
     setActivationResult(null)
   }
 
-  async function saveActiveDate() {
+  // Save the schedule (active_date + auto-activate toggle) without activating now.
+  async function saveSchedule() {
     if (!target) return
     setBusy(true)
-    const { error } = await supabase.from('months').update({ active_date: activeDate || null }).eq('id', target.id)
+    const { error } = await supabase.from('months')
+      .update({ active_date: activeDate || null, auto_activate: autoActivate })
+      .eq('id', target.id)
     setBusy(false)
-    if (error) setError('Failed to save active date: ' + error.message)
-    else { setSuccess('Active date saved'); onRefresh() }
+    if (error) setError('Failed to save schedule: ' + error.message)
+    else { setSuccess(autoActivate ? `Auto-activation scheduled for ${activeDate} (12am PT).` : 'Schedule saved.'); onRefresh() }
   }
 
   async function activateNow() {
     if (!target) return
     setBusy(true)
     setActivationResult(null)
-    // 1) Set status + active_date.
-    const { error: updErr } = await supabase
-      .from('months')
-      .update({ status: 'active', active_date: activeDate || defaultActiveDate(target) })
+    // Persist schedule first so the RPC + future auto-activation use it.
+    await supabase.from('months')
+      .update({ active_date: activeDate || defaultActiveDate(target), auto_activate: autoActivate })
       .eq('id', target.id)
-    if (updErr) {
-      setBusy(false)
-      setError('Failed to activate month: ' + updErr.message)
-      return
-    }
-    // 2) Materialize upcoming picks into movies + split deadlines evenly by film count.
-    const { error: rpcErr } = await supabase.rpc('materialize_and_split_month', { p_month_id: target.id })
+    // Orchestrated activation: enforces single-active, materializes + splits, and
+    // guarantees a next upcoming month for picks.
+    const { error: rpcErr } = await supabase.rpc('activate_month', { p_month_id: target.id })
     if (rpcErr) {
       setBusy(false)
-      setError('Month set active, but materialize/split failed: ' + rpcErr.message)
+      setError('Activation failed: ' + rpcErr.message)
       onRefresh()
       return
     }
-    // 3) Re-fetch to verify status and count films/deadlines.
     const [{ data: verifiedMonth }, { data: newFilms }] = await Promise.all([
       supabase.from('months').select('status').eq('id', target.id).single(),
       supabase.from('movies').select('id, scoring_deadline').eq('month_id', target.id),
@@ -274,31 +322,10 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
     const statusConfirmed = verifiedMonth?.status === 'active'
     setActivationResult({ filmCount, deadlinesSet, statusConfirmed, monthYear: target.month_year })
     if (!statusConfirmed) {
-      setError(`Activation may not have persisted — status is still "${verifiedMonth?.status ?? 'unknown'}". Check RLS on months.`)
+      setError(`Activation may not have persisted — status is still "${verifiedMonth?.status ?? 'unknown'}".`)
     } else {
-      setSuccess(`${target.month_year} is now ACTIVE — ${filmCount} film${filmCount !== 1 ? 's' : ''} materialized, ${deadlinesSet} deadline${deadlinesSet !== 1 ? 's' : ''} split.`)
+      setSuccess(`${target.month_year} is now ACTIVE — ${filmCount} film${filmCount !== 1 ? 's' : ''}, ${deadlinesSet} deadline${deadlinesSet !== 1 ? 's' : ''} split. Next month opened for picks.`)
     }
-    onRefresh()
-  }
-
-  // Reverse activation: set the month back to "upcoming" so members can keep
-  // adding/changing picks. Non-destructive — any films already materialized this
-  // month are left in place (re-activating re-splits deadlines).
-  async function deactivateNow() {
-    if (!target) return
-    if (!window.confirm(`Deactivate ${target.month_year}? It returns to "upcoming" so members can keep adding picks. Films already materialized this month are left as-is.`)) return
-    setBusy(true)
-    setActivationResult(null)
-    const { error: updErr } = await supabase
-      .from('months')
-      .update({ status: 'upcoming' })
-      .eq('id', target.id)
-    setBusy(false)
-    if (updErr) {
-      setError('Failed to deactivate month: ' + updErr.message)
-      return
-    }
-    setSuccess(`${target.month_year} is no longer active — set back to "upcoming".`)
     onRefresh()
   }
 
@@ -327,7 +354,7 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
           </select>
         </div>
         <div style={{ flex: '1 1 150px', minWidth: 0 }}>
-          <Label>Active date</Label>
+          <Label>Activation date (12am PT)</Label>
           <input
             type="date"
             value={activeDate}
@@ -337,44 +364,57 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
           />
         </div>
       </div>
+
+      {/* Auto-activation toggle: when on, the month activates itself once its
+          activation date arrives (evaluated at 12am Pacific). Default off. */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '14px', cursor: target ? 'pointer' : 'default', opacity: target ? 1 : 0.5 }}>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoActivate}
+          disabled={!target}
+          onClick={() => setAutoActivate(v => !v)}
+          style={{
+            flexShrink: 0, width: '42px', height: '24px', borderRadius: '999px', border: 'none',
+            background: autoActivate ? 'var(--accent)' : 'rgba(var(--fg-rgb),0.18)',
+            position: 'relative', cursor: target ? 'pointer' : 'default', transition: 'background 0.15s ease',
+          }}
+        >
+          <span style={{
+            position: 'absolute', top: '3px', left: autoActivate ? '21px' : '3px',
+            width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.15s ease',
+          }} />
+        </button>
+        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-muted)' }}>
+          Auto-activate on the date above (else activate manually)
+        </span>
+      </label>
+
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
         <button
           onClick={activateNow}
-          disabled={!target || busy}
+          disabled={!target || busy || target?.status === 'active'}
+          title={target?.status === 'active' ? 'This month is already active' : 'Activate now — materializes picks, splits deadlines, opens the next month'}
           style={{
             padding: '9px 18px', borderRadius: '8px', border: 'none', background: 'var(--accent)',
             color: 'var(--text-strong)', fontSize: '13px', fontWeight: 500,
-            cursor: (!target || busy) ? 'not-allowed' : 'pointer', opacity: (!target || busy) ? 0.6 : 1,
+            cursor: (!target || busy || target?.status === 'active') ? 'not-allowed' : 'pointer', opacity: (!target || busy || target?.status === 'active') ? 0.6 : 1,
             fontFamily: "'DM Sans',sans-serif",
           }}
         >
-          {busy ? 'Working…' : 'Activate / Trigger now'}
+          {busy ? 'Working…' : 'Activate now'}
         </button>
         <button
-          onClick={deactivateNow}
-          disabled={!target || busy || target?.status !== 'active'}
-          title={target?.status === 'active' ? 'Set this month back to upcoming so members can keep adding picks' : 'Only an active month can be deactivated'}
-          style={{
-            padding: '9px 14px', borderRadius: '8px', border: '1px solid rgba(220,38,38,0.4)',
-            background: 'transparent',
-            color: (!target || busy || target?.status !== 'active') ? 'var(--text-faint)' : '#f87171',
-            fontSize: '12px', cursor: (!target || busy || target?.status !== 'active') ? 'not-allowed' : 'pointer',
-            fontFamily: "'DM Mono',monospace",
-          }}
-        >
-          Deactivate
-        </button>
-        <button
-          onClick={saveActiveDate}
+          onClick={saveSchedule}
           disabled={!target || busy}
-          title="Save the active date without re-running materialization"
+          title="Save the activation date + auto-activate toggle without activating now"
           style={{
             padding: '9px 14px', borderRadius: '8px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
             background: 'transparent', color: (!target || busy) ? 'var(--text-faint)' : 'var(--text-muted)',
             fontSize: '12px', cursor: (!target || busy) ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono',monospace",
           }}
         >
-          Save active date only
+          Save schedule
         </button>
       </div>
 
@@ -2114,7 +2154,7 @@ export default function Admin() {
       supabase.from('movies').select('*, picked_by:users!picked_by_user_id(name)').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
       supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, admin_mode_enabled').order('joined_at'),
-      supabase.from('months').select('id, season_id, month_year, status, active_date').order('month_year'),
+      supabase.from('months').select('id, season_id, month_year, status, active_date, auto_activate').order('month_year'),
       supabase.from('seasons').select('id, name, start_date, end_date, readjustment_open, readjustment_ends_at').order('start_date'),
     ])
 
