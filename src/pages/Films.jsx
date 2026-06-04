@@ -1822,7 +1822,9 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 <CommentThread
                   movieId={m.id}
                   currentUserId={profile.id}
-                  isAdmin={isAdmin}
+                  /* Moderation (deleting others' content) is gated behind admin
+                     MODE, not just the admin role — so it isn't offered in normal use. */
+                  isAdmin={isAdmin && profile?.admin_mode_enabled}
                   users={users}
                   canParticipate={myRating?.score != null}
                 />
@@ -2816,7 +2818,8 @@ export default function Films() {
             position: 'fixed',
             right: '16px',
             bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))',
-            zIndex: 90,
+            // Below the notification bulletin (z-80) so it doesn't float over it.
+            zIndex: 70,
             display: 'flex',
             alignItems: 'center',
             gap: '8px',

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { userColor, memberColor } from '../lib/colors'
 
 // ── small shared helpers (kept local so the component is self-contained) ──
 function initials(name = '') {
@@ -37,11 +38,11 @@ function Label({ children }) {
   )
 }
 
-function Avatar({ name, size = 30 }) {
+function Avatar({ name, size = 30, color }) {
   return (
     <div style={{
       flexShrink: 0, width: size, height: size, borderRadius: '50%',
-      background: avatarColor(name), display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: color || avatarColor(name), display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <span style={{ fontFamily: "'DM Mono', monospace", fontSize: size * 0.36, fontWeight: 600, color: '#fff' }}>
         {initials(name)}
@@ -59,7 +60,8 @@ export default function MonthReveal({ monthId, monthLabel, users = [], currentUs
   const [predictions, setPredictions] = useState([])
 
   const nameById = {}
-  for (const u of users) nameById[u.id] = u.name
+  const colorById = {}
+  for (const u of users) { nameById[u.id] = u.name; colorById[u.id] = userColor(u) || memberColor(u.name) }
 
   const load = useCallback(async () => {
     if (!monthId) return
@@ -156,7 +158,7 @@ export default function MonthReveal({ monthId, monthLabel, users = [], currentUs
                   {f.title}{f.year_released ? <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}> {f.year_released}</span> : null}
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: f.pick_justification ? '6px' : 0 }}>
-                  <Avatar name={pickerName} size={22} />
+                  <Avatar name={pickerName} size={22} color={colorById[f.picked_by_user_id]} />
                   <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'var(--text)' }}>
                     Picked by <strong style={{ color: 'var(--text-strong)' }}>{pickerName}</strong>
                   </span>

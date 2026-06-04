@@ -76,15 +76,34 @@ function BellGlyph() {
 
 // ─── A single notification row ─────────────────────────────────────────────────
 
-function NotificationRow({ n, onActivate, isLast }) {
+function NotificationRow({ n, onOpen, onMarkRead, isLast }) {
   const meta = metaFor(n.type)
   const unread = !n.read_at
   const [hover, setHover] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  // Clicking a row EXPANDS it in place (and marks it read) rather than navigating
+  // away + closing the bulletin — so a long notification's full text is readable.
+  // The "Open" button inside the expanded row is what navigates.
+  function handleClick() {
+    if (unread) onMarkRead?.(n.id)
+    setExpanded(e => !e)
+  }
 
   return (
+    <div
+      style={{
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        textAlign: 'left',
+        borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb),0.07)',
+      }}
+    >
     <button
       type="button"
-      onClick={() => onActivate(n)}
+      onClick={handleClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -96,7 +115,6 @@ function NotificationRow({ n, onActivate, isLast }) {
         textAlign: 'left',
         padding: '13px 16px 13px 18px',
         border: 'none',
-        borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb),0.07)',
         // Unread wash is accent-tinted via a layered linear-gradient: the accent
         // overlay sits at low opacity over a neutral base, so it reads correctly
         // for every accent token without needing an --accent-rgb triple.
@@ -158,8 +176,8 @@ function NotificationRow({ n, onActivate, isLast }) {
               fontWeight: unread ? 600 : 500,
               color: unread ? 'var(--text-strong)' : 'var(--text)',
               overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              textOverflow: expanded ? 'clip' : 'ellipsis',
+              whiteSpace: expanded ? 'normal' : 'nowrap',
             }}
           >
             {n.title || meta.fallback}
@@ -179,8 +197,8 @@ function NotificationRow({ n, onActivate, isLast }) {
         {n.body && (
           <span
             style={{
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
+              display: expanded ? 'block' : '-webkit-box',
+              WebkitLineClamp: expanded ? 'none' : 2,
               WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
               marginTop: '3px',
@@ -194,12 +212,30 @@ function NotificationRow({ n, onActivate, isLast }) {
         )}
       </span>
     </button>
+    {/* Expanded: a button to actually navigate to the linked page (and close). */}
+    {expanded && n.link && (
+      <div style={{ padding: '0 16px 12px 61px' }}>
+        <button
+          type="button"
+          onClick={() => onOpen?.(n)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            padding: '6px 12px', borderRadius: '999px',
+            border: '1px solid var(--accent)', background: 'rgba(var(--accent-rgb),0.1)',
+            color: 'var(--accent)', fontFamily: "'DM Mono',monospace", fontSize: '11px', cursor: 'pointer',
+          }}
+        >
+          Open →
+        </button>
+      </div>
+    )}
+    </div>
   )
 }
 
 // ─── Panel body (shared between popover + sheet) ───────────────────────────────
 
-function PanelInner({ notifications, unreadCount, loading, onActivate, onMarkAll, onClose, variant }) {
+function PanelInner({ notifications, unreadCount, loading, onActivate, onMarkRead, onMarkAll, onClose, variant }) {
   return (
     <>
       {/* Header */}
@@ -342,7 +378,8 @@ function PanelInner({ notifications, unreadCount, loading, onActivate, onMarkAll
             <NotificationRow
               key={n.id}
               n={n}
-              onActivate={onActivate}
+              onOpen={onActivate}
+              onMarkRead={onMarkRead}
               isLast={i === notifications.length - 1}
             />
           ))
@@ -359,6 +396,9 @@ export default function NotificationBell({ className = '', style }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
+  // Drag-to-dismiss for the mobile sheet's grab handle.
+  const [sheetDragY, setSheetDragY] = useState(0)
+  const dragStartRef = useRef(null)
 
   // Android/browser Back closes the notifications popover/sheet instead of navigating.
   useBackClose(open, () => setOpen(false))
@@ -466,6 +506,7 @@ export default function NotificationBell({ className = '', style }) {
               unreadCount={unreadCount}
               loading={loading}
               onActivate={activate}
+              onMarkRead={markRead}
               onMarkAll={markAllRead}
               onClose={() => setOpen(false)}
               variant="popover"
@@ -499,18 +540,27 @@ export default function NotificationBell({ className = '', style }) {
                 display: 'flex',
                 flexDirection: 'column',
                 maxHeight: '85dvh',
-                animation: 'mcNotifSheet 200ms cubic-bezier(0.16,1,0.3,1) both',
+                transform: sheetDragY ? `translateY(${sheetDragY}px)` : undefined,
+                transition: sheetDragY ? 'none' : 'transform 0.22s ease',
+                animation: sheetDragY ? 'none' : 'mcNotifSheet 200ms cubic-bezier(0.16,1,0.3,1) both',
               }}
             >
-              {/* Grab handle */}
-              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '8px' }}>
-                <span style={{ width: '36px', height: '4px', borderRadius: '999px', background: 'rgba(var(--fg-rgb),0.18)' }} />
+              {/* Grab handle — drag it down to dismiss the sheet. */}
+              <div
+                onPointerDown={(e) => { dragStartRef.current = e.clientY; try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* unsupported */ } }}
+                onPointerMove={(e) => { if (dragStartRef.current != null) { const d = e.clientY - dragStartRef.current; setSheetDragY(d > 0 ? d : 0) } }}
+                onPointerUp={(e) => { const d = sheetDragY; dragStartRef.current = null; try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* ignore */ } if (d > 90) { setSheetDragY(0); setOpen(false) } else setSheetDragY(0) }}
+                onPointerCancel={() => { dragStartRef.current = null; setSheetDragY(0) }}
+                style={{ display: 'flex', justifyContent: 'center', paddingTop: '10px', paddingBottom: '8px', cursor: 'grab', touchAction: 'none' }}
+              >
+                <span style={{ width: '36px', height: '4px', borderRadius: '999px', background: 'rgba(var(--fg-rgb),0.22)' }} />
               </div>
               <PanelInner
                 notifications={notifications}
                 unreadCount={unreadCount}
                 loading={loading}
                 onActivate={activate}
+              onMarkRead={markRead}
                 onMarkAll={markAllRead}
                 onClose={() => setOpen(false)}
                 variant="sheet"

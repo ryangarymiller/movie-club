@@ -212,7 +212,7 @@ describe('NotificationBell', () => {
     expect(screen.getAllByText('Bulletin').length).toBeGreaterThan(0)
   })
 
-  it('navigates to the link and marks read when a row is clicked', async () => {
+  it('expands + marks read on row click, then navigates via the Open button', async () => {
     seed([
       { id: 'n1', user_id: 'user-1', type: 'scores_revealed', title: 'Scores are in', link: '/films', read_at: null, created_at: new Date().toISOString() },
     ])
@@ -220,9 +220,14 @@ describe('NotificationBell', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /unread/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /unread/i }))
     const rows = screen.getAllByText('Scores are in')
+    // Clicking a row marks it read and expands it — it does NOT navigate/close.
     await act(async () => { fireEvent.click(rows[0]) })
-    expect(navigateSpy).toHaveBeenCalledWith('/films')
     expect(updateCalls.some((c) => 'read_at' in c)).toBe(true)
+    expect(navigateSpy).not.toHaveBeenCalled()
+    // The expanded row's "Open" button is what navigates.
+    const openBtn = screen.getAllByRole('button', { name: /open/i })[0]
+    await act(async () => { fireEvent.click(openBtn) })
+    expect(navigateSpy).toHaveBeenCalledWith('/films')
   })
 
   it('shows the empty state when there are no notifications', async () => {
