@@ -258,7 +258,7 @@ Admin panel: "Activate now" (calls `activate_month`), an Auto-activate toggle, a
 
 The signed-in user's own pick (for the upcoming month) shows inline on This Month (clickable → justification + change-pick flow). The active month's films are sorted by **scoring deadline** (watch order). Upcoming-month films are excluded from the Films page (no pre-activation pick leak).
 
-**Member pick-change for the active month (deferred):** members can't change an active-month pick directly (locked); the intended flow is to *request* a change (only while the film has zero scores) for admin approval. The lock is in place; the request workflow is a tracked follow-up.
+**Member pick-change for the active month (implemented):** members can't change an active-month pick directly (locked); instead the picker sees a **"Request a different pick"** affordance on their active-month film's overlay (TMDB search → reason → submit, backed by `pick_change_requests`). An admin approves/denies on the Dashboard ("Pick-Change Requests" panel) — **approval is guarded on the film having zero scores** (admin reads all), then fetches fresh TMDB metadata and swaps the `movies` row wholesale; a decision notification goes to the requester. Component: `src/components/PickChangeRequest.jsx`.
 
 ---
 
@@ -331,6 +331,11 @@ film_tags      — id, movie_id, user_id, tag, created_at; unique(movie_id,user_
 auteur_votes   — id, season_id, voter_user_id, rankings (json array, ranked choice)
 season_rankings — id, season_id, user_id, movie_id, rank, locked_score (locked at end of window)
 score_change_requests — id, rating_id, user_id, requested_score, status (pending|approved|denied)
+pick_change_requests — id, movie_id, user_id, requested_tmdb_id, requested_title, requested_poster_url,
+                 requested_year, reason, status (pending|approved|denied), admin_note, resolved_at
+                 (member requests to swap a locked active-month pick; admin approval guarded on
+                  zero scores, swaps the movie row + fresh TMDB metadata; decision notification
+                  via trg_notify_pick_change. RLS: own insert/read, admin manage via is_admin())
 month_absences — id, month_id, user_id (excludes member from picker stats that month)
 notifications  — id, user_id, type, title, body, link, payload (jsonb), read_at, created_at
                  (RLS: recipient reads/updates own rows; rows created only by SECURITY DEFINER triggers)
