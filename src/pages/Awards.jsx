@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
@@ -36,21 +37,72 @@ function awardInfo(label) {
 }
 
 // "?" affordance that toggles a small explanation popover. Self-contained.
+// Module-level coordinator: only one award "?" popover is ever open at a time —
+// opening another closes the previous one.
+let closeActiveAwardInfo = null
+
 function AwardInfo({ text }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
+  const btnRef = useRef(null)
+  const close = useCallback(() => setOpen(false), [])
+
+  function toggle(e) {
+    e.stopPropagation()
+    if (open) { setOpen(false); return }
+    if (closeActiveAwardInfo && closeActiveAwardInfo !== close) closeActiveAwardInfo()
+    closeActiveAwardInfo = close
+    const r = btnRef.current.getBoundingClientRect()
+    // Prefer to open ABOVE the button (so a tall popover never gets clipped by the
+    // card's overflow:hidden); flip below only when there isn't room above.
+    const above = r.top > 170
+    setPos({ left: r.right, top: above ? r.top - 8 : r.bottom + 8, above })
+    setOpen(true)
+  }
+
+  useEffect(() => {
+    if (!open) { if (closeActiveAwardInfo === close) closeActiveAwardInfo = null; return }
+    const dismiss = () => setOpen(false)
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    // Defer so the opening click itself doesn't immediately dismiss it.
+    const t = setTimeout(() => {
+      document.addEventListener('click', dismiss)
+      document.addEventListener('scroll', dismiss, true)
+      window.addEventListener('resize', dismiss)
+      document.addEventListener('keydown', onKey)
+    }, 0)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('click', dismiss)
+      document.removeEventListener('scroll', dismiss, true)
+      window.removeEventListener('resize', dismiss)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, close])
+
   if (!text) return null
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+    <span style={{ display: 'inline-flex', flexShrink: 0 }}>
       <button
+        ref={btnRef}
         type="button" aria-label="How is this calculated?"
-        onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
+        onClick={toggle}
         style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1px solid rgba(var(--fg-rgb),0.25)', background: open ? 'var(--accent)' : 'transparent', color: open ? 'var(--text-strong)' : 'var(--text-faint)', fontFamily: "'DM Mono',monospace", fontSize: '9px', lineHeight: 1, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >?</button>
-      {open && (
+      {open && pos && createPortal(
         <span
           onClick={(e) => e.stopPropagation()}
-          style={{ position: 'absolute', top: '22px', right: 0, zIndex: 5, width: '230px', padding: '10px 12px', borderRadius: '10px', background: 'var(--surface)', border: '1px solid rgba(var(--accent-rgb),0.25)', boxShadow: '0 8px 24px rgba(0,0,0,0.35)', fontFamily: "'DM Sans',sans-serif", fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 'normal', fontWeight: 400 }}
-        >{text}</span>
+          style={{
+            position: 'fixed', left: pos.left, top: pos.top,
+            transform: pos.above ? 'translate(-100%, -100%)' : 'translate(-100%, 0)',
+            zIndex: 200, width: '230px', maxWidth: 'calc(100vw - 24px)',
+            padding: '10px 12px', borderRadius: '10px', background: 'var(--surface)',
+            border: '1px solid rgba(var(--accent-rgb),0.25)', boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            fontFamily: "'DM Sans',sans-serif", fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)',
+            textTransform: 'none', letterSpacing: 'normal', fontWeight: 400,
+          }}
+        >{text}</span>,
+        document.body
       )}
     </span>
   )

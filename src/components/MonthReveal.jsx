@@ -51,7 +51,7 @@ function Avatar({ name, size = 30, color }) {
   )
 }
 
-export default function MonthReveal({ monthId, monthLabel, users = [], currentUserId }) {
+export default function MonthReveal({ monthId, users = [], currentUserId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [films, setFilms] = useState([])
@@ -112,21 +112,21 @@ export default function MonthReveal({ monthId, monthLabel, users = [], currentUs
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{
-        display: 'inline-flex', alignSelf: 'flex-start', alignItems: 'center', gap: '8px',
-        padding: '6px 14px', borderRadius: '999px',
-        background: 'rgba(var(--fg-rgb),0.05)', border: '1px solid rgba(var(--fg-rgb),0.1)',
-      }}>
-        <span style={{ fontSize: '13px' }}>🎬</span>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-          {monthLabel} — Reveal
-        </span>
-      </div>
-
       {films.map(f => {
         const pickerName = f.picked_by_user_id ? (nameById[f.picked_by_user_id] ?? 'Unknown') : 'Unknown'
         const ratingByUser = {}
         for (const r of ratings) if (r.movie_id === f.id && r.score != null) ratingByUser[r.user_id] = r.score
+        // Club average for the score badge: prefer the authoritative historical avg,
+        // else the mean of the individual revealed scores.
+        const scoreVals = Object.values(ratingByUser).map(Number)
+        const clubAvg = f.historical_avg_score != null
+          ? Number(f.historical_avg_score)
+          : (scoreVals.length ? scoreVals.reduce((s, v) => s + v, 0) / scoreVals.length : null)
+        // Per-member scores, in the club's user order (test account already excluded).
+        const memberScores = users
+          .map(u => ({ name: u.name, color: colorById[u.id], score: ratingByUser[u.id] }))
+          .filter(m => m.score != null)
+          .sort((a, b) => b.score - a.score)
 
         // Guess-the-picker results for this film. Exclude guesses by the test account
         // (and any unknown user) — it's filtered out of `users`/nameById, so it must not
@@ -141,35 +141,75 @@ export default function MonthReveal({ monthId, monthLabel, users = [], currentUs
 
         return (
           <div key={f.id} style={{
-            background: 'rgba(var(--fg-rgb),0.03)', border: '1px solid rgba(var(--fg-rgb),0.08)',
-            borderRadius: '14px', padding: '16px',
+            // Match the "Now Showing" FilmCard look (same bg/border/radius + a
+            // picker-coloured left edge) so the two columns read as one system.
+            background: 'rgba(var(--fg-rgb),0.025)', border: '1px solid rgba(var(--fg-rgb),0.07)',
+            borderLeft: colorById[f.picked_by_user_id] ? `3px solid ${colorById[f.picked_by_user_id]}` : '1px solid rgba(var(--fg-rgb),0.07)',
+            borderRadius: '14px', padding: '12px',
           }}>
-            {/* Film + picker */}
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: filmGuesses.length || filmPreds.length ? '14px' : 0 }}>
-              <div style={{ flexShrink: 0, width: '46px', aspectRatio: '2/3', borderRadius: '6px', overflow: 'hidden', background: 'var(--surface-2)' }}>
+            {/* Header row: poster + title/year + club-average score badge */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <div style={{ flexShrink: 0, width: '48px', height: '68px', borderRadius: '7px', overflow: 'hidden', background: 'var(--surface-2)' }}>
                 {f.poster_url && (
-                  <img src={`https://image.tmdb.org/t/p/w185${f.poster_url}`} alt={f.title}
+                  <img src={`https://image.tmdb.org/t/p/w300${f.poster_url}`} alt={f.title}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     onError={e => { e.target.style.display = 'none' }} />
                 )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '1.1rem', letterSpacing: '0.03em', color: 'var(--text-strong)', margin: '0 0 4px', lineHeight: 1.1 }}>
-                  {f.title}{f.year_released ? <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}> {f.year_released}</span> : null}
+                <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 3px' }}>
+                  Club average
                 </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: f.pick_justification ? '6px' : 0 }}>
-                  <Avatar name={pickerName} size={22} color={colorById[f.picked_by_user_id]} />
-                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'var(--text)' }}>
-                    Picked by <strong style={{ color: 'var(--text-strong)' }}>{pickerName}</strong>
-                  </span>
-                </div>
-                {f.pick_justification && (
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '12px', fontStyle: 'italic', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
-                    "{f.pick_justification}"
-                  </p>
-                )}
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: '14px', color: 'var(--text-strong)', margin: '0 0 2px', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.title}
+                </p>
+                <p style={{ fontFamily: "'DM Mono', monospace", color: 'var(--hairline)', fontSize: '11px', margin: 0 }}>
+                  {f.year_released ?? ''}
+                </p>
               </div>
+              {clubAvg != null && (
+                <span style={{
+                  flexShrink: 0, fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.25rem', letterSpacing: '0.03em',
+                  lineHeight: 1, padding: '6px 10px', borderRadius: '8px',
+                  background: 'rgba(var(--fg-rgb),0.04)', border: `1px solid ${scoreColor(clubAvg)}`, color: scoreColor(clubAvg),
+                }}>
+                  {fmtScore(clubAvg)}
+                </span>
+              )}
             </div>
+
+            {/* Picker + justification */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', margin: '12px 0 0' }}>
+              <Avatar name={pickerName} size={22} color={colorById[f.picked_by_user_id]} />
+              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'var(--text)' }}>
+                Picked by <strong style={{ color: 'var(--text-strong)' }}>{pickerName}</strong>
+              </span>
+            </div>
+            {f.pick_justification && (
+              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '12px', fontStyle: 'italic', color: 'var(--text-muted)', margin: '6px 0 0', lineHeight: 1.55 }}>
+                "{f.pick_justification}"
+              </p>
+            )}
+
+            {/* Per-member scores (everything is revealed here) */}
+            {memberScores.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
+                {memberScores.map((m, i) => (
+                  <span key={i} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    fontFamily: "'DM Mono', monospace", fontSize: '11px', padding: '3px 8px', borderRadius: '999px',
+                    background: 'rgba(var(--fg-rgb),0.04)', border: '1px solid rgba(var(--fg-rgb),0.08)',
+                  }}>
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                    <span style={{ color: 'var(--text-muted)' }}>{m.name.split(' ')[0]}</span>
+                    <strong style={{ color: scoreColor(m.score) }}>{fmtScore(m.score)}</strong>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* spacer before guess/prediction sections */}
+            {(filmGuesses.length || filmPreds.length) ? <div style={{ height: '14px' }} /> : null}
 
             {/* Guess the picker results */}
             {filmGuesses.length > 0 && (

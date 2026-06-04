@@ -468,9 +468,11 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress, onOpen, users, pr
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {movies.map(m => {
-        const pickerName = m.picker_revealed
-          ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
-          : undefined
+        // The active "Now Showing" month is the in-progress one — pickers stay a
+        // surprise here and are only unveiled in the Reveal section once the month
+        // rolls over (even if a film's picker_revealed flag is already set, e.g.
+        // imported historical months that currently sit in the active slot).
+        const pickerName = undefined
         return (
           <FilmCard
             key={m.id}

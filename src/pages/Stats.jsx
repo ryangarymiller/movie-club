@@ -180,9 +180,12 @@ function niceScale(values, { min = -Infinity, max = Infinity, targetCount = 5, p
   const step = chooseStep(hi - lo, targetCount)
   let dLo = Math.floor(lo / step) * step
   let dHi = Math.ceil(hi / step) * step
-  if (Number.isFinite(min)) dLo = Math.max(min, dLo)
-  if (Number.isFinite(max)) dHi = Math.min(max, dHi)
-  if (dLo >= dHi) { dLo = lo; dHi = hi }
+  // Clamp to [min,max] but keep BOTH edges on the step grid, so the domain edges
+  // always coincide with a tick — otherwise the last tick lands short of the axis
+  // edge and the 2nd-to-last↔last gap looks uneven.
+  if (Number.isFinite(min)) dLo = Math.max(dLo, Math.ceil((min - 1e-9) / step) * step)
+  if (Number.isFinite(max)) dHi = Math.min(dHi, Math.floor((max + 1e-9) / step) * step)
+  if (dLo >= dHi) { dLo = Math.floor(lo / step) * step; dHi = dLo + step }
   const ticks = []
   for (let t = dLo; t <= dHi + step / 1000; t += step) ticks.push(Math.round(t * 1000) / 1000)
   return { domain: [dLo, dHi], ticks }
@@ -253,10 +256,12 @@ function MemberScoreBars({ data, mean, sd, height, onMember }) {
 // chooses what the tooltip headline shows (e.g. the film title).
 function MonthLineChart({
   data, height = 170, series, color,
-  xKey = 'month', sparseTicks = false, tooltipLabelKey, xLabelKey,
+  xKey = 'month', sparseTicks = false, tooltipLabelKey, xLabelKey, valueName = 'Avg',
 }) {
   const c = color || accentColor()
-  const lines = series || [{ key: 'value', name: 'Avg', color: c }]
+  // For per-film score trends each point is a single score, not an average — pass
+  // valueName="Score" so the tooltip doesn't mislabel it "Avg".
+  const lines = series || [{ key: 'value', name: valueName, color: c }]
   // Legend interaction: click a series to highlight it (dim the rest); multi-
   // select; click again to clear. Empty set = default (all shown normally).
   const [selectedKeys, setSelectedKeys] = useState(() => new Set())
@@ -389,11 +394,12 @@ function ExcitementScatter({ data, height = 220, color }) {
   const c = color || accentColor()
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ScatterChart margin={{ top: 10, right: 14, left: 0, bottom: 8 }}>
+      <ScatterChart margin={{ top: 10, right: 14, left: 6, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
         <XAxis type="number" dataKey="excitement" name="Excitement" domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false}
           label={{ value: 'Excitement', position: 'insideBottom', offset: -4, fontSize: 9, fill: CHART.axis }} />
-        <YAxis type="number" dataKey="finalScore" name="Final" domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={26} />
+        <YAxis type="number" dataKey="finalScore" name="Final" domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={40}
+          label={{ value: 'Final score', angle: -90, position: 'insideLeft', offset: 14, style: { textAnchor: 'middle', fontSize: 9, fill: CHART.axis } }} />
         <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 10, y: 10 }]} stroke={CHART.muted} strokeDasharray="4 4" />
         <Tooltip content={<ChartTooltip labelKey="title" />} cursor={{ strokeDasharray: '3 3' }} />
         <Scatter data={data} fill={c} />
@@ -1618,6 +1624,11 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
       .map(r => ({ ...r, movie: movieMap[r.movie_id] }))
       .filter(r => r.movie)
       .sort((a, b) => {
+        // Order by the film's MONTH first — bulk-imported historical scores share
+        // (or scramble) submitted_at, which made e.g. May appear before April.
+        const ma = a.movie.month_id ? (monthsById[a.movie.month_id]?.month_year ?? '') : ''
+        const mb = b.movie.month_id ? (monthsById[b.movie.month_id]?.month_year ?? '') : ''
+        if (ma !== mb) return ma.localeCompare(mb)
         const ta = a.submitted_at ? Date.parse(a.submitted_at) : 0
         const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
         return ta - tb
@@ -1627,9 +1638,9 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
         return {
           // Unique numeric x so same-month films stay distinct points (else the
           // tooltip repeats one film across adjacent points). groupLabel is the
-          // human month label recovered for the (sparse) axis ticks.
+          // SHORT month label (e.g. "Apr '26") so adjacent months don't overlap.
           idx: i,
-          groupLabel: my ? formatMonthLabel(my) : '—',
+          groupLabel: my ? formatMonthShort(my) : '—',
           title: r.movie.title,
           value: Number(r.score),
         }
@@ -1823,6 +1834,7 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
               xLabelKey="groupLabel"
               sparseTicks
               tooltipLabelKey="title"
+              valueName="Score"
             />
           ) : (
             <ChartPlaceholder>Score a few films to see your scoring sequence.</ChartPlaceholder>
@@ -2309,6 +2321,10 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
         const overTime = scoredWithMovies
           .slice()
           .sort((a, b) => {
+            // By month first (imported submitted_at is unreliable → May-before-April).
+            const ma = a.movie.month_id ? (monthsById[a.movie.month_id]?.month_year ?? '') : ''
+            const mb = b.movie.month_id ? (monthsById[b.movie.month_id]?.month_year ?? '') : ''
+            if (ma !== mb) return ma.localeCompare(mb)
             const ta = a.submitted_at ? Date.parse(a.submitted_at) : 0
             const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
             return ta - tb
@@ -2318,7 +2334,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
             return {
               // Unique numeric x so same-month films stay distinct points.
               idx: i,
-              groupLabel: my ? formatMonthLabel(my) : '—',
+              groupLabel: my ? formatMonthShort(my) : '—',
               title: r.movie.title,
               value: Number(r.score),
             }
@@ -2571,7 +2587,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
                   Score Distribution
                 </p>
                 {u.distBins.length > 0 ? (
-                  <ScoreHistogram data={u.distBins} height={130} color={u.color} />
+                  <ScoreHistogram data={u.distBins} height={130} color={u.color} percent />
                 ) : (
                   <ChartPlaceholder height={80}>No scores yet.</ChartPlaceholder>
                 )}
@@ -2591,6 +2607,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
                     xLabelKey="groupLabel"
                     sparseTicks
                     tooltipLabelKey="title"
+                    valueName="Score"
                   />
                 ) : (
                   <ChartPlaceholder height={80}>Need 2+ scored films.</ChartPlaceholder>
@@ -2612,6 +2629,14 @@ function formatMonthLabel(monthYear) {
   // Local noon, not UTC midnight — avoids the previous-month rollover in ET/PT.
   const d = new Date(monthYear + '-01T12:00:00')
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
+
+// Even shorter label (e.g. "Apr '26") for dense trend axes where adjacent months
+// would otherwise overlap.
+function formatMonthShort(monthYear) {
+  if (!monthYear) return monthYear
+  const d = new Date(monthYear + '-01T12:00:00')
+  return `${d.toLocaleDateString('en-US', { month: 'short' })} '${String(monthYear).slice(2, 4)}`
 }
 
 // Score-over-time trend (club avg + per-member) with a TMDB community reference
@@ -3898,6 +3923,18 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
           {stats.perMovieStats.length > 0 ? (
             (() => {
               const list = spreadShowAll ? stats.perMovieStats : stats.perMovieStats.slice(0, 8)
+              // σ colour is a continuous green→red gradient fitted to the actual
+              // min/max spread across all films (green = most unanimous, red = most
+              // divisive) — replaces the old fixed 0.6/1.5 buckets.
+              const sds = stats.perMovieStats.map(m => m.sd).filter(v => v != null)
+              const sdMin = sds.length ? Math.min(...sds) : 0
+              const sdMax = sds.length ? Math.max(...sds) : 1
+              const sdRange = (sdMax - sdMin) || 1
+              const spreadColor = (sd) => {
+                if (sd == null) return 'var(--text-dim)'
+                const t = Math.max(0, Math.min(1, (sd - sdMin) / sdRange))
+                return `hsl(${Math.round(130 * (1 - t))}, 70%, 58%)` // 130°=green → 0°=red
+              }
               return list.map((m, i) => (
                 <div
                   key={m.id}
@@ -3916,10 +3953,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   <span style={{ flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)' }}>
                     μ {fmt(m.mean)}
                   </span>
-                  {/* σ colour encodes spread: high (divisive) = warm, low (unanimous) = cool, mid = neutral. */}
+                  {/* σ colour: green→red gradient fitted to the film set's min/max spread. */}
                   <span style={{
                     flexShrink: 0, fontFamily: "'DM Mono',monospace", fontSize: '11px',
-                    color: (m.sd ?? 0) >= 1.5 ? CHART_CATEGORICAL[1] : (m.sd ?? 0) <= 0.6 ? CHART_CATEGORICAL[2] : 'var(--text-dim)',
+                    color: spreadColor(m.sd),
                     minWidth: '52px', textAlign: 'right',
                   }}>
                     σ {fmt(m.sd)}
@@ -3935,7 +3972,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         </GlassCard>
         {stats.perMovieStats.length > 0 && (
           <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '6px 2px 0' }}>
-            σ = score spread across members · higher = more divisive, lower = more unanimous
+            σ = score spread across members · green = most unanimous → red = most divisive
           </p>
         )}
         {stats.perMovieStats.length > 8 && (
