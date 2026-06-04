@@ -29,6 +29,16 @@ vi.mock('../lib/supabase', () => ({
           })),
         }
       }
+      if (table === 'watchlist' || table === 'draft_queue') {
+        // PersonalLists loads each via .select().eq(user).order(...)
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+            })),
+          })),
+        }
+      }
       // movies_safe
       return {
         select: vi.fn(() => ({

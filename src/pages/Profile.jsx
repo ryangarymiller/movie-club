@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext'
 import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
 import { USER_COLOR_PALETTE, MEMBER_COLORS } from '../lib/colors'
 import AwardsBadges from '../components/AwardsBadges'
+import PersonalLists from '../components/PersonalLists'
 import { deliberateSignOut } from '../lib/authLog'
 import { FilmDetailOverlay } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
@@ -1251,6 +1252,13 @@ export default function Profile({ overlayUserId = null } = {}) {
             </div>
           )}
         </section>
+
+        {/* ── Section 3d: Personal Lists — watchlist + draft queue (own profile only, private) ── */}
+        {isOwnProfile && (
+          <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.22s ease both' }}>
+            <PersonalLists userId={profile.id} />
+          </section>
+        )}
 
         {/* ── Section 4: Appearance Settings ── */}
         {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.24s ease both' }}>

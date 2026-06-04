@@ -302,8 +302,13 @@ score_predictions — id, movie_id, predicting_user_id, target_user_id, predicte
                  (picker-only: only the film's picker predicts the other members' scores for their own pick)
 upcoming_picks — id, user_id, month_id, tmdb_id, justification (hidden from all others until reveal)
 veto_votes     — id, movie_id, voting_user_id (3+/5 triggers picker resubmission)
-watchlist      — private per user
-draft_queue    — private per user, drag-and-drop ranked
+watchlist      — id, user_id, tmdb_id, title, poster_url, year_released, created_at (private per user;
+                 unique(user_id,tmdb_id); RLS own-only). Films a member wants to watch.
+draft_queue    — id, user_id, tmdb_id, title, poster_url, year_released, position, created_at
+                 (private per user, ranked via position; unique(user_id,tmdb_id); RLS own-only).
+                 Films a member plans to pick next; reorder by drag or up/down arrows.
+                 Both rendered by src/components/PersonalLists.jsx on the member's OWN Profile
+                 (Phase 7); add films via a debounced TMDB /search/movie box.
 film_tags      — id, movie_id, user_id, tag (aggregated at query time with counts)
 auteur_votes   — id, season_id, voter_user_id, rankings (json array, ranked choice)
 season_rankings — id, season_id, user_id, movie_id, rank, locked_score (locked at end of window)

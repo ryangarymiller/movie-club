@@ -45,6 +45,11 @@
 - [x] **Connection Web** — added `movies.tmdb_writers` (backfilled from TMDB credits) so screenwriters bridge films (Charlie Kaufman → Adaptation / BJM / Eternal Sunshine); padded viewBox so edge labels aren't clipped.
 - [x] Migration `phase5_movies_writers` (tmdb_writers + movies_safe re-expose).
 
+### Phase 7 — Watchlist + Draft Queue (started)
+- [x] **Migration** `phase7_watchlist_draft_queue` — `watchlist` + `draft_queue` tables (tmdb_id/title/poster/year, `position` on draft_queue), unique(user,tmdb), own-only RLS.
+- [x] **`PersonalLists.jsx`** — debounced TMDB add-search; **Watchlist** (saved films) + **Draft Queue** (ranked pick ideas, reorder by drag or ▲▼). Rendered on the member's OWN Profile only (private).
+- [ ] Follow-up: surface the draft queue in the This Month pick flow ("pick from your queue").
+
 ---
 
 ## Session 10 — Phase 4 notifications + awards/stats additions + theme fixes
