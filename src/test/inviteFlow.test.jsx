@@ -84,6 +84,19 @@ function setupMocks({ insertError = null } = {}) {
           }),
         }
 
+      case 'app_settings':
+        // SeasonReadjustmentPanel: .select().limit().maybeSingle() + .update().eq()
+        return {
+          select: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn(() => Promise.resolve({ data: { readjustment_length_days: 7 }, error: null })),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn(() => Promise.resolve({ error: null })),
+          }),
+        }
+
       default:
         return {
           select: vi.fn(() => Promise.resolve({ data: [], error: null })),

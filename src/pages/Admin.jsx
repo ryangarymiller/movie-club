@@ -451,22 +451,41 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
 // ── Season readjustment window ───────────────────────────────────────────────
 // Admin opens a window at a season's end; members may then freely re-score that
 // season's films until it closes. Closing locks scores + finalizes the Auteur Award.
-function toLocalInput(iso) {
-  const d = new Date(iso)
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+// Add n days to a YYYY-MM-DD string, returning YYYY-MM-DD.
+function addDaysISO(dateStr, n) {
+  const d = new Date((dateStr || '') + 'T00:00:00')
+  if (isNaN(d)) return ''
+  d.setDate(d.getDate() + n)
+  const pad = (x) => String(x).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 function SeasonReadjustmentPanel({ seasons = [], onRefresh, setError, setSuccess }) {
   const [busyId, setBusyId] = useState(null)
+  const [lengthDays, setLengthDays] = useState(7)
   // Snapshot "now" once at mount (calling Date.now() during render is impure).
   const [now] = useState(() => Date.now())
   const isOpen = (s) => s.readjustment_open && (!s.readjustment_ends_at || now < Date.parse(s.readjustment_ends_at))
 
-  async function setWindow(season, open, endsAtLocal) {
+  useEffect(() => {
+    supabase.from('app_settings').select('readjustment_length_days').limit(1).maybeSingle()
+      .then(({ data }) => { if (data?.readjustment_length_days != null) setLengthDays(data.readjustment_length_days) })
+  }, [])
+
+  async function saveLength(v) {
+    const days = Math.max(1, Math.min(60, parseInt(v, 10) || 7))
+    setLengthDays(days)
+    const { error } = await supabase.from('app_settings').update({ readjustment_length_days: days, updated_at: new Date().toISOString() }).eq('id', true)
+    if (error) setError('Failed to save window length: ' + error.message)
+    else setSuccess(`Default readjustment length set to ${days} day${days === 1 ? '' : 's'}.`)
+  }
+
+  async function setWindow(season, open, endDate) {
     setBusyId(season.id)
     const patch = { readjustment_open: open }
-    if (open) patch.readjustment_ends_at = endsAtLocal ? new Date(endsAtLocal).toISOString() : null
+    // Store the end as the end of the chosen day (local). Auto-opened windows are
+    // anchored to 12am Pacific server-side; manual opens use the date the admin picks.
+    if (open) patch.readjustment_ends_at = endDate ? new Date(endDate + 'T23:59:59').toISOString() : null
     const { error } = await supabase.from('seasons').update(patch).eq('id', season.id)
     setBusyId(null)
     if (error) { setError('Failed to update readjustment window: ' + error.message); return }
@@ -474,31 +493,49 @@ function SeasonReadjustmentPanel({ seasons = [], onRefresh, setError, setSuccess
     onRefresh()
   }
 
+  async function setAuto(season, auto) {
+    const { error } = await supabase.from('seasons').update({ readjustment_auto: auto }).eq('id', season.id)
+    if (error) setError('Failed to update auto-open: ' + error.message)
+    else { setSuccess(`${season.name} auto-open ${auto ? 'enabled' : 'disabled'}.`); onRefresh() }
+  }
+
   return (
     <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
       <Label>Season Readjustment</Label>
-      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace" }}>
-        Open a window at a season's end so members can freely re-score that season's films. Closing locks scores and finalizes the season's Auteur Award.
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace", lineHeight: 1.5 }}>
+        Members may freely re-score a season's films while its window is open. When a new season's first month is activated, the prior season's window auto-opens (if enabled) for the default length below, anchored to 12am Pacific. You can also open/close manually. Closing locks scores + finalizes the Auteur Award.
       </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-muted)' }}>Default window length</span>
+        <input
+          type="number" min="1" max="60" value={lengthDays}
+          onChange={e => setLengthDays(e.target.value)}
+          onBlur={e => saveLength(e.target.value)}
+          style={{ width: '64px', background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)', borderRadius: '8px', padding: '7px 9px', color: 'var(--text-strong)', fontFamily: "'DM Mono',monospace", fontSize: '12px' }}
+        />
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '12px', color: 'var(--text-faint)' }}>days</span>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {seasons.length === 0 && (
           <p style={{ color: 'var(--text-faint)', fontSize: '13px', margin: 0 }}>No seasons.</p>
         )}
         {seasons.map(s => (
-          <SeasonReadjustRow key={s.id} season={s} open={isOpen(s)} busy={busyId === s.id} onSet={setWindow} />
+          <SeasonReadjustRow key={s.id} season={s} open={isOpen(s)} busy={busyId === s.id} lengthDays={lengthDays} onSet={setWindow} onAuto={setAuto} />
         ))}
       </div>
     </div>
   )
 }
 
-function SeasonReadjustRow({ season, open, busy, onSet }) {
-  // Lazy initializer keeps Date.now() out of the render path.
-  const [endLocal, setEndLocal] = useState(() =>
+function SeasonReadjustRow({ season, open, busy, lengthDays, onSet, onAuto }) {
+  // Default end DATE = the season's end + the global length (no time-of-day, so it
+  // never shows a stray "now" time). Editable before opening.
+  const [endDate, setEndDate] = useState(() =>
     season.readjustment_ends_at
-      ? toLocalInput(season.readjustment_ends_at)
-      : toLocalInput(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      ? String(season.readjustment_ends_at).slice(0, 10)
+      : addDaysISO(season.end_date, lengthDays || 7)
   )
+  const auto = season.readjustment_auto !== false
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', borderRadius: '10px', background: 'rgba(var(--fg-rgb), 0.03)', border: `1px solid ${open ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.08)'}` }}>
       <div style={{ flex: '1 1 140px', minWidth: 0 }}>
@@ -509,12 +546,30 @@ function SeasonReadjustRow({ season, open, busy, onSet }) {
           {season.start_date} → {season.end_date}
         </p>
       </div>
+      {/* Auto-open toggle */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={auto}
+        onClick={() => onAuto(season, !auto)}
+        title="Auto-open this season's window when the next season's first month activates"
+        style={{
+          flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px',
+          background: 'none', border: 'none', cursor: 'pointer',
+          fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-dim)',
+        }}
+      >
+        <span style={{ position: 'relative', width: '34px', height: '20px', borderRadius: '999px', background: auto ? 'var(--accent)' : 'rgba(var(--fg-rgb),0.18)', transition: 'background 0.15s ease' }}>
+          <span style={{ position: 'absolute', top: '3px', left: auto ? '17px' : '3px', width: '14px', height: '14px', borderRadius: '50%', background: '#fff', transition: 'left 0.15s ease' }} />
+        </span>
+        auto
+      </button>
       <input
-        type="datetime-local"
-        value={endLocal}
-        onChange={e => setEndLocal(e.target.value)}
+        type="date"
+        value={endDate}
+        onChange={e => setEndDate(e.target.value)}
         disabled={busy}
-        title="Window end"
+        title="Window end date"
         style={{ background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)', borderRadius: '8px', padding: '7px 9px', color: 'var(--text-strong)', fontFamily: "'DM Mono',monospace", fontSize: '12px' }}
       />
       {open ? (
@@ -522,7 +577,7 @@ function SeasonReadjustRow({ season, open, busy, onSet }) {
           {busy ? '…' : 'Close'}
         </button>
       ) : (
-        <button onClick={() => onSet(season, true, endLocal)} disabled={busy} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: 'var(--accent)', color: 'var(--text-strong)', fontSize: '12px', fontWeight: 500, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+        <button onClick={() => onSet(season, true, endDate)} disabled={busy} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: 'var(--accent)', color: 'var(--text-strong)', fontSize: '12px', fontWeight: 500, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           {busy ? '…' : 'Open window'}
         </button>
       )}
@@ -1679,7 +1734,8 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <InviteCard onRefresh={onRefresh} setSuccess={setSuccess} currentProfile={currentProfile} />
-      {users.map(user => (
+      {/* Test account is invisible in all UI — never list it here. */}
+      {users.filter(u => u.email !== TEST_USER_EMAIL).map(user => (
         <div key={user.id} style={{
           background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)',
           borderRadius: '12px', overflow: 'hidden',
@@ -2155,7 +2211,7 @@ export default function Admin() {
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
       supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, admin_mode_enabled').order('joined_at'),
       supabase.from('months').select('id, season_id, month_year, status, active_date, auto_activate').order('month_year'),
-      supabase.from('seasons').select('id, name, start_date, end_date, readjustment_open, readjustment_ends_at').order('start_date'),
+      supabase.from('seasons').select('id, name, start_date, end_date, readjustment_open, readjustment_ends_at, readjustment_auto').order('start_date'),
     ])
 
     if (moviesErr || ratingsErr || usersErr || monthsErr) {
