@@ -5,6 +5,7 @@ import ScoreModal from '../components/ScoreModal'
 import MonthReveal from '../components/MonthReveal'
 import { FilmDetailOverlay } from './Films'
 import { MEMBER_COLORS } from '../lib/colors'
+import { useBackClose } from '../lib/useBackClose'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1230,6 +1231,8 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
 // ─── Pick Submission Modal ────────────────────────────────────────────────────
 
 function PickModal({ profile, nextMonth, monthIsActive, onClose, onPickSaved }) {
+  // Android/browser Back closes the pick modal instead of navigating away.
+  useBackClose(true, onClose)
   return (
     <div
       className="mc-modal-backdrop"

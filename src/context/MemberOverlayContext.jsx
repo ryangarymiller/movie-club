@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import { useBackClose } from '../lib/useBackClose'
 
 // Opens another member's profile as an overlay on top of the current page, so
 // closing it returns you exactly where you were. Your OWN profile stays a real
@@ -20,6 +21,9 @@ export function MemberOverlayProvider({ children }) {
   }, [navigate, profile])
 
   const close = useCallback(() => setMemberId(null), [])
+
+  // Android/browser Back closes the member overlay instead of navigating away.
+  useBackClose(!!memberId, close)
 
   return (
     <MemberOverlayContext.Provider value={{ memberId, openMember, close }}>

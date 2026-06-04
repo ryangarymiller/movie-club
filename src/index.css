@@ -142,4 +142,10 @@ body {
 .mc-modal-panel {
   width: 100%;
   margin: auto;
+  /* Cap to the *visible* viewport (dvh tracks the mobile URL bar) and scroll
+   * inside, so a tall modal (e.g. the pick search with results) never runs off
+   * the top or bottom of the screen — the whole modal stays reachable. */
+  max-height: calc(100dvh - 1.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }

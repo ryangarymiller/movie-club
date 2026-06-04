@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useReadjustment } from '../context/ReadjustmentContext'
+import { useBackClose } from '../lib/useBackClose'
 import FilmTags from './FilmTags'
 
 function validateScore(val) {
@@ -82,6 +84,9 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
     setTimeout(onClose, 260)
   }
 
+  // Android/browser Back closes the modal instead of navigating away.
+  useBackClose(true, handleClose)
+
   function handleInput(e) {
     setScoreInput(e.target.value)
     setError(null)
@@ -130,14 +135,18 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
     ? Number(existingRating.pre_watch_excitement).toFixed(2)
     : null
 
-  return (
+  // Portal to <body> so the modal escapes any transformed/scrolled ancestor
+  // (e.g. the film overlay panel, which uses transform: translateY and so would
+  // otherwise capture this position:fixed and drop the modal "beneath" the page).
+  // zIndex 200 sits above the film overlay (100) and the mobile nav.
+  return createPortal((
     <div
       className="mc-modal-backdrop"
       // Inline position:fixed kept so the backdrop is always pinned to the
       // viewport even if the global class is unavailable; the class also adds
       // overflow-y:auto + align-items:flex-start so a focused input stays in
       // view above the mobile keyboard instead of being pushed off the top.
-      style={{ position: 'fixed', zIndex: 50 }}
+      style={{ position: 'fixed', zIndex: 200 }}
     >
       {/* Backdrop (click-to-close) */}
       <div
@@ -495,5 +504,5 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       `}</style>
     </div>
-  )
+  ), document.body)
 }

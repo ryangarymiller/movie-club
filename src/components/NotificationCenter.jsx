@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../context/NotificationsContext'
+import { useBackClose } from '../lib/useBackClose'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // In-app notification center.
@@ -287,7 +288,11 @@ function PanelInner({ notifications, unreadCount, loading, onActivate, onMarkAll
       <div
         style={{
           overflowY: 'auto',
-          maxHeight: variant === 'sheet' ? '70vh' : '60vh',
+          // Sheet: flex-fill the capped-height panel (min-height:0 lets a flex
+          // child actually scroll). Popover: a simple max-height cap.
+          ...(variant === 'sheet'
+            ? { flex: 1, minHeight: 0, paddingBottom: 'env(safe-area-inset-bottom)' }
+            : { maxHeight: '60vh' }),
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
         }}
@@ -354,6 +359,9 @@ export default function NotificationBell({ className = '', style }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
+
+  // Android/browser Back closes the notifications popover/sheet instead of navigating.
+  useBackClose(open, () => setOpen(false))
 
   // Close the desktop popover on outside-click / Escape.
   useEffect(() => {
@@ -485,6 +493,12 @@ export default function NotificationBell({ className = '', style }) {
                 maxWidth: '560px',
                 margin: '0 auto',
                 overflow: 'hidden',
+                // Flex column capped to the visible viewport so the inner list is a
+                // real scroll area (dvh, not vh — vh overshoots on mobile and pushed
+                // the list below the screen with no way to scroll to it).
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: '85dvh',
                 animation: 'mcNotifSheet 200ms cubic-bezier(0.16,1,0.3,1) both',
               }}
             >

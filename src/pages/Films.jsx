@@ -11,6 +11,7 @@ import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
 import FilmScoreBars from '../components/FilmScoreBars'
 import FilmTags from '../components/FilmTags'
+import { useBackClose } from '../lib/useBackClose'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 import { memberColor, userColor, MEMBER_COLORS } from '../lib/colors'
 
@@ -1170,6 +1171,9 @@ export function FilmDetailOverlay({ movie, onClose }) {
     setVisible(false)
     setTimeout(onClose, 300)
   }
+
+  // Android/browser Back closes this overlay instead of navigating away.
+  useBackClose(!!movie, handleClose)
 
   const { openMember } = useMemberOverlay()
   // Open a member's profile overlay, closing the film overlay first.
