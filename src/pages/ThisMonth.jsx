@@ -497,6 +497,10 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
   // change-pick confirmation
   const [confirmChange, setConfirmChange] = useState(false)
 
+  // draft queue (Phase 7) — quick-pick source
+  const [queue, setQueue] = useState([])
+  const [queueSourceId, setQueueSourceId] = useState(null) // draft_queue row a selection came from
+
   const debounceRef = useRef(null)
 
   // load existing pick for next month
@@ -513,6 +517,17 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
         setPickLoading(false)
       })
   }, [profile, nextMonth])
+
+  // load the viewer's private draft queue (ranked pick ideas) for quick-pick
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('draft_queue')
+      .select('id, tmdb_id, title, poster_url, year_released, position')
+      .eq('user_id', profile.id)
+      .order('position', { ascending: true })
+      .then(({ data }) => setQueue(data ?? []))
+  }, [profile])
 
   // debounced search
   useEffect(() => {
@@ -538,10 +553,11 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
     return () => clearTimeout(debounceRef.current)
   }, [query])
 
-  async function selectFilm(result) {
+  async function selectFilm(result, sourceQueueId = null) {
     setDetailLoading(true)
     setSelected(null)
     setAlreadyWatched(false)
+    setQueueSourceId(sourceQueueId)
     try {
       const [detail, providersData, clubCheck] = await Promise.all([
         tmdbFetch(`/movie/${result.id}`),
@@ -591,6 +607,21 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
     setSearchResults([])
   }
 
+  // Quick-pick a film straight from the draft queue. Maps the stored row into the
+  // TMDB-result shape selectFilm expects, then routes through the same detail-fetch
+  // path so the pick's metadata (director, runtime, genre, streaming) stays complete.
+  function selectFromQueue(item) {
+    selectFilm(
+      {
+        id: item.tmdb_id,
+        title: item.title,
+        poster_path: item.poster_url,
+        release_date: item.year_released ? `${item.year_released}-01-01` : null,
+      },
+      item.id,
+    )
+  }
+
   async function confirmPick() {
     if (!selected || !nextMonth || !profile) return
     setSaving(true)
@@ -621,6 +652,14 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
       if (monthIsActive && nextMonth.id) {
         const { error: rpcErr } = await supabase.rpc('materialize_and_split_month', { p_month_id: nextMonth.id })
         if (rpcErr) throw rpcErr
+      }
+
+      // If this pick was promoted from the draft queue, consume that queue entry —
+      // it's no longer a plan to pick, it IS the pick. Only after a successful save.
+      if (queueSourceId) {
+        await supabase.from('draft_queue').delete().eq('id', queueSourceId)
+        setQueue(prev => prev.filter(q => q.id !== queueSourceId))
+        setQueueSourceId(null)
       }
 
       const { data: pick } = await supabase
@@ -948,7 +987,7 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
 
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
-            onClick={() => { setSelected(null); setAlreadyWatched(false) }}
+            onClick={() => { setSelected(null); setAlreadyWatched(false); setQueueSourceId(null) }}
             style={{
               flex: 1, padding: '11px',
               borderRadius: '10px',
@@ -993,6 +1032,88 @@ function PickSubmissionFlow({ profile, nextMonth, monthIsActive, onPickSaved }) 
       }}>
         Pick for {nextMonthLabel}
       </p>
+
+      {/* Quick-pick from your draft queue (private, ranked pick ideas).
+          Hidden once you start typing so search results take over. */}
+      {queue.length > 0 && !query.trim() && (
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{
+            fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
+            fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em',
+            margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px',
+          }}>
+            <span style={{ color: 'var(--accent)' }}>★</span> From your draft queue
+          </p>
+          <div style={{
+            borderRadius: '12px',
+            border: '1px solid rgba(var(--accent-rgb, 99,102,241),0.25)',
+            overflow: 'hidden',
+            background: 'rgba(var(--accent-rgb, 99,102,241),0.04)',
+          }}>
+            {queue.map((item, i) => (
+              <button
+                key={item.id}
+                onClick={() => selectFromQueue(item)}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '10px 12px',
+                  background: 'transparent', border: 'none',
+                  borderBottom: i < queue.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <span style={{
+                  flexShrink: 0, width: '16px', textAlign: 'center',
+                  fontFamily: "'Bebas Neue',sans-serif", fontSize: '1rem', color: 'var(--accent)',
+                }}>
+                  {i + 1}
+                </span>
+                <div style={{
+                  flexShrink: 0, width: '34px', height: '50px',
+                  borderRadius: '5px', overflow: 'hidden', background: 'var(--surface-2)',
+                }}>
+                  {item.poster_url ? (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w185${item.poster_url}`}
+                      alt={item.title}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={e => { e.target.style.display = 'none' }}
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'rgba(var(--fg-rgb), 0.15)', fontSize: '10px' }}>
+                        {initials(item.title)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{
+                    fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)',
+                    fontWeight: 500, fontSize: '14px', margin: '0 0 2px',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {item.title}
+                  </p>
+                  <p style={{
+                    fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)',
+                    fontSize: '11px', margin: 0,
+                  }}>
+                    {item.year_released ?? ''}
+                  </p>
+                </div>
+                <span style={{ flexShrink: 0, color: 'var(--text-dim)', fontSize: '15px' }}>→</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '14px 0 4px' }}>
+            <div style={{ flex: 1, height: '1px', background: 'rgba(var(--fg-rgb), 0.08)' }} />
+            <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', letterSpacing: '0.1em' }}>OR SEARCH</span>
+            <div style={{ flex: 1, height: '1px', background: 'rgba(var(--fg-rgb), 0.08)' }} />
+          </div>
+        </div>
+      )}
 
       <div style={{ position: 'relative', marginBottom: '12px' }}>
         <input
