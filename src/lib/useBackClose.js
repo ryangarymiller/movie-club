@@ -3,63 +3,79 @@ import { useEffect, useRef } from 'react'
 // Back-button popup coordinator.
 // ------------------------------------------------------------------
 // Makes the Android/browser Back button CLOSE the top open popup (overlay, modal,
-// sheet) instead of navigating to the previous route — and closes nested popups
-// one at a time, top-first.
+// sheet) instead of navigating to the previous route — closing nested popups one
+// at a time, top-first.
 //
-// One history entry is pushed per open popup (URL unchanged, so react-router
-// never navigates). A single global popstate listener pops the TOP popup's close
-// handler. A UI-driven close (X / backdrop) consumes its own entry via
-// history.back(), guarded by a suppress flag so it doesn't cascade into closing
-// the popup beneath it.
+// Design: ONE history "guard" entry covers the whole popup stack (not one per
+// popup). Back pops the guard → we close the top popup and, if any remain, push a
+// fresh guard. A UI-driven close that empties the stack consumes the guard via
+// history.back() — but DEFERRED to a microtask so an overlay→overlay handoff
+// (close A + open B in the same tick) cancels the consume and B simply reuses the
+// existing guard. This fixes the race where the handoff left B unguarded and Back
+// navigated the page instead of closing B.
 
-const stack = []          // array of close callbacks, top = last
-let suppressPops = 0      // number of upcoming programmatic-back popstates to ignore
+const stack = []          // close callbacks, top = last
+let guardLive = false     // is a guard history entry currently pushed
+let suppressPops = 0      // programmatic-back popstates to ignore
+let consumeScheduled = false
 let listening = false
-
-function onPopState() {
-  if (suppressPops > 0) { suppressPops -= 1; return }
-  // A real Back press: close the top popup. Its history entry is already gone.
-  const close = stack.pop()
-  if (close) close()
-  if (stack.length === 0) teardown()
-}
 
 function setup() {
   if (listening) return
   window.addEventListener('popstate', onPopState)
   listening = true
 }
-
 function teardown() {
   if (!listening) return
   window.removeEventListener('popstate', onPopState)
   listening = false
 }
-
+function ensureGuard() {
+  if (!guardLive) {
+    window.history.pushState({ mcPopup: true }, '')
+    guardLive = true
+    setup()
+  }
+}
+function onPopState() {
+  if (suppressPops > 0) { suppressPops -= 1; return }
+  // A real Back press consumed the guard entry.
+  guardLive = false
+  const close = stack.pop()
+  if (close) close()
+  if (stack.length > 0) ensureGuard()   // re-guard the popups still open
+  else teardown()
+}
+function scheduleConsume() {
+  consumeScheduled = true
+  queueMicrotask(() => {
+    if (!consumeScheduled) return       // a register cancelled it (handoff)
+    consumeScheduled = false
+    if (stack.length === 0 && guardLive) {
+      suppressPops += 1
+      guardLive = false
+      window.history.back()
+    }
+    if (stack.length === 0) teardown()
+  })
+}
 function register(close) {
-  setup()
+  consumeScheduled = false              // reuse the live guard across a handoff
   stack.push(close)
-  window.history.pushState({ mcPopup: true }, '')
+  ensureGuard()
 }
-
 function unregister(close) {
-  const idx = stack.lastIndexOf(close)
-  if (idx === -1) return
-  stack.splice(idx, 1)
-  // Consume the one history entry this popup pushed, without our popstate
-  // listener interpreting it as a Back press (which would close the next popup).
-  suppressPops += 1
-  window.history.back()
-  if (stack.length === 0) teardown()
+  const i = stack.lastIndexOf(close)
+  if (i === -1) return
+  stack.splice(i, 1)
+  if (stack.length === 0) scheduleConsume()
 }
 
-// useBackClose(open, onClose)
-// Pass open=true for components mounted only while open (modals); pass a real
-// boolean for always-mounted overlays toggled via a prop. onClose may change
-// identity freely — the latest is always used.
+// useBackClose(open, onClose). Pass open=true for components mounted only while
+// open (modals); pass a real boolean for always-mounted overlays toggled via a
+// prop. onClose may change identity freely — the latest is always used.
 export function useBackClose(open, onClose) {
   const onCloseRef = useRef(onClose)
-  // Keep the ref current without touching it during render (lint: no refs in render).
   useEffect(() => { onCloseRef.current = onClose })
 
   useEffect(() => {

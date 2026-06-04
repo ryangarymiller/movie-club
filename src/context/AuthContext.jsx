@@ -62,7 +62,17 @@ export function AuthProvider({ children }) {
           .eq('email', email)
           .maybeSingle()
         if (emailErr) throw emailErr
-        row = byEmail ?? null
+        // An admin-invited row is pre-created with a placeholder id. On the
+        // member's first login, claim it (reconcile id → auth.uid()) so every
+        // own-row RLS check works for them; then re-read by the real id.
+        if (byEmail && byEmail.id !== userId) {
+          await supabase.rpc('claim_invited_user')
+          const { data: claimed } = await supabase
+            .from('users').select('*').eq('id', userId).maybeSingle()
+          row = claimed ?? { ...byEmail, id: userId }
+        } else {
+          row = byEmail ?? null
+        }
       }
 
       // Successful load — including a legitimate "no matching row" (row === null),

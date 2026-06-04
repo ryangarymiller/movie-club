@@ -119,11 +119,15 @@ function deadlineLabel(iso) {
   return { text: `${mins}m left`, past: false }
 }
 
-function ActionCard({ movie, existingRating, onScorePress }) {
+function ActionCard({ movie, existingRating, onScorePress, onOpen }) {
   const dl = deadlineLabel(movie.scoring_deadline)
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.03]">
-      <div className="shrink-0 w-10 h-14 rounded-md overflow-hidden bg-gray-900">
+      <div
+        className="shrink-0 w-10 h-14 rounded-md overflow-hidden bg-gray-900"
+        onClick={() => onOpen?.(movie)}
+        style={{ cursor: onOpen ? 'pointer' : 'default' }}
+      >
         {movie.poster_url ? (
           <img src={`https://image.tmdb.org/t/p/w92${movie.poster_url}`} alt={movie.title} className="w-full h-full object-cover" />
         ) : (
@@ -132,7 +136,7 @@ function ActionCard({ movie, existingRating, onScorePress }) {
           </div>
         )}
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0" onClick={() => onOpen?.(movie)} style={{ cursor: onOpen ? 'pointer' : 'default' }}>
         <p className="text-gray-500 uppercase mb-0.5" style={{ fontSize: '10px', letterSpacing: '0.1em', fontFamily: "'DM Mono', monospace" }}>Score needed</p>
         <p className="text-white font-medium text-sm leading-tight truncate">{movie.title}</p>
         {dl && (
@@ -239,7 +243,7 @@ export default function Home() {
     ] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scoring_deadline'),
-      supabase.from('ratings').select('movie_id, score').eq('user_id', profile.id),
+      supabase.from('ratings').select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at').eq('user_id', profile.id),
       supabase.from('users').select('id, name, email, is_active, user_color'),
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
       supabase.from('reviews').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
@@ -290,6 +294,17 @@ export default function Home() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Live-refresh when any rating changes (e.g. you score from the movie page, or
+  // another member scores) so "Your Turn" / activity update without a refresh.
+  useEffect(() => {
+    if (!profile) return
+    const channel = supabase
+      .channel('home-ratings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => load())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [profile, load])
 
   function openModal(movie, rating) {
     setModalMovie(movie)
@@ -372,6 +387,7 @@ export default function Home() {
                   movie={m}
                   existingRating={ratingsMap[m.id] ?? null}
                   onScorePress={openModal}
+                  onOpen={setSelectedMovie}
                 />
               ))}
             </div>

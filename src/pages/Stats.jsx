@@ -4488,7 +4488,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                 background: 'rgba(var(--accent-rgb),0.06)', border: '1px solid rgba(var(--accent-rgb),0.2)',
               }}>
                 <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '12.5px', color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
-                  Across the <strong>{h2h.record.films}</strong> film{h2h.record.films === 1 ? '' : 's'} {nameA} and {nameB} have both scored, this counts who scored each film higher.
+                  Across the <strong>{h2h.record.films.length}</strong> film{h2h.record.films.length === 1 ? '' : 's'} {nameA} and {nameB} have both scored, this counts who scored each film higher.
                   Each name's number is how many films they rated above the other; <strong>Ties</strong> are films they scored within 0.01 of each other.
                   It's a head-to-head tally of whose score was higher film-by-film — not a sum of points.
                 </p>

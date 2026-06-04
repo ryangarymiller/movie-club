@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -28,6 +28,10 @@ export default function MemberStatsOverlay() {
   const [data, setData] = useState(null)
   const [selectedMovie, setSelectedMovie] = useState(null)
   const [visible, setVisible] = useState(false)
+  // True once the member's colour override is applied to the root, so MeTab's
+  // charts (which read accentColor() at render time) pick up the member's colour
+  // rather than the signed-in user's accent.
+  const [colorReady, setColorReady] = useState(false)
 
   // Back button closes this overlay (top-of-stack first).
   useBackClose(!!memberId, close)
@@ -73,17 +77,22 @@ export default function MemberStatsOverlay() {
   }, [memberId])
 
   // While open, override the app accent with the viewed member's colour so every
-  // accent-driven chart renders in *their* colour. Restored on close.
-  useEffect(() => {
+  // accent-driven chart renders in *their* colour. Applied in a layout effect
+  // (before paint) and gated via colorReady so MeTab first renders its charts
+  // AFTER the override is live — accentColor() reads the root synchronously, so a
+  // plain effect would leave the charts on the signed-in user's accent.
+  useLayoutEffect(() => {
     const col = data?.member ? userColor(data.member) : null
-    if (!memberId || !col) return
+    if (!memberId || !col) { setColorReady(false); return }
     const root = document.documentElement.style
     const prevA = root.getPropertyValue('--accent')
     const prevRgb = root.getPropertyValue('--accent-rgb')
     root.setProperty('--accent', col)
     const rgb = hexToRgbTriple(col)
     if (rgb) root.setProperty('--accent-rgb', rgb)
+    setColorReady(true)
     return () => {
+      setColorReady(false)
       if (prevA) root.setProperty('--accent', prevA); else root.removeProperty('--accent')
       if (prevRgb) root.setProperty('--accent-rgb', prevRgb); else root.removeProperty('--accent-rgb')
     }
@@ -138,7 +147,7 @@ export default function MemberStatsOverlay() {
           ratings={data?.ratings ?? []}
           allRatings={data?.allRatings ?? []}
           guesses={data?.guesses ?? []}
-          loading={!data}
+          loading={!data || !colorReady}
           monthsById={data?.monthsById ?? {}}
           onFilm={onFilm}
           onGenre={onGenre}
