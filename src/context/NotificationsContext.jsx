@@ -369,24 +369,52 @@ export function NotificationsProvider({ children }) {
     return { ok: true }
   }, [pushSupported, userId, updatePrefs])
 
-  // On mount (and when push is already enabled), silently re-register the SW so a
-  // returning, already-permitted user keeps a live registration. Defensive: any
-  // failure is swallowed — this is a nicety, not a requirement.
+  // On mount (and when push is already enabled), silently re-register the SW AND
+  // re-validate the push subscription. Browsers drop or rotate subscriptions
+  // without warning (Ryan's went 410 Gone, got pruned, and then never came back
+  // because nothing re-subscribed on load). So: if the subscription is missing we
+  // resubscribe, then always re-store the current endpoint so the server has a
+  // live subscription on file every session. Defensive — any failure is swallowed.
   useEffect(() => {
-    if (!pushSupported || !pushEnabled) return
+    if (!pushSupported || !pushEnabled || !userId) return
     if (Notification.permission !== 'granted') return
     let cancelled = false
     ;(async () => {
       try {
-        await navigator.serviceWorker.register('/sw.js')
-        if (cancelled) return
+        const reg = await navigator.serviceWorker.register('/sw.js')
         await navigator.serviceWorker.ready
+        if (cancelled) return
+
+        let sub = await reg.pushManager.getSubscription()
+        if (!sub) {
+          // The browser dropped/expired the old subscription — make a fresh one.
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          })
+        }
+        if (cancelled || !sub) return
+
+        // Re-store (upsert by endpoint). A rotated endpoint inserts the new row;
+        // the stale one is pruned server-side on its next 404/410. We never delete
+        // other endpoints here — the same user may have other live devices.
+        const j = sub.toJSON()
+        await supabase.from('push_subscriptions').upsert(
+          {
+            user_id: userId,
+            endpoint: j.endpoint,
+            p256dh: j.keys?.p256dh,
+            auth: j.keys?.auth,
+            user_agent: navigator.userAgent,
+          },
+          { onConflict: 'endpoint' }
+        )
       } catch (err) {
-        console.error('[NotificationsContext] silent SW re-register error:', err)
+        console.error('[NotificationsContext] push subscription refresh error:', err)
       }
     })()
     return () => { cancelled = true }
-  }, [pushSupported, pushEnabled])
+  }, [pushSupported, pushEnabled, userId])
 
   const value = {
     notifications,
