@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 // ---------------------------------------------------------------------------
@@ -140,7 +141,7 @@ beforeEach(() => {
 
 async function renderMembersTab() {
   const user = userEvent.setup()
-  render(<Admin />)
+  render(<Admin />, { wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter> })
 
   // Click the Members tab button (always visible in tab bar)
   const membersBtn = await screen.findByRole('button', { name: /^members$/i })

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { writeAwardsToDb } from '../lib/awards'
@@ -634,6 +635,33 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
   const activeMovies = activeMonth ? movies.filter(m => m.month_id === activeMonth.id) : []
   const deadlinesSet = activeMovies.filter(m => m.scoring_deadline).length
 
+  // Watch order = scoring-deadline ascending (the same order This Month/Films use).
+  const orderedActive = [...activeMovies].sort((a, b) => {
+    const da = a.scoring_deadline ? new Date(a.scoring_deadline).getTime() : Infinity
+    const db = b.scoring_deadline ? new Date(b.scoring_deadline).getTime() : Infinity
+    if (da !== db) return da - db
+    return String(a.id).localeCompare(String(b.id))
+  })
+  const canReorder = activeMovies.length > 1 && deadlinesSet === activeMovies.length
+  const [reorderBusy, setReorderBusy] = useState(false)
+
+  // Move a film up/down in watch order by swapping its scoring deadline with its neighbour's.
+  async function swapWatchOrder(index, dir) {
+    const j = index + dir
+    if (reorderBusy || j < 0 || j >= orderedActive.length) return
+    const a = orderedActive[index], b = orderedActive[j]
+    setReorderBusy(true)
+    setError(null)
+    const [r1, r2] = await Promise.all([
+      supabase.from('movies').update({ scoring_deadline: b.scoring_deadline }).eq('id', a.id),
+      supabase.from('movies').update({ scoring_deadline: a.scoring_deadline }).eq('id', b.id),
+    ])
+    setReorderBusy(false)
+    if (r1.error || r2.error) { setError('Failed to reorder films.'); return }
+    setSuccess('Watch order updated.')
+    onRefresh()
+  }
+
   return (
     <div>
       {/* Stat cards */}
@@ -666,6 +694,56 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
                 {deadlinesSet}/{activeMovies.length} deadlines set
               </Badge>
             </div>
+
+            {/* Watch order — reorder films by swapping scoring deadlines (↑ = earlier) */}
+            {orderedActive.length > 0 && (
+              <div style={{ marginTop: '14px' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-dim)', margin: '0 0 8px' }}>
+                  Watch order
+                </p>
+                {!canReorder && (
+                  <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '0 0 8px' }}>
+                    Set all deadlines (activate the month) to reorder.
+                  </p>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {orderedActive.map((f, i) => (
+                    <div key={f.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '8px 10px', borderRadius: '8px',
+                      border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'rgba(var(--fg-rgb), 0.02)',
+                    }}>
+                      <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '12px', color: 'var(--text-dim)', width: '16px', flexShrink: 0 }}>{i + 1}</span>
+                      <p style={{ flex: 1, minWidth: 0, color: 'var(--text-strong)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
+                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => swapWatchOrder(i, -1)}
+                          disabled={!canReorder || i === 0 || reorderBusy}
+                          title="Move earlier"
+                          style={{
+                            width: '26px', height: '26px', borderRadius: '6px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
+                            background: 'rgba(var(--fg-rgb), 0.04)', color: 'var(--text)', fontSize: '13px',
+                            cursor: (!canReorder || i === 0 || reorderBusy) ? 'default' : 'pointer',
+                            opacity: (!canReorder || i === 0 || reorderBusy) ? 0.35 : 1,
+                          }}
+                        >↑</button>
+                        <button
+                          onClick={() => swapWatchOrder(i, 1)}
+                          disabled={!canReorder || i === orderedActive.length - 1 || reorderBusy}
+                          title="Move later"
+                          style={{
+                            width: '26px', height: '26px', borderRadius: '6px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
+                            background: 'rgba(var(--fg-rgb), 0.04)', color: 'var(--text)', fontSize: '13px',
+                            cursor: (!canReorder || i === orderedActive.length - 1 || reorderBusy) ? 'default' : 'pointer',
+                            opacity: (!canReorder || i === orderedActive.length - 1 || reorderBusy) ? 0.35 : 1,
+                          }}
+                        >↓</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '8px' }}>No active month</p>
@@ -692,7 +770,7 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
       <UpcomingPicksPanel months={months} />
 
       {/* Missing scores */}
-      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px' }}>
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
         <Label>Films with Missing Scores</Label>
         {missingScoreFilms.length === 0 ? (
           <p style={{ color: '#4ade80', fontSize: '13px', marginTop: '10px' }}>All films fully scored</p>
@@ -722,7 +800,7 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
       </div>
 
       {/* Pending score-change requests (member → admin approval) */}
-      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px' }}>
+      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
         <Label>Score-Change Requests</Label>
         <div style={{ marginTop: '10px' }}>
           <ScoreChangeRequestsAdminPanel />
@@ -2187,18 +2265,31 @@ const TABS = ['Dashboard', 'Films', 'Members', 'Scores']
 
 export default function Admin() {
   const { profile, isAdmin } = useAuth()
-  const [activeTab, setActiveTab] = useState('Dashboard')
+  // Active tab lives in the URL (?tab=) so a refresh / Back-Forward keeps the tab.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlTab = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState(TABS.includes(urlTab) ? urlTab : 'Dashboard')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   // Deep-link target for the Scores tab (set when an admin clicks a missing-score row).
   const [preselectFilmId, setPreselectFilmId] = useState('')
 
+  // Switch tab + reflect it in the URL so a refresh/Back keeps the same tab.
+  const selectTab = useCallback((tab) => {
+    setSearchParams(tab === 'Dashboard' ? {} : { tab }, { replace: false })
+  }, [setSearchParams])
+
+  // Respond to URL changes (refresh, Back/Forward) — keep state in sync.
+  useEffect(() => {
+    setActiveTab(TABS.includes(urlTab) ? urlTab : 'Dashboard')
+  }, [urlTab])
+
   // Jump from the Dashboard's "missing scores" list straight to the Scores backfill form.
   const goToScoresForFilm = useCallback((movieId) => {
     setPreselectFilmId(movieId)
-    setActiveTab('Scores')
-  }, [])
+    selectTab('Scores')
+  }, [selectTab])
 
   // Data
   const [movies, setMovies] = useState([])
@@ -2279,7 +2370,7 @@ export default function Admin() {
           {TABS.map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => selectTab(tab)}
               style={{
                 flex: 1, padding: '8px 4px', borderRadius: '7px', border: 'none',
                 background: activeTab === tab ? 'rgba(var(--fg-rgb), 0.1)' : 'transparent',
