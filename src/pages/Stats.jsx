@@ -4042,7 +4042,12 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
 
       {/* All-time Score Percentile */}
       <div>
-        <SectionLabel>Score Percentile (Generosity)</SectionLabel>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+          <SectionLabel>Score Percentile (Generosity)</SectionLabel>
+          <InfoButton label="How is the generosity percentile calculated?">
+            For each member we take their <strong style={{ color: 'var(--text-strong)' }}>average score</strong>, then rank those averages against each other. The percentile is where a member's average sits in that ranking — <strong style={{ color: 'var(--text-strong)' }}>100% = the most generous</strong> (highest average), <strong style={{ color: 'var(--text-strong)' }}>0% = the harshest</strong>. It answers "relative to the rest of the club, how high does this person score?"
+          </InfoButton>
+        </div>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.percentileData.length > 0 ? (
             <PercentileBar data={stats.percentileData} memberIds={stats.percentileData.map(d => d.id)} onMember={onMember} />
@@ -4054,7 +4059,12 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
 
       {/* Member Score Correlation Heatmap */}
       <div>
-        <SectionLabel>Taste Correlation</SectionLabel>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+          <SectionLabel>Taste Correlation</SectionLabel>
+          <InfoButton label="How is taste correlation calculated?">
+            For every pair of members we look at the films they've <strong style={{ color: 'var(--text-strong)' }}>both scored</strong> and compute the <strong style={{ color: 'var(--text-strong)' }}>Pearson correlation</strong> of their scores. <strong style={{ color: 'var(--text-strong)' }}>+1</strong> = identical taste (they move together), <strong style={{ color: 'var(--text-strong)' }}>0</strong> = unrelated, <strong style={{ color: 'var(--text-strong)' }}>−1</strong> = opposite taste. Brighter cells = stronger agreement.
+          </InfoButton>
+        </div>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.corrNames.length >= 2 ? (
             <CorrelationHeatmap names={stats.corrNames} matrix={stats.corrMatrix} />
@@ -4447,12 +4457,23 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-      {/* Member selectors */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* Member selectors — the middle button swaps left/right */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <MemberPill activeUsers={activeUsers} selected={userA} onSelect={setUserA} exclude={userB} />
-        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--hairline)', flexShrink: 0 }}>
-          vs
-        </span>
+        <button
+          type="button"
+          onClick={() => { const a = userA; setUserA(userB); setUserB(a) }}
+          title="Swap sides"
+          aria-label="Swap the two members"
+          style={{
+            flexShrink: 0, width: '28px', height: '28px', borderRadius: '50%',
+            border: '1px solid rgba(var(--fg-rgb),0.14)', background: 'rgba(var(--fg-rgb),0.04)',
+            color: 'var(--text-muted)', cursor: 'pointer', fontSize: '13px', lineHeight: 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          ⇄
+        </button>
         <MemberPill activeUsers={activeUsers} selected={userB} onSelect={setUserB} exclude={userA} />
       </div>
 
@@ -4585,7 +4606,12 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
           {/* Score correlation */}
           {h2h.correlation != null && (
             <div>
-              <SectionLabel>Taste Correlation</SectionLabel>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                <SectionLabel>Taste Correlation</SectionLabel>
+                <InfoButton label="What is the Pearson correlation?">
+                  Of the films <strong style={{ color: 'var(--text-strong)' }}>both</strong> {nameA} and {nameB} scored, this is the <strong style={{ color: 'var(--text-strong)' }}>Pearson correlation</strong> of their scores: do they tend to rate the same films high and low? <strong style={{ color: 'var(--text-strong)' }}>+1.00</strong> = move in perfect lockstep, <strong style={{ color: 'var(--text-strong)' }}>0</strong> = no relationship, <strong style={{ color: 'var(--text-strong)' }}>−1.00</strong> = perfectly opposite. It measures the <em>pattern</em> of agreement, not whether one scores higher overall.
+                </InfoButton>
+              </div>
               <GlassCard style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                 <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-muted)', fontSize: '13px', margin: 0 }}>
                   Pearson correlation over {h2h.sharedCount} shared films

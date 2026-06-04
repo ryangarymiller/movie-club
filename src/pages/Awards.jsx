@@ -6,6 +6,56 @@ import { FilmDetailOverlay } from './Films.jsx'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// Short "how is this calculated" copy per award, matched by keyword so it covers
+// every scope (month/season/year/all-time) of the same concept.
+const AWARD_INFO = [
+  [/pick of the|film of the|greatest film/i, 'The highest club-average film for the period.'],
+  [/flop|worst film/i, 'The lowest club-average film for the period.'],
+  [/most divisive/i, 'The film with the biggest score spread (standard deviation) across members — opinions split the most.'],
+  [/most unanimous/i, 'The film with the smallest score spread — everyone landed on nearly the same score.'],
+  [/contrarian/i, "The member whose scores deviate most from the club average — the lone-wolf voter."],
+  [/oracle/i, "The picker whose predictions for their own film's scores were closest to what everyone actually gave."],
+  [/hype machine/i, 'The member with the highest average pre-watch excitement scores.'],
+  [/letdown/i, 'The film with the biggest drop from average excitement to average final score.'],
+  [/surprise/i, 'The film with the biggest jump from average excitement to average final score.'],
+  [/underrated/i, 'The film where the club average most exceeds the TMDB community rating — we rated it far above the mainstream.'],
+  [/deep cut/i, 'The most obscure pick — a rare genre for the club combined with a low TMDB vote count.'],
+  [/harshest|coldest|ice cold/i, 'The member with the lowest average score.'],
+  [/generous|softie|easy crowd/i, 'The member with the highest average score.'],
+  [/picker of the|picker goat|consistent picker/i, 'The member whose own picks earned the best average score.'],
+  [/auteur/i, "The season's best picker by average pick score (≥2 scored picks), finalized after the season's readjustment window closes."],
+  [/wildcard/i, 'The member with the most unpredictable scores — the highest score variance.'],
+  [/master of disguise/i, 'The picker whose films were guessed correctly the least often (minimum 3 guesses) — the hardest to read.'],
+  [/most evolved/i, "The member whose average score shifted the most between the year's first and second half."],
+  [/most consistent\b/i, 'The member with the most stable scoring — the lowest score variance.'],
+]
+function awardInfo(label) {
+  if (!label) return null
+  for (const [re, txt] of AWARD_INFO) if (re.test(label)) return txt
+  return null
+}
+
+// "?" affordance that toggles a small explanation popover. Self-contained.
+function AwardInfo({ text }) {
+  const [open, setOpen] = useState(false)
+  if (!text) return null
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+      <button
+        type="button" aria-label="How is this calculated?"
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
+        style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1px solid rgba(var(--fg-rgb),0.25)', background: open ? 'var(--accent)' : 'transparent', color: open ? 'var(--text-strong)' : 'var(--text-faint)', fontFamily: "'DM Mono',monospace", fontSize: '9px', lineHeight: 1, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >?</button>
+      {open && (
+        <span
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', top: '22px', right: 0, zIndex: 5, width: '230px', padding: '10px 12px', borderRadius: '10px', background: 'var(--surface)', border: '1px solid rgba(var(--accent-rgb),0.25)', boxShadow: '0 8px 24px rgba(0,0,0,0.35)', fontFamily: "'DM Sans',sans-serif", fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 'normal', fontWeight: 400 }}
+        >{text}</span>
+      )}
+    </span>
+  )
+}
+
 function fmt(n) {
   if (n == null || isNaN(n)) return '—'
   return Number(n).toFixed(2)
@@ -178,16 +228,19 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
       {/* Main content */}
       <div style={{ flex: 1, minWidth: 0, padding: '16px', paddingRight: hasPoster ? '12px' : '16px' }}>
         {/* Top label row */}
-        <p style={{
-          fontFamily: "'DM Mono',monospace",
-          fontSize: '10px',
-          textTransform: 'uppercase',
-          letterSpacing: '0.18em',
-          color: 'var(--hairline)',
-          margin: '0 0 10px',
-        }}>
-          {emoji} {label}
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', margin: '0 0 10px' }}>
+          <p style={{
+            fontFamily: "'DM Mono',monospace",
+            fontSize: '10px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.18em',
+            color: 'var(--hairline)',
+            margin: 0,
+          }}>
+            {emoji} {label}
+          </p>
+          <AwardInfo text={awardInfo(label)} />
+        </div>
 
         {noData ? (
           <p style={{
