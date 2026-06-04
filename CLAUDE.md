@@ -463,9 +463,11 @@ Global CSS classes `.mc-modal-backdrop` / `.mc-modal-panel` ensure modals never 
 
 ## Themes
 
-14 combinations: Light/Dark × 7 accent colors (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet). Implemented via CSS variables. Each member independently sets their own theme.
+28 combinations: **4 modes × 7 accent colors** (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet). Implemented via CSS variables. Each member independently sets their own theme.
 
-Light/dark mode is bound to the `.dark` CSS class (not `prefers-color-scheme`) — toggled by adding/removing `.dark` on `<html>`. Toggle accessible from the Profile page.
+**4 theme modes (lightest → darkest):** `light` · `sepia` (warm paper) · `grey` (soft slate) · `dark`. Sepia and grey are the two "in-between" options. Modes are managed in `src/context/ThemeContext.jsx` (`MODE_OPTIONS`); the Profile page has a 4-way segmented selector.
+
+Mode bindings: `data-theme` carries the exact mode (drives the palette block in `index.css`), and `data-base` (`light`|`dark`) carries the *family* — **sepia is light-family, grey is dark-family**. The light-mode Tailwind utility remaps + accent-legibility overrides key off `[data-base="light"]` so sepia inherits them; the `.dark` class (for `prefers-color-scheme`-independent dark utilities) is applied for **grey and dark**. An inline script in `index.html` applies the saved mode before first paint (no flash of default dark) and the `theme-color` meta tracks the mode. Light-family `--text-faint`/`--hairline` were darkened so captions clear ~4.5:1. Chart tooltips read `var(--surface)` (theme-aware, not a fixed dark box).
 
 **User colors:** Centralized in `src/lib/colors.js` — `MEMBER_COLORS` map, `USER_COLOR_PALETTE` of 20 hue-separated options, `memberColor()` helper (reads `user_color` from the DB first, falling back to the static map — so a chosen color propagates into Stats, the Films member filter, and everywhere else), plus `CHART_CATEGORICAL`, `CHART_NEUTRAL`, and `chartColorAt()` for chart series. Colors are hue-separated so no two members' colors are confusable (e.g. Ryan Miller = purple `#a855f7`, distinct from Chris's blue). One color per member enforced; Profile color picker strikes out colors already taken by other members. The color picker collapses after a color is chosen.
 
