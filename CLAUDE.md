@@ -272,9 +272,10 @@ users          — id, name, email, avatar_id, user_color, role, is_op (bool), t
                  is_active, has_completed_onboarding, admin_mode_enabled,
                  last_online_at, show_last_online, created_at
                  (is_op: sole power to grant/revoke admin; an op is also an admin — role stays 'admin')
-seasons        — id, name, start_date, end_date
+seasons        — id, name, start_date, end_date, readjustment_open (bool), readjustment_ends_at (timestamptz)
                  (Quarterly: Winter Dec–Feb · Spring Mar–May · Summer Jun–Aug · Autumn Sep–Nov.
-                  First season = Winter 2026, partial from the club founding date Jan 5 2026.)
+                  First season = Winter 2026, partial from the club founding date Jan 5 2026.
+                  readjustment_* drive the Phase 6 seasonal readjustment window; admin-only UPDATE RLS.)
 months         — id, season_id, month_year, reveal_date, end_of_month_reveal_date, status,
                  active_date (date the month goes active; defaults to the 1st; admin-adjustable)
 movies         — id, month_id, title, tmdb_id, picked_by_user_id, pick_justification,
@@ -490,9 +491,13 @@ Public read-only, no login required. Shows post-reveal data only (poster wall, f
 
 ---
 
-## Seasonal Readjustment
+## Seasonal Readjustment (Phase 6 — implemented)
 
-Opens automatically at the start of each new season for the previous season (default 1 week). Members can update scores freely during this window; ranking is always score-derived (not drag-and-drop). After window closes, scores lock and are fed into season awards calculation.
+At a season's end an **admin opens a readjustment window** (Admin → Dashboard → "Season Readjustment": Open window + end datetime, or Close). While the window is open, members may **freely re-score that season's films** — the `ScoreModal` detects the open window (via `ReadjustmentContext.isMonthReadjustable(movie.month_id)`) and switches the normally-locked score into an editable "Update score" mode, prefilled with their current value, bypassing the `score_change_requests` flow. (The `ratings` UPDATE RLS already permits self-edits; the lock is a client convention, so no new policy is needed.) A `ReadjustmentBanner` shows on Home while any window is open. When the admin closes the window — or it passes `readjustment_ends_at` (soft auto-close, client-evaluated; no pg_cron) — scores lock again and the season's **Auteur Award** finalizes.
+
+- Window state lives on `seasons` (`readjustment_open`, `readjustment_ends_at`); admin-only UPDATE RLS.
+- `src/context/ReadjustmentContext.jsx` loads every season's window + a month→season map, subscribes to `seasons` realtime (so a member's UI flips when an admin toggles), and exposes `openSeason`, `isMonthReadjustable(monthId)`, `isSeasonOpen(season)`.
+- Ranking is always score-derived (not drag-and-drop).
 
 ---
 
@@ -504,13 +509,15 @@ Opens automatically at the start of each new season for the previous season (def
 
 **Monthly:** Pick of the Month ✅, Flop of the Month ✅, The Contrarian ✅, The Oracle ✅, Hype Machine ✅, The Letdown ✅, The Surprise ✅, Most Divisive ✅, Most Unanimous ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅, Best Review (AI-assisted) ⏳
 
-**Season:** Film of the Season ✅, Flop of the Season ✅, Picker of the Season ✅, Ice Cold ✅, Most Divisive Film ✅, Most Unanimous Film ✅, Harshest Critic ✅, Most Generous ✅, The Contrarian ✅, The Oracle ✅, Most Consistent Picker ✅, Easy Crowd ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅, Auteur Award (member vote) ⏳
+**Season:** Film of the Season ✅, Flop of the Season ✅, Picker of the Season ✅, Auteur Award 🎩 ✅, Ice Cold ✅, Most Divisive Film ✅, Most Unanimous Film ✅, Harshest Critic ✅, Most Generous ✅, The Contrarian ✅, The Oracle ✅, Most Consistent Picker ✅, Easy Crowd ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅
 
 **Annual:** Film of the Year ✅, Worst Film of the Year ✅, Picker of the Year ✅, Harshest Critic ✅, Most Generous ✅, Most Divisive Film of the Year ✅, The Oracle of the Year ✅, Most Consistent ✅, The Wildcard ✅, Master of Disguise ✅, Most Evolved ✅ (dormant until the year spans ≥8 months of data), The Underrated 💎 ✅, The Deep Cut 🕳️ ✅
 
 **All-Time:** Continuously updated — Greatest Film Ever Shown ✅, Worst Film Ever ✅, Most Divisive Film Ever ✅, Most Unanimous Film Ever ✅, Picker GOAT ✅, Coldest Critic Ever ✅, Biggest Softie Ever ✅, The Wildcard ✅, The Oracle (All-Time) ✅, Master of Disguise ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅
 
-> Definitions added this session (no spec definition existed): **Easy Crowd** = member with fewest low scores (≤4.0), tie-break highest avg (distinct from Most Generous). **Master of Disguise** = picker whose films were correctly guessed least often (min 3 guesses). **Most Evolved** = member with the biggest avg shift between the year's first and second half (activates once ≥8 distinct months exist). **The Underrated** 💎 = film where club average minus TMDB average is the largest positive gap (the club valued it most above mainstream consensus). **The Deep Cut** 🕳️ = film scoring highest on genre rarity within the club catalog + obscurity (log-scaled inverse `tmdb_vote_count`). Both backed by `movies.tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`; badge appears on film + profile pages; computed across all four scopes. Only **Auteur Award** (ranked-choice member vote) remains ⏳ — needs the Phase 6 voting system.
+> Definitions added this session (no spec definition existed): **Easy Crowd** = member with fewest low scores (≤4.0), tie-break highest avg (distinct from Most Generous). **Master of Disguise** = picker whose films were correctly guessed least often (min 3 guesses). **Most Evolved** = member with the biggest avg shift between the year's first and second half (activates once ≥8 distinct months exist). **The Underrated** 💎 = film where club average minus TMDB average is the largest positive gap (the club valued it most above mainstream consensus). **The Deep Cut** 🕳️ = film scoring highest on genre rarity within the club catalog + obscurity (log-scaled inverse `tmdb_vote_count`). Both backed by `movies.tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`; badge appears on film + profile pages; computed across all four scopes.
+
+**Auteur Award** 🎩 (Phase 6 — implemented, NOT a vote): per Ryan's decision the Auteur is *not* a ranked-choice member vote (scores already rank the films). It's the season's **best picker by average pick score** with a body-of-work bar (≥2 scored picks), **finalized only after that season's readjustment window has closed** (and the season is over) so it reflects the locked scores. Distinct from Picker of the Season (which allows a single pick and is provisional). Computed in `computeSeasonAwards` (gated on `seasons.readjustment_open` / `readjustment_ends_at`), shown on the Awards Season tab + the badge grid. Remaining ⏳ awards are only the AI-dependent ones (Best Review, AI recap).
 
 The Vault: films averaging ≥ 8.5 (configurable). Auto-removes if average drops below threshold after score updates.
 

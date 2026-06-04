@@ -28,6 +28,15 @@
 ### Admin
 - [x] **Deactivate month** button (status → `upcoming`, non-destructive, confirm) — counterpart to Activate / Trigger now; for reopening June pick-collection.
 
+### Phase 6 — Seasonal readjustment + Auteur Award
+- [x] **Migration** `20260604120000_phase6_season_readjustment` — `seasons.readjustment_open` + `readjustment_ends_at`; admin-only UPDATE RLS.
+- [x] **ReadjustmentContext** — loads window state + month→season map, `seasons` realtime, `openSeason` / `isMonthReadjustable`.
+- [x] **ScoreModal** — re-score mode while the film's season window is open (prefilled, bypasses change-request; locks again on close).
+- [x] **Admin** "Season Readjustment" panel — open/close window + end datetime per season.
+- [x] **ReadjustmentBanner** on Home while a window is open.
+- [x] **Auteur Award** 🎩 — per Ryan, NOT a vote: best picker by avg score (≥2 picks), finalized only after the season's readjustment window closes. `computeSeasonAwards` + Awards Season card + badge.
+- [x] **Club trend legend** toggle-highlight (click series → dim others, multi-select).
+
 ---
 
 ## Session 10 — Phase 4 notifications + awards/stats additions + theme fixes

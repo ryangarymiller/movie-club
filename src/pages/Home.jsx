@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import ScoreModal from '../components/ScoreModal'
+import ReadjustmentBanner from '../components/ReadjustmentBanner'
 import { FilmDetailOverlay } from './Films'
 import { MEMBER_COLORS, memberColor } from '../lib/colors'
 
@@ -297,6 +298,9 @@ export default function Home() {
             Welcome back, <span style={{ color: 'var(--text-strong)', fontWeight: 500 }}>{firstName}</span>
           </p>
         </div>
+
+        {/* Seasonal readjustment window (only while open) */}
+        <ReadjustmentBanner style={{ marginBottom: '2rem', animation: 'fadeUp 0.5s 0.05s ease both' }} />
 
         {/* Your Turn */}
         <section className="mb-8" style={{ animation: 'fadeUp 0.5s 0.1s ease both' }}>

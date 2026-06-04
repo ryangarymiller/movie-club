@@ -538,6 +538,28 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     }
   })
 
+  // 3b. Auteur Award — the season's best picker by average pick score, with a
+  // body-of-work bar (>= 2 scored picks) and finalized ONLY after the season's
+  // readjustment window has closed (and the season is over). Distinct from
+  // Picker of the Season (which allows a single pick and is provisional).
+  let auteur = null
+  let auteurAvg = -Infinity
+  let auteurCount = 0
+  const seasonEnded = season?.end_date ? Date.now() > Date.parse(season.end_date) : true
+  const windowOpen = !!season?.readjustment_open
+    && (!season?.readjustment_ends_at || Date.now() < Date.parse(season.readjustment_ends_at))
+  if (seasonEnded && !windowOpen) {
+    Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
+      const user = userMap[uid]
+      if (!user) return
+      if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
+      const avgs = pickedFilms.map(m => movieAvgScore[m.id]).filter(v => v != null)
+      if (avgs.length < 2) return
+      const a = avg(avgs)
+      if (a > auteurAvg) { auteurAvg = a; auteur = user; auteurCount = avgs.length }
+    })
+  }
+
   // 4. Ice Cold — picker whose picks averaged lowest
   let iceCold = null
   let iceColdAvg = Infinity
@@ -700,6 +722,7 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
   return {
     filmOfSeason, flopOfSeason,
     pickerOfSeason, pickerOfSeasonAvg, pickerOfSeasonCount,
+    auteur, auteurAvg, auteurCount,
     iceCold, iceColdAvg, iceColdCount,
     mostConsistentPicker, mostConsistentPickerSd, mostConsistentPickerCount,
     mostDivisiveFilm, mostUnanimousFilm,
@@ -1986,6 +2009,22 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
             awardId={aid('picker_of_season')}
           />
 
+          {/* 3b. Auteur Award — best picker by score, finalized post-readjustment */}
+          <AwardCard
+            emoji="🎩"
+            label="Auteur Award"
+            winner={awards.auteur?.name}
+            metric={
+              awards.auteur
+                ? `avg ${fmt(awards.auteurAvg)} across ${awards.auteurCount} picks · finalized after readjustment`
+                : null
+            }
+            noData={!awards.auteur}
+            winnerClickable
+            onWinnerClick={() => onMember?.(awards.auteur)}
+            awardId={aid('season_auteur')}
+          />
+
           {/* 4. Ice Cold */}
           <AwardCard
             emoji="🧊"
@@ -2567,7 +2606,7 @@ export default function Awards() {
         { data: usersData },
         { data: guessesData },
       ] = await Promise.all([
-        supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: false }),
+        supabase.from('seasons').select('id, name, start_date, end_date, readjustment_open, readjustment_ends_at').order('start_date', { ascending: false }),
         supabase.from('months').select('id, season_id, month_year, status').order('month_year', { ascending: true }),
         supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, director, genre, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id, tmdb_vote_average, tmdb_vote_count, tmdb_popularity').eq('scores_revealed', true),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),

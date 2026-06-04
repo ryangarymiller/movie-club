@@ -74,6 +74,16 @@ function setupMocks({ insertError = null } = {}) {
           }),
         }
 
+      case 'seasons':
+        return {
+          select: vi.fn().mockReturnValue({
+            order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+          }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn(() => Promise.resolve({ error: null })),
+          }),
+        }
+
       default:
         return {
           select: vi.fn(() => Promise.resolve({ data: [], error: null })),

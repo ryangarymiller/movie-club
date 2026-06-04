@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useReadjustment } from '../context/ReadjustmentContext'
 
 function validateScore(val) {
   const n = parseFloat(val)
@@ -12,6 +13,7 @@ function validateScore(val) {
 
 export default function ScoreModal({ movie, existingRating, onClose, onSaved }) {
   const { profile } = useAuth()
+  const { isMonthReadjustable } = useReadjustment()
   const [scoreInput, setScoreInput] = useState('')
   // null = unanswered, true = yes, false = no. Seeded from any existing rating.
   const [recommendOutside, setRecommendOutside] = useState(
@@ -40,6 +42,10 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
     !finalScoreAlreadySubmitted &&
     (existingRating?.pre_watch_excitement || movie.scores_revealed) &&
     !existingRating?.score
+  // Seasonal readjustment: while the film's season window is open a member may
+  // overwrite an already-submitted final score directly (no change request).
+  const canReadjust = movie?.month_id ? isMonthReadjustable(movie.month_id) : false
+  const isReadjustMode = finalScoreAlreadySubmitted && canReadjust
 
   // Animate in
   useEffect(() => {
@@ -61,6 +67,15 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
     }
   }, [visible])
 
+  // Prefill the input with the current score when readjusting, so the member
+  // edits from their existing value rather than a blank field.
+  useEffect(() => {
+    if (isReadjustMode && existingRating?.score != null) {
+      setScoreInput(String(Number(existingRating.score)))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReadjustMode])
+
   function handleClose() {
     setVisible(false)
     setTimeout(onClose, 260)
@@ -78,8 +93,8 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
 
     const score = parseFloat(parseFloat(scoreInput).toFixed(2))
 
-    // Bold score confirmation gate (final mode only)
-    if (isFinalMode && !confirmBold && (score > 8.99 || score < 2.01)) {
+    // Bold score confirmation gate (final + readjust modes)
+    if ((isFinalMode || isReadjustMode) && !confirmBold && (score > 8.99 || score < 2.01)) {
       setConfirmBold(true)
       return
     }
@@ -201,8 +216,9 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
           </div>
         )}
 
-        {/* Final score already submitted — excitement scoring locked */}
-        {finalScoreAlreadySubmitted ? (
+        {/* Final score already submitted — locked, UNLESS the season's
+            readjustment window is open (then fall through to editable mode). */}
+        {(finalScoreAlreadySubmitted && !canReadjust) ? (
           <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
             <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', color: 'var(--text-strong)', letterSpacing: '0.03em', margin: '0 0 8px' }}>
               Score Locked
@@ -289,8 +305,14 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
           <>
             {/* Score label */}
             <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-dim)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '8px' }}>
-              {isExcitementMode ? 'Pre-watch excitement' : 'Your score'}
+              {isExcitementMode ? 'Pre-watch excitement' : isReadjustMode ? 'Update your score' : 'Your score'}
             </p>
+
+            {isReadjustMode && (
+              <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--accent)', fontSize: '12.5px', margin: '0 0 12px', lineHeight: 1.45 }}>
+                Season readjustment is open — change your score freely. It locks again when the window closes.
+              </p>
+            )}
 
             {/* Large live echo — always visible above the keyboard on mobile */}
             <div style={{
@@ -388,8 +410,8 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               </p>
             )}
 
-            {/* Recommend outside the club — Yes / No toggle (final mode only) */}
-            {isFinalMode && (
+            {/* Recommend outside the club — Yes / No toggle (final + readjust) */}
+            {(isFinalMode || isReadjustMode) && (
               <label
                 style={{
                   display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px',
@@ -454,7 +476,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
                 letterSpacing: '0.01em',
               }}
             >
-              {saving ? 'Saving…' : isExcitementMode ? 'Lock In Excitement' : 'Submit Score'}
+              {saving ? 'Saving…' : isExcitementMode ? 'Lock In Excitement' : isReadjustMode ? 'Update Score' : 'Submit Score'}
             </button>
           </>
         )}

@@ -177,6 +177,18 @@ function MonthLineChart({
 }) {
   const c = color || accentColor()
   const lines = series || [{ key: 'value', name: 'Avg', color: c }]
+  // Legend interaction: click a series to highlight it (dim the rest); multi-
+  // select; click again to clear. Empty set = default (all shown normally).
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set())
+  const hasSel = selectedKeys.size > 0
+  const toggleKey = (k) => {
+    if (k == null) return
+    setSelectedKeys(prev => {
+      const n = new Set(prev)
+      if (n.has(k)) n.delete(k); else n.add(k)
+      return n
+    })
+  }
   // The label shown under each tick. When `xLabelKey` is given the x-axis values
   // are unique (so each datum is distinct and clicks/tooltips map to the right
   // point), and the human-readable month label is recovered from xLabelKey.
@@ -218,13 +230,25 @@ function MonthLineChart({
         />
         <YAxis domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
         <Tooltip content={<ChartTooltip labelKey={tooltipLabelKey} />} cursor={{ stroke: CHART.muted }} />
-        {lines.length > 1 && <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono' }} />}
+        {lines.length > 1 && (
+          <Legend
+            wrapperStyle={{ fontSize: '10px', fontFamily: 'DM Mono', cursor: 'pointer' }}
+            onClick={(o) => toggleKey(o?.dataKey ?? o?.value)}
+            formatter={(value, entry) => {
+              const k = entry?.dataKey
+              const on = !hasSel || selectedKeys.has(k)
+              return <span style={{ color: on ? 'var(--text-muted)' : 'var(--text-faint)', opacity: on ? 1 : 0.45 }}>{value}</span>
+            }}
+          />
+        )}
         {lines.map(l => {
           const emphasize = l.emphasize ?? (l.key === 'club')
           // A reference series (e.g. the TMDB community line) is a thin, neutral,
           // dotless overlay — present for comparison but kept visually quiet so it
           // never competes with the club average or the per-member lines.
           const isRef = !!l.reference
+          // When the legend has an active selection, lines not in it are dimmed.
+          const on = !hasSel || selectedKeys.has(l.key)
           return (
             <Line
               key={l.key}
@@ -232,10 +256,10 @@ function MonthLineChart({
               dataKey={l.key}
               name={l.name}
               stroke={l.color}
-              strokeWidth={isRef ? 1.4 : (emphasize ? 3 : 1.6)}
+              strokeWidth={!on ? 1.2 : (isRef ? 1.4 : (emphasize ? 3 : 1.6))}
               strokeDasharray={l.dashArray ?? (l.dashed ? '6 4' : undefined)}
-              strokeOpacity={isRef ? 0.9 : (lines.length > 1 && !emphasize ? 0.75 : 1)}
-              dot={isRef ? false : { r: emphasize ? 3 : 2, fill: l.color }}
+              strokeOpacity={!on ? 0.1 : (isRef ? 0.9 : (lines.length > 1 && !emphasize ? 0.75 : 1))}
+              dot={(isRef || !on) ? false : { r: emphasize ? 3 : 2, fill: l.color }}
               activeDot={isRef ? { r: 3 } : { r: 4 }}
               connectNulls
               isAnimationActive={false}

@@ -408,7 +408,89 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
   )
 }
 
-function DashboardTab({ movies, ratings, users, months, onBackfillFilm, onRefresh, setError, setSuccess }) {
+// ── Season readjustment window ───────────────────────────────────────────────
+// Admin opens a window at a season's end; members may then freely re-score that
+// season's films until it closes. Closing locks scores + finalizes the Auteur Award.
+function toLocalInput(iso) {
+  const d = new Date(iso)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function SeasonReadjustmentPanel({ seasons = [], onRefresh, setError, setSuccess }) {
+  const [busyId, setBusyId] = useState(null)
+  // Snapshot "now" once at mount (calling Date.now() during render is impure).
+  const [now] = useState(() => Date.now())
+  const isOpen = (s) => s.readjustment_open && (!s.readjustment_ends_at || now < Date.parse(s.readjustment_ends_at))
+
+  async function setWindow(season, open, endsAtLocal) {
+    setBusyId(season.id)
+    const patch = { readjustment_open: open }
+    if (open) patch.readjustment_ends_at = endsAtLocal ? new Date(endsAtLocal).toISOString() : null
+    const { error } = await supabase.from('seasons').update(patch).eq('id', season.id)
+    setBusyId(null)
+    if (error) { setError('Failed to update readjustment window: ' + error.message); return }
+    setSuccess(open ? `${season.name} readjustment window opened.` : `${season.name} readjustment window closed.`)
+    onRefresh()
+  }
+
+  return (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <Label>Season Readjustment</Label>
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace" }}>
+        Open a window at a season's end so members can freely re-score that season's films. Closing locks scores and finalizes the season's Auteur Award.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {seasons.length === 0 && (
+          <p style={{ color: 'var(--text-faint)', fontSize: '13px', margin: 0 }}>No seasons.</p>
+        )}
+        {seasons.map(s => (
+          <SeasonReadjustRow key={s.id} season={s} open={isOpen(s)} busy={busyId === s.id} onSet={setWindow} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SeasonReadjustRow({ season, open, busy, onSet }) {
+  // Lazy initializer keeps Date.now() out of the render path.
+  const [endLocal, setEndLocal] = useState(() =>
+    season.readjustment_ends_at
+      ? toLocalInput(season.readjustment_ends_at)
+      : toLocalInput(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  )
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', borderRadius: '10px', background: 'rgba(var(--fg-rgb), 0.03)', border: `1px solid ${open ? 'var(--accent)' : 'rgba(var(--fg-rgb), 0.08)'}` }}>
+      <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+        <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-strong)', fontSize: '14px', margin: 0 }}>
+          {season.name}{open ? ' · OPEN' : ''}
+        </p>
+        <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '10px', margin: '2px 0 0' }}>
+          {season.start_date} → {season.end_date}
+        </p>
+      </div>
+      <input
+        type="datetime-local"
+        value={endLocal}
+        onChange={e => setEndLocal(e.target.value)}
+        disabled={busy}
+        title="Window end"
+        style={{ background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)', borderRadius: '8px', padding: '7px 9px', color: 'var(--text-strong)', fontFamily: "'DM Mono',monospace", fontSize: '12px' }}
+      />
+      {open ? (
+        <button onClick={() => onSet(season, false)} disabled={busy} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(220,38,38,0.4)', background: 'transparent', color: '#f87171', fontSize: '12px', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono',monospace" }}>
+          {busy ? '…' : 'Close'}
+        </button>
+      ) : (
+        <button onClick={() => onSet(season, true, endLocal)} disabled={busy} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: 'var(--accent)', color: 'var(--text-strong)', fontSize: '12px', fontWeight: 500, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+          {busy ? '…' : 'Open window'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfillFilm, onRefresh, setError, setSuccess }) {
   const totalFilms = movies.length
   const totalRatings = ratings.length
   const vaultFilms = movies.filter(m => {
@@ -497,6 +579,14 @@ function DashboardTab({ movies, ratings, users, months, onBackfillFilm, onRefres
       {/* Month activation (set active, edit active_date, materialize + split deadlines) */}
       <MonthActivationPanel
         months={months}
+        onRefresh={onRefresh}
+        setError={setError}
+        setSuccess={setSuccess}
+      />
+
+      {/* Season readjustment window (open/close + end time) */}
+      <SeasonReadjustmentPanel
+        seasons={seasons}
         onRefresh={onRefresh}
         setError={setError}
         setSuccess={setSuccess}
@@ -2010,6 +2100,7 @@ export default function Admin() {
   const [ratings, setRatings] = useState([])
   const [users, setUsers] = useState([])
   const [months, setMonths] = useState([])
+  const [seasons, setSeasons] = useState([])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -2018,11 +2109,13 @@ export default function Admin() {
       { data: ratingsData, error: ratingsErr },
       { data: usersData, error: usersErr },
       { data: monthsData, error: monthsErr },
+      { data: seasonsData },
     ] = await Promise.all([
       supabase.from('movies').select('*, picked_by:users!picked_by_user_id(name)').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
       supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, admin_mode_enabled').order('joined_at'),
       supabase.from('months').select('id, season_id, month_year, status, active_date').order('month_year'),
+      supabase.from('seasons').select('id, name, start_date, end_date, readjustment_open, readjustment_ends_at').order('start_date'),
     ])
 
     if (moviesErr || ratingsErr || usersErr || monthsErr) {
@@ -2033,6 +2126,7 @@ export default function Admin() {
       setRatings(ratingsData ?? [])
       setUsers(usersData ?? [])
       setMonths(monthsData ?? [])
+      setSeasons(seasonsData ?? [])
     }
     setLoading(false)
   }, [])
@@ -2113,6 +2207,7 @@ export default function Admin() {
                 ratings={ratings}
                 users={users}
                 months={months}
+                seasons={seasons}
                 onBackfillFilm={goToScoresForFilm}
                 onRefresh={fetchAll}
                 setError={setError}

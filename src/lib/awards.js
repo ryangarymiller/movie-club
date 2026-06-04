@@ -59,6 +59,7 @@ const SEASON_DEFS = [
   { key: 'film_of_season',     label: 'Film of the Season',     emoji: '🏆', target: 'film', field: 'filmOfSeason' },
   { key: 'flop_of_season',     label: 'Flop of the Season',     emoji: '💀', target: 'film', field: 'flopOfSeason' },
   { key: 'picker_of_season',   label: 'Picker of the Season',   emoji: '🎬', target: 'user', field: 'pickerOfSeason' },
+  { key: 'season_auteur',      label: 'Auteur Award',           emoji: '🎩', target: 'user', field: 'auteur' },
   { key: 'ice_cold',           label: 'Ice Cold',               emoji: '🧊', target: 'user', field: 'iceCold' },
   { key: 'season_divisive',    label: 'Most Divisive Film',     emoji: '🔥', target: 'film', field: 'mostDivisiveFilm' },
   { key: 'season_unanimous',   label: 'Most Unanimous Film',    emoji: '🤝', target: 'film', field: 'mostUnanimousFilm' },
