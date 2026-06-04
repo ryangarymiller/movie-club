@@ -62,11 +62,16 @@ function ChartTooltip({ active, payload, label, suffix = '', labelKey }) {
           {labelKey ? payload[0].payload[labelKey] : label}
         </p>
       )}
-      {payload.map((p, i) => (
-        <p key={i} style={{ margin: 0, fontSize: '11px', color: p.color || 'var(--text-muted)', fontFamily: "'DM Mono',monospace" }}>
-          {p.name}: {typeof p.value === 'number' ? p.value.toFixed(2) : p.value}{suffix}
-        </p>
-      ))}
+      {payload.map((p, i) => {
+        // For member-coloured single-series charts the datum carries its own
+        // colour (_fill / fill); prefer it so the tooltip matches the bar/point.
+        const rowColor = p?.payload?._fill || p?.payload?.fill || p.color || 'var(--text-muted)'
+        return (
+          <p key={i} style={{ margin: 0, fontSize: '11px', color: rowColor, fontFamily: "'DM Mono',monospace" }}>
+            {p.name}: {typeof p.value === 'number' ? p.value.toFixed(2) : p.value}{suffix}
+          </p>
+        )
+      })}
     </div>
   )
 }
@@ -91,19 +96,23 @@ function ChartPlaceholder({ children, height = 120 }) {
 // Score distribution histogram (0–10 buckets). data: [{ label, count }]
 // `onSelect` + `selectedIndex` let a parent highlight a single tapped bar; the
 // rest dim so the selection reads clearly (no whole-chart bounding box).
-function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = null }) {
+function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = null, percent = false }) {
   const c = color || accentColor()
   const interval = data.length > 12 ? Math.ceil(data.length / 10) - 1 : 0
+  // Percent mode: rescale counts to % of all scores so the y-axis reads as a
+  // distribution rather than a raw count.
+  const total = data.reduce((s, d) => s + (d.count || 0), 0)
+  const chartData = percent && total ? data.map(d => ({ ...d, count: (d.count / total) * 100 })) : data
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
+      <BarChart data={chartData} margin={{ top: 8, right: 8, left: percent ? -10 : -22, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false} interval={interval} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-        <Tooltip content={<ChartTooltip />} cursor={false} />
+        <YAxis allowDecimals={false} tickFormatter={percent ? (v) => `${Math.round(v)}%` : undefined} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={percent ? 34 : undefined} />
+        <Tooltip content={<ChartTooltip suffix={percent ? '%' : ''} />} cursor={false} />
         <Bar
           dataKey="count"
-          name="Films"
+          name={percent ? '% of scores' : 'Films'}
           fill={c}
           radius={[3, 3, 0, 0]}
           isAnimationActive={false}
@@ -130,15 +139,43 @@ function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = n
 // Tight axis domain for a set of scores so clustered values (e.g. everyone > 7)
 // spread across the plot instead of wasting the full 0–10 range. Pads, snaps to
 // 0.5, clamps to [0,10]. Falls back to [0,10] when there's nothing to fit.
-function niceScoreDomain(values) {
+// Choose a "nice" tick step ≥ the ideal step, from a fixed ladder so ticks land on
+// clean values (…0.25, 0.5, 1, 2…) and are always evenly spaced.
+function chooseStep(range, targetCount) {
+  const ladder = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 500]
+  const ideal = range / Math.max(1, targetCount)
+  for (const s of ladder) if (s >= ideal - 1e-9) return s
+  return ladder[ladder.length - 1]
+}
+
+// Smart axis scale: fits a tight domain to the data (so clustered values spread
+// out instead of wasting a full 0–10 range) AND returns evenly-spaced nice ticks
+// (snapped to the chosen step). Pass {min,max} to clamp (e.g. scores → [0,10]).
+// Returns { domain:[lo,hi], ticks:[...] }.
+function niceScale(values, { min = -Infinity, max = Infinity, targetCount = 5, padFrac = 0.12 } = {}) {
   const vs = values.filter(v => Number.isFinite(v))
-  if (!vs.length) return [0, 10]
+  if (!vs.length) {
+    const lo = Number.isFinite(min) ? min : 0
+    const hi = Number.isFinite(max) ? max : 10
+    const step = chooseStep(hi - lo, targetCount)
+    const ticks = []
+    for (let t = lo; t <= hi + step / 1000; t += step) ticks.push(Math.round(t * 1000) / 1000)
+    return { domain: [lo, hi], ticks }
+  }
   let lo = Math.min(...vs), hi = Math.max(...vs)
-  if (hi - lo < 0.5) { lo -= 0.5; hi += 0.5 } // avoid a degenerate 1-point window
-  const pad = Math.max(0.4, (hi - lo) * 0.18)
-  const dLo = Math.max(0, Math.floor((lo - pad) * 2) / 2)
-  const dHi = Math.min(10, Math.ceil((hi + pad) * 2) / 2)
-  return dLo < dHi ? [dLo, dHi] : [0, 10]
+  if (hi - lo < 1e-6) { lo -= 0.5; hi += 0.5 }
+  const pad = (hi - lo) * padFrac
+  lo = Math.max(min, lo - pad)
+  hi = Math.min(max, hi + pad)
+  const step = chooseStep(hi - lo, targetCount)
+  let dLo = Math.floor(lo / step) * step
+  let dHi = Math.ceil(hi / step) * step
+  if (Number.isFinite(min)) dLo = Math.max(min, dLo)
+  if (Number.isFinite(max)) dHi = Math.min(max, dHi)
+  if (dLo >= dHi) { dLo = lo; dHi = hi }
+  const ticks = []
+  for (let t = dLo; t <= dHi + step / 1000; t += step) ticks.push(Math.round(t * 1000) / 1000)
+  return { domain: [dLo, dHi], ticks }
 }
 
 // Per-member score bar chart for a single film, with mean + ±1 std-dev
@@ -155,42 +192,45 @@ function MemberScoreBars({ data, mean, sd, height, onMember }) {
   const domainVals = data.map(d => Number(d.value))
   if (mean != null) domainVals.push(mean)
   if (mean != null && sd != null && sd > 0) domainVals.push(mean - sd, mean + sd)
-  const domain = niceScoreDomain(domainVals)
+  const { domain, ticks } = niceScale(domainVals, { min: 0, max: 10, targetCount: 5 })
   const sdLo = (mean != null && sd != null && sd > 0) ? Math.max(domain[0], mean - sd) : null
   const sdHi = (mean != null && sd != null && sd > 0) ? Math.min(domain[1], mean + sd) : null
   return (
-    <ResponsiveContainer width="100%" height={h}>
-      {/* Top/bottom margin so the μ (top) and σ (bottom) labels aren't clipped. */}
-      <BarChart data={data} layout="vertical" margin={{ top: 20, right: 30, left: 4, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
-        <XAxis type="number" domain={domain} allowDecimals tickFormatter={(v) => Number(v).toFixed(1)} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-        <YAxis type="category" dataKey="name" width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
-        <Tooltip content={<ChartTooltip />} cursor={false} />
-        <Bar dataKey="value" name="Score" radius={[0, 3, 3, 0]} isAnimationActive={false}>
-          {data.map((d, i) => <Cell key={i} fill={d.fill || accent} />)}
-        </Bar>
-        {/* ±1 std-dev band — bright accent-light so it pops on dark themes; a wide
-            faint pass gives the "glow". σ label sits at the BOTTOM. Drawn after the
-            bars so the lines overlay them. */}
-        {sdLo != null && (
-          <>
-            <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.18} />
-            <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.18} />
-            <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.95} />
-            <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.95}
-              label={{ value: `σ ${sd.toFixed(2)}`, position: 'bottom', fontSize: 9, fill: 'var(--accent-light)', fontFamily: 'DM Mono', fontWeight: 700 }} />
-          </>
-        )}
-        {/* Club mean — bright, glowing; μ label sits at the TOP. */}
-        {mean != null && (
-          <>
-            <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={7} strokeOpacity={0.22} />
-            <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={2.4}
-              label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 10, fill: 'var(--text-strong)', fontFamily: 'DM Mono', fontWeight: 700 }} />
-          </>
-        )}
-      </BarChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={h}>
+        <BarChart data={data} layout="vertical" margin={{ top: 6, right: 30, left: 4, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
+          <XAxis type="number" domain={domain} ticks={ticks} allowDecimals tickFormatter={(v) => Number(v).toFixed(domain[1] - domain[0] <= 3 ? 2 : 1)} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+          <YAxis type="category" dataKey="name" interval={0} width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
+          <Tooltip content={<ChartTooltip />} cursor={false} />
+          <Bar dataKey="value" name="Score" radius={[0, 3, 3, 0]} isAnimationActive={false}>
+            {data.map((d, i) => <Cell key={i} fill={d._fill || d.fill || accent} />)}
+          </Bar>
+          {/* ±1 std-dev band (no inline labels — they collided with the axis; the
+              values are in the caption below). Wide faint pass under a sharp pass. */}
+          {sdLo != null && (
+            <>
+              <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.16} />
+              <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.16} />
+              <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.9} />
+              <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.9} />
+            </>
+          )}
+          {mean != null && (
+            <>
+              <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={7} strokeOpacity={0.2} />
+              <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={2.4} />
+            </>
+          )}
+        </BarChart>
+      </ResponsiveContainer>
+      {mean != null && (
+        <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-dim)', margin: '2px 0 0' }}>
+          <span style={{ color: 'var(--text-strong)' }}>μ {mean.toFixed(2)}</span>
+          {sd != null && <span style={{ color: 'var(--accent-light)' }}> · σ {sd.toFixed(2)}</span>}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -245,7 +285,7 @@ function MonthLineChart({
   return (
     <div>
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={data} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
+        <LineChart data={data} margin={{ top: 8, right: 14, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
           <XAxis
             dataKey={xKey}
@@ -257,9 +297,11 @@ function MonthLineChart({
             interval={sparseTicks ? 0 : 'preserveStartEnd'}
             ticks={xLabelKey ? data.map(d => d[xKey]) : undefined}
             tickFormatter={tickFormatter}
-            minTickGap={sparseTicks ? 0 : 5}
+            minTickGap={sparseTicks ? 12 : 5}
+            // Inset the plot so the first/last month labels aren't clipped at the edges.
+            padding={{ left: 12, right: 12 }}
           />
-          <YAxis domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
+          <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={26} />
           <Tooltip content={<ChartTooltip labelKey={tooltipLabelKey} />} cursor={{ stroke: CHART.muted }} />
           {lines.map(l => {
             const emphasize = l.emphasize ?? (l.key === 'club')
@@ -337,11 +379,11 @@ function ExcitementScatter({ data, height = 220, color }) {
   const c = color || accentColor()
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ScatterChart margin={{ top: 10, right: 14, left: -20, bottom: 8 }}>
+      <ScatterChart margin={{ top: 10, right: 14, left: 0, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
-        <XAxis type="number" dataKey="excitement" name="Excitement" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false}
+        <XAxis type="number" dataKey="excitement" name="Excitement" domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false}
           label={{ value: 'Excitement', position: 'insideBottom', offset: -4, fontSize: 9, fill: CHART.axis }} />
-        <YAxis type="number" dataKey="finalScore" name="Final" domain={[0, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={28} />
+        <YAxis type="number" dataKey="finalScore" name="Final" domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={26} />
         <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 10, y: 10 }]} stroke={CHART.muted} strokeDasharray="4 4" />
         <Tooltip content={<ChartTooltip labelKey="title" />} cursor={{ strokeDasharray: '3 3' }} />
         <Scatter data={data} fill={c} />
@@ -380,26 +422,35 @@ function makeMemberTick(ids, onMember) {
 // data-driven domain so small-magnitude series (e.g. std dev) aren't flattened.
 // `valueTickFormatter` formats the number-axis ticks; `memberIds` + `onMember`
 // make the category-axis (name) ticks clickable into member profiles.
-function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name', cellFill, domain = [0, 10], valueTickFormatter, memberIds, onMember }) {
+function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey = 'name', cellFill, domain = [0, 10], valueTickFormatter, memberIds, onMember, smartDomain = false, scoreClamp = true }) {
   const accent = accentColor()
   const resolved = keys.map((k, i) => ({ ...k, color: k.color || (i === 0 ? accent : CAT_PALETTE[i % CAT_PALETTE.length]) }))
   const perCell = cellFill && resolved.length === 1
   const memberTick = makeMemberTick(memberIds, onMember)
+  // Fit a tight domain + evenly-spaced ticks to the data when asked, so clustered
+  // values (e.g. everyone ~7) spread out instead of being flattened against 0–10.
+  let vDomain = domain, vTicks
+  if (smartDomain) {
+    const vals = data.flatMap(d => resolved.map(k => Number(d[k.key])).filter(Number.isFinite))
+    const s = niceScale(vals, scoreClamp ? { min: 0, max: 10, targetCount: 5 } : { min: 0, targetCount: 5 })
+    vDomain = s.domain; vTicks = s.ticks
+  }
+  const fmtVal = valueTickFormatter || ((v) => Number(v).toFixed(vDomain[1] - vDomain[0] <= 3 ? 2 : 1))
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout={layout} margin={{ top: 14, right: 14, left: layout === 'vertical' ? 4 : 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={layout === 'horizontal'} vertical={layout === 'vertical'} />
         {layout === 'vertical' ? (
           <>
-            <XAxis type="number" domain={domain} tickFormatter={valueTickFormatter} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-            <YAxis type="category" dataKey={labelKey} width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
+            <XAxis type="number" domain={vDomain} ticks={vTicks} tickFormatter={fmtVal} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+            <YAxis type="category" dataKey={labelKey} interval={0} width={90} tick={memberTick || { fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
           </>
         ) : (
           <>
             <XAxis dataKey={labelKey} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={{ stroke: CHART.axisLine }} tickLine={false} interval={0} />
             {/* Explicit, data-driven Y ticks so values are labelled and the
                 domain isn't pinned to 0–10 (which flattens member differences). */}
-            <YAxis domain={domain} tickCount={5} allowDecimals tickFormatter={(v) => Number(v).toFixed(1)} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={34} />
+            <YAxis domain={vDomain} ticks={vTicks} allowDecimals tickFormatter={fmtVal} tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={34} />
           </>
         )}
         <Tooltip content={<ChartTooltip />} cursor={false} />
@@ -680,6 +731,13 @@ export function firstLast(name) {
   if (parts.length === 0) return '?'
   if (parts.length === 1) return parts[0]
   return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`
+}
+
+// Last name only (last whitespace-separated word) — used on member-comparison
+// axes where a compact, unambiguous label reads best.
+export function lastName(name) {
+  const parts = (name || '').split(/\s+/).filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : '?'
 }
 
 function avg(arr) {
@@ -1225,7 +1283,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
       <div>
         <SectionLabel>All-Time Score Distribution</SectionLabel>
         <GlassCard style={{ padding: '14px 10px' }}>
-          <ScoreHistogram data={stats.distBuckets} height={130} />
+          <ScoreHistogram data={stats.distBuckets} height={130} percent />
         </GlassCard>
       </div>
 
@@ -1235,9 +1293,10 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
           <SectionLabel>Member Averages</SectionLabel>
           <GlassCard style={{ padding: '14px 10px' }}>
             <ComparisonBar
-              data={stats.memberAvgs.map(u => ({ name: firstLast(u.name), value: u.avgScore, _fill: userColor(u) }))}
+              data={stats.memberAvgs.map(u => ({ name: lastName(u.name), value: u.avgScore, _fill: userColor(u) }))}
               keys={[{ key: 'value', name: 'Avg' }]}
               layout="vertical"
+              smartDomain
               height={Math.max(120, stats.memberAvgs.length * 30 + 20)}
               cellFill="_fill"
               memberIds={stats.memberAvgs.map(u => u.id)}
@@ -2691,30 +2750,24 @@ function ClubVsTmdbChart({ candidates }) {
   // of bunching in a 0–10 box. A SHARED domain across x and y keeps the y=x
   // reference line a true diagonal and within the visible window.
   const allVals = rows.flatMap(r => [r.club, r.tmdb])
-  const dataMin = Math.min(...allVals)
-  const dataMax = Math.max(...allVals)
-  const pad = Math.max(0.3, (dataMax - dataMin) * 0.12)
-  const lo = Math.max(0, Math.floor((dataMin - pad) * 10) / 10)
-  const hi = Math.min(10, Math.ceil((dataMax + pad) * 10) / 10)
-  const axisDomain = lo < hi ? [lo, hi] : [0, 10]
+  const { domain: axisDomain, ticks: axisTicks } = niceScale(allVals, { min: 0, max: 10, targetCount: 5 })
+  const fmt = (v) => Number(v).toFixed(axisDomain[1] - axisDomain[0] <= 3 ? 2 : 1)
   return (
     <>
       <ResponsiveContainer width="100%" height={260}>
-        <ScatterChart margin={{ top: 10, right: 16, left: 0, bottom: 18 }}>
+        <ScatterChart margin={{ top: 10, right: 16, left: 0, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
-            type="number" dataKey="tmdb" name="TMDB" domain={axisDomain} allowDecimals
+            type="number" dataKey="tmdb" name="TMDB" domain={axisDomain} ticks={axisTicks} allowDecimals
             tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
             axisLine={{ stroke: CHART.axisLine }} tickLine={false}
-            tickFormatter={(v) => Number(v).toFixed(1)}
-            label={{ value: 'TMDB vote', position: 'insideBottom', offset: -8, fontSize: 9, fill: CHART.axis }}
+            tickFormatter={fmt}
           />
           <YAxis
-            type="number" dataKey="club" name="Club" domain={axisDomain} allowDecimals
+            type="number" dataKey="club" name="Club" domain={axisDomain} ticks={axisTicks} allowDecimals
             tick={{ fontSize: 9, fill: CHART.axis, fontFamily: 'DM Mono' }}
-            axisLine={false} tickLine={false} width={34}
-            tickFormatter={(v) => Number(v).toFixed(1)}
-            label={{ value: 'Club avg', angle: -90, position: 'insideLeft', offset: 16, fontSize: 9, fill: CHART.axis }}
+            axisLine={false} tickLine={false} width={30}
+            tickFormatter={fmt}
           />
           <ReferenceLine segment={[{ x: axisDomain[0], y: axisDomain[0] }, { x: axisDomain[1], y: axisDomain[1] }]} stroke={CHART.muted} strokeDasharray="4 4" ifOverflow="hidden" />
           <Tooltip content={<ChartTooltip labelKey="name" />} cursor={{ strokeDasharray: '3 3' }} />
@@ -2726,7 +2779,7 @@ function ClubVsTmdbChart({ candidates }) {
         </ScatterChart>
       </ResponsiveContainer>
       <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
-        Each dot is a film · above the dashed line = we rated it higher than TMDB ({above}/{rows.length}) · hover for titles
+        x = TMDB community vote · y = club average · above the dashed line = we rated it higher ({above}/{rows.length}) · hover for titles
       </p>
     </>
   )
@@ -3729,7 +3782,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       <div>
         <SectionLabel>All-Time Score Distribution</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
-          <ScoreHistogram data={stats.distBuckets} height={170} />
+          <ScoreHistogram data={stats.distBuckets} height={170} percent />
         </GlassCard>
       </div>
 
@@ -3756,6 +3809,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                 keys={[{ key: 'value', name: 'Avg' }]}
                 layout="horizontal"
                 labelKey="name"
+                smartDomain
                 height={Math.max(160, stats.decadeData.length * 26 + 50)}
               />
               <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
