@@ -244,15 +244,21 @@ The old "one primary review per user + flat comments" model is **superseded**. T
 
 ---
 
-## Architecture: Pick → Film Lifecycle
+## Architecture: Pick → Film Lifecycle (redesigned)
 
-When a month is activated, a member's `upcoming_picks` row materializes into a `movies` row for that month. The RPC `public.materialize_and_split_month(p_month_id)` handles materialization and auto-splits scoring deadlines evenly across the resulting film count. Admins trigger this via an "Activate / Trigger now" button on the Admin panel; automatic activation on `active_date` is deferred to Phase 4.
+**Invariant: there is always exactly one `active` month and (at least) one `upcoming` month for picks.** Picks ALWAYS target the next `upcoming` month — never the active one. The active month's picks are **locked** (its films are being watched/scored); editing a pick only ever edits the upcoming month's pick. This removed the old bug where re-picking an active month re-pointed the existing `movies` row in place and looked like it "moved" that film's scores.
 
-**Deadlines are display-only for now (dev mode, until launch/July).** Enforcement, grace periods, and auto month-activation on the 1st are Phase 4 work.
+**Activation is the single point that materializes picks into films.** `public.activate_month(p_month_id)` (SECURITY DEFINER) is the one orchestration RPC: it (1) demotes any other `active` month to `revealed` (single-active), (2) sets the target active + materializes its `upcoming_picks` into `movies` (updating the existing row per picker so ratings stay attached; inserting if new) + splits scoring deadlines evenly by film count, (3) guarantees a next `upcoming` month exists (auto-creates `month_year+1` in the matching season), and (4) auto-opens the prior season's readjustment window when the activated month is the first of a new season (see Seasonal Readjustment). The older `materialize_and_split_month` RPC still exists but activation now goes through `activate_month`.
 
-The "Activate / Trigger now" action now correctly persists the `status='active'` update (admin INSERT/UPDATE RLS policies on `months` were added in Session 9 to fix a silent block). The RPC also accepts a service/privileged context (`auth.uid()` null) so server-side or migration-driven materialization works without a signed-in user.
+**Auto-activation (admin-toggleable, default off).** Each month has `auto_activate` (bool) + `active_date`. When `auto_activate` is on and `active_date` has arrived **in US Pacific (12am PT)**, the month activates itself. Since pg_cron is still deferred, this is a **client-soft trigger**: `autoActivateDueMonths()` runs on This Month load and calls `activate_month` for a due month. `activate_month` authorizes a non-admin caller ONLY for a month that is genuinely due (auto_activate + date passed), so members can trigger a *scheduled* activation but can't force-activate anything else; admins can activate any month manually.
 
-The signed-in user's own pick shows inline on the This Month page (clickable → justification + change-pick flow). Upcoming-month films are excluded from the Films page (no pre-activation pick leak). Once materialized, picks become film cards on the This Month page with inline deadlines.
+**Deadlines remain display-only** (dev mode, until launch). Enforcement/grace periods are still Phase 4.
+
+Admin panel: "Activate now" (calls `activate_month`), an Auto-activate toggle, and a scheduled "Activation date (12am PT)" saved via "Save schedule". The month-level **Deactivate button was removed** (the always-one-active invariant replaces it). The Upcoming Picks preview also lists historical pickers (from revealed months' films), not just queued `upcoming_picks`.
+
+The signed-in user's own pick (for the upcoming month) shows inline on This Month (clickable → justification + change-pick flow). The active month's films are sorted by **scoring deadline** (watch order). Upcoming-month films are excluded from the Films page (no pre-activation pick leak).
+
+**Member pick-change for the active month (deferred):** members can't change an active-month pick directly (locked); the intended flow is to *request* a change (only while the film has zero scores) for admin approval. The lock is in place; the request workflow is a tracked follow-up.
 
 ---
 
@@ -272,12 +278,17 @@ users          — id, name, email, avatar_id, user_color, role, is_op (bool), t
                  is_active, has_completed_onboarding, admin_mode_enabled,
                  last_online_at, show_last_online, created_at
                  (is_op: sole power to grant/revoke admin; an op is also an admin — role stays 'admin')
-seasons        — id, name, start_date, end_date, readjustment_open (bool), readjustment_ends_at (timestamptz)
+seasons        — id, name, start_date, end_date, readjustment_open (bool), readjustment_ends_at (timestamptz),
+                 readjustment_auto (bool, default true — per-season auto-open toggle)
                  (Quarterly: Winter Dec–Feb · Spring Mar–May · Summer Jun–Aug · Autumn Sep–Nov.
                   First season = Winter 2026, partial from the club founding date Jan 5 2026.
                   readjustment_* drive the Phase 6 seasonal readjustment window; admin-only UPDATE RLS.)
 months         — id, season_id, month_year, reveal_date, end_of_month_reveal_date, status,
-                 active_date (date the month goes active; defaults to the 1st; admin-adjustable)
+                 active_date (date the month goes active; defaults to the 1st; admin-adjustable),
+                 auto_activate (bool, default false — scheduled auto-activation at 12am PT on active_date)
+                 (Invariant: always one 'active' + one 'upcoming'. Activation goes through activate_month.)
+app_settings   — id (singleton true), readjustment_length_days (int, default 7), updated_at
+                 (global config; RLS readable by any member, admin-write)
 movies         — id, month_id, title, tmdb_id, picked_by_user_id, pick_justification,
                  scores_revealed (bool), picker_revealed (bool), scoring_deadline,
                  streaming_providers (json), historical_avg_score,
@@ -335,9 +346,19 @@ auth_events    — id, user_id (nullable), event, user_initiated (bool), detail 
                   deliberateSignOut() tags user-initiated sign-outs;
                   logs SIGNED_OUT with user_initiated + visibility/online, and profile-fetch retries/errors)
 
+RPC: public.activate_month(p_month_id uuid) SECURITY DEFINER
+     — THE activation orchestration: single-active invariant + materialize + split deadlines +
+       guarantee a next upcoming month + auto-open prior season's readjustment. Admin-gated,
+       except a genuinely-due scheduled month (auto_activate + date passed in PT) which any
+       client may trigger (soft auto-activation).
 RPC: public.materialize_and_split_month(p_month_id uuid) SECURITY DEFINER
-     — materializes upcoming_picks into movies for the given month and auto-splits scoring
-       deadlines evenly by film count; accepts service/privileged context (auth.uid() null)
+     — legacy materialize+split (still present); activation now goes through activate_month.
+RPC: public.is_admin(uuid) SECURITY DEFINER STABLE — recursion-safe admin check used by RLS
+     policies (e.g. users SELECT, app_settings write).
+
+users SELECT RLS: "members read active or self; admins read all" — a member sees active users +
+     their own row; admins (via is_admin()) also see INACTIVE members (so a deactivated member
+     stays visible and can be reactivated — the old policy hid inactive rows from everyone).
 
 Extensions / infra: pg_net (HTTP from DB triggers); supabase_vault secrets: resend_api_key,
      app_base_url, vapid_private_key, vapid_subject
@@ -422,7 +443,7 @@ Monthly · Season · Annual · All-Time
 
 Member profiles open as an **overlay/popup** (`MemberOverlayContext`) anywhere you click a member name or avatar — Home, Stats, Awards, Films legend, film overlay. Closing the overlay returns the user exactly where they were. The bottom-bar **Profile** tab is always the signed-in user's own profile. The `/profile/:id` route is kept as a deep-link fallback (e.g. from external links or direct navigation).
 
-Member overlay contains: profile card, awards badge grid (collapsible), "Films [member] picked" section (by month, with score), recent scores (each opens the film overlay), and a "View full stats" link. **"View full stats"** navigates to `/stats?member=<id>`, which renders that member's **full Me-tab-style breakdown** (their own scoring distribution, trends, rankings, genres, percentile — not the limited Members-tab card; section labels are re-subjected to their name). The Stats page re-syncs from the URL on every navigation (via `useLocation`), so the link works even when Stats is already mounted. The profile **tier badge** (Op / Admin) reflects the *displayed* member's role, not the signed-in viewer's.
+Member overlay contains: profile card, awards badge grid (collapsible), "Films [member] picked" section (by month, with score), recent scores (each opens the film overlay), and a "View full stats" button. **"View full stats" opens the `MemberStatsOverlay` popup** (`src/components/MemberStatsOverlay.jsx` + `MemberStatsOverlayContext`) — a full-screen overlay rendering that member's **full Me-tab breakdown** (reuses the exported `MeTab`; loads its own data). Closing (X or Android Back) returns you exactly where you were (the member profile or the Stats Members tab). While open it **overrides the app accent with that member's colour**, so every accent-driven chart renders in their colour. Also openable from a "View full stats" button in the Stats **Members-tab** expanded card. (The `/stats?member=<id>` route still works as a deep-link fallback.) The profile **tier badge** (Op / Admin) reflects the *displayed* member's role, not the signed-in viewer's.
 
 ### Smart Linking (global)
 
@@ -512,7 +533,8 @@ Public read-only, no login required. Shows post-reveal data only (poster wall, f
 
 At a season's end an **admin opens a readjustment window** (Admin → Dashboard → "Season Readjustment": Open window + end datetime, or Close). While the window is open, members may **freely re-score that season's films** — the `ScoreModal` detects the open window (via `ReadjustmentContext.isMonthReadjustable(movie.month_id)`) and switches the normally-locked score into an editable "Update score" mode, prefilled with their current value, bypassing the `score_change_requests` flow. (The `ratings` UPDATE RLS already permits self-edits; the lock is a client convention, so no new policy is needed.) A `ReadjustmentBanner` shows on Home while any window is open. When the admin closes the window — or it passes `readjustment_ends_at` (soft auto-close, client-evaluated; no pg_cron) — scores lock again and the season's **Auteur Award** finalizes.
 
-- Window state lives on `seasons` (`readjustment_open`, `readjustment_ends_at`); admin-only UPDATE RLS.
+- Window state lives on `seasons` (`readjustment_open`, `readjustment_ends_at`, `readjustment_auto`); admin-only UPDATE RLS.
+- **Automation:** a global default window length lives in `public.app_settings.readjustment_length_days` (default 7, admin-editable; RLS readable-by-all, admin-write). `seasons.readjustment_auto` (per-season toggle, default on) controls auto-open. `activate_month` **auto-opens the prior season's window** when a new season's first month is activated (e.g. activating June opens Spring's window), ending `length` days after the season's end, **anchored to 12am US Pacific**. Manual open/close still available; the Admin panel exposes the global length, a per-season auto toggle, and a window-end **date** (defaults to season-end + length — no stray time-of-day).
 - `src/context/ReadjustmentContext.jsx` loads every season's window + a month→season map, subscribes to `seasons` realtime (so a member's UI flips when an admin toggles), and exposes `openSeason`, `isMonthReadjustable(monthId)`, `isSeasonOpen(season)`.
 - Ranking is always score-derived (not drag-and-drop).
 

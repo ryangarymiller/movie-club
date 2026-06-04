@@ -2,7 +2,25 @@
 
 > Living document. Update status as work completes.
 > Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
-> Last updated: 2026-06-04 (session 11)
+> Last updated: 2026-06-04 (session 12)
+
+---
+
+## Session 12 — Big browser-test batch (5 deploys)
+
+- **Batch 1 — polish:** Awards posters as full 2:3 thumbnails; Home "Your Turn" deadlines + month-specific wording (no "all caught up" with no active month); genre pie tooltip fixed (selection info line, no sticky hover tooltip); score-over-time legend = solid club line + custom legend that dims swatch+label + "tap to highlight" hint; Head-to-Head "?" explainer; **new 11-colour distinct palette + all 5 members reassigned** (red/gold/green/blue/violet) in DB + MEMBER_COLORS.
+- **Batch 2 — popups/back:** ScoreModal portals to `<body>` (z-200) so it's never behind the film overlay; `.mc-modal-panel` caps to 100dvh + internal scroll (no off-screen modals); notification bulletin sheet = flex-column 85dvh (scrolls); **Android Back closes the top popup** via a shared `useBackClose` coordinator (film/member/score/pick/notification overlays).
+- **Icon:** film-themed clapperboard `public/icon.svg` + `manifest.webmanifest` + favicon; index.html links manifest/apple-touch/theme-color.
+- **Batch 3 — month/pick lifecycle redesign:** always one active + one upcoming; picks target the upcoming month (active picks locked); `activate_month` RPC (single-active + materialize + next-month + readjustment auto-open); `months.auto_activate` + soft client auto-activation (12am PT); removed month Deactivate; This Month films sorted by deadline + "for next month" wording; admin Upcoming Picks includes historical pickers. May activated live.
+- **Batch 4 — admin/RLS + readjustment:** `users` SELECT RLS fixed so admins read inactive members (`is_admin()` SECURITY DEFINER, recursion-safe) — deactivate works again; test account filtered from Members tab; readjustment automation (`app_settings.readjustment_length_days`, `seasons.readjustment_auto`, auto-open on season change at 12am PT; clean date default — no "3:06pm").
+- **Batch 5:** Watchlist "+ Queue" button + pointer-based draft-queue drag (works on touch); deeper `tmdb_cast` backfill (~40) so the Connection Web bridges Adaptation↔BJM (Cusack/Keener/Malkovich) + more; **member full-stats popup** (`MemberStatsOverlay` + context) opened from the member profile overlay and the Stats Members-tab card — reuses `MeTab`, renders in the member's colour (root accent override), closes back to where you were.
+- **Deferred:** member pick-change request flow (active-month, zero-scores); Android Back restoring the last sub-tab (route tabs via URL); film tags already done.
+
+### New files (session 12)
+- `src/lib/useBackClose.js` — back-button popup coordinator.
+- `src/context/MemberStatsOverlayContext.jsx` + `src/components/MemberStatsOverlay.jsx` — member full-stats popup.
+- `public/icon.svg`, `public/manifest.webmanifest` — PWA icon + manifest.
+- Migrations: `month_lifecycle_redesign`, `users_admin_read_inactive`, `readjustment_automation`.
 
 ---
 
