@@ -108,7 +108,7 @@ export default function MemberStatsOverlay() {
   return createPortal((
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 90, // below the film overlay (100) it opens
+        position: 'fixed', inset: 0, zIndex: 130, // above the member overlay (120); its own film overlay rides inside this stacking context
         background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
         overflowY: 'auto', WebkitOverflowScrolling: 'touch',
         opacity: visible ? 1 : 0, transition: 'opacity 0.2s ease',

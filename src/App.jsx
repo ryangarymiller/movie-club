@@ -7,6 +7,7 @@ import { NotificationsProvider } from './context/NotificationsContext'
 import { ReadjustmentProvider } from './context/ReadjustmentContext'
 import { ThemeProvider } from './context/ThemeContext'
 import AppLayout from './components/layout/AppLayout'
+import ScrollRestorer from './components/ScrollRestorer'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 import NotApproved from './pages/NotApproved'
@@ -102,7 +103,9 @@ function MemberOverlayHost() {
   return (
     <div
       className="mc-modal-backdrop"
-      style={{ zIndex: 60, background: 'rgba(0,0,0,0.72)' }}
+      // Above the film overlay (z100) so a profile opened from a film sits on top
+      // of it — Back then closes the profile and reveals the film underneath.
+      style={{ zIndex: 120, background: 'rgba(0,0,0,0.72)' }}
       onClick={e => { if (e.target === e.currentTarget) close() }}
     >
       <div
@@ -131,6 +134,7 @@ export default function App() {
             <ReadjustmentProvider>
               <MemberOverlayProvider>
                 <MemberStatsOverlayProvider>
+                  <ScrollRestorer />
                   <AppRoutes />
                   <MemberOverlayHost />
                   <MemberStatsOverlay />

@@ -1187,12 +1187,13 @@ export function FilmDetailOverlay({ movie, onClose }) {
   useBackClose(!!movie, handleClose)
 
   const { openMember } = useMemberOverlay()
-  // Open a member's profile overlay, closing the film overlay first.
+  // Open a member's profile overlay ON TOP of this film (the member overlay sits
+  // at a higher z-index). Keeping the film mounted underneath means Back closes
+  // the profile and reveals the film again — instead of navigating the page away.
   const goToProfile = useCallback((userId) => {
     if (!userId) return
-    setVisible(false)
-    setTimeout(() => { onClose(); openMember(userId) }, 240)
-  }, [openMember, onClose])
+    openMember(userId)
+  }, [openMember])
 
   // Navigate to a tab on the Films page (genre filter / vault), closing the overlay.
   const goToFilms = useCallback((params) => {

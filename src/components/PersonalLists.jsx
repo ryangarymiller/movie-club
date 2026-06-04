@@ -258,36 +258,44 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
 
 // ── Draft Queue (ranked) — presentational; state is owned by PersonalLists ────
 function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
-  // Pointer-based drag (works on touch, unlike native HTML5 drag). The handle
-  // captures the pointer; as it moves past a row's midpoint we reorder one step.
+  // Pointer-based "lift and follow" drag (works on touch, unlike native HTML5
+  // drag). The grabbed row tracks the finger continuously via translateY; the
+  // other rows slide to open a gap; the target slot is the grabbed row's origin
+  // shifted by whole row-heights (so it snaps once you pass the half-row
+  // threshold). The data only reorders on release — keeping the drag smooth.
   const containerRef = useRef(null)
-  const [dragId, setDragId] = useState(null)
-  const dragIndexRef = useRef(null)
+  const [drag, setDrag] = useState(null) // { id, from, startY, dy, over, rowH }
 
   function handlePointerDown(e, idx) {
-    setDragId(items[idx].id)
-    dragIndexRef.current = idx
+    const rows = Array.from(containerRef.current?.children ?? [])
+    const rowH = rows[idx]?.getBoundingClientRect().height ?? 56
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* unsupported */ }
+    setDrag({ id: items[idx].id, from: idx, startY: e.clientY, dy: 0, over: idx, rowH })
   }
   function handlePointerMove(e) {
-    if (dragId == null || !containerRef.current) return
-    const rows = Array.from(containerRef.current.children)
-    const y = e.clientY
-    let target = rows.findIndex(r => {
-      const rect = r.getBoundingClientRect()
-      return y < rect.top + rect.height / 2
+    setDrag(d => {
+      if (!d) return d
+      const dy = e.clientY - d.startY
+      let over = d.from + Math.round(dy / d.rowH)
+      over = Math.max(0, Math.min(items.length - 1, over))
+      return { ...d, dy, over }
     })
-    if (target === -1) target = rows.length - 1
-    const from = dragIndexRef.current
-    if (from != null && target >= 0 && target !== from) {
-      onMove(from, target)
-      dragIndexRef.current = target
-    }
   }
   function handlePointerUp(e) {
-    setDragId(null)
-    dragIndexRef.current = null
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    setDrag(d => {
+      if (d && d.over !== d.from) onMove(d.from, d.over)
+      return null
+    })
+  }
+
+  // How far row i should shift while a drag is in flight (opens the gap).
+  function rowShift(i) {
+    if (!drag) return 0
+    if (i === drag.from) return drag.dy
+    if (drag.over > drag.from && i > drag.from && i <= drag.over) return -drag.rowH
+    if (drag.over < drag.from && i < drag.from && i >= drag.over) return drag.rowH
+    return 0
   }
 
   const existingIds = new Set((items ?? []).map(i => i.tmdb_id))
@@ -304,15 +312,22 @@ function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
       ) : items.length === 0 ? (
         <EmptyState>Your draft queue is empty. Queue up pick ideas above.</EmptyState>
       ) : (
-        <div ref={containerRef} style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--fg-rgb), 0.06)' }}>
-          {items.map((it, i) => (
+        <div ref={containerRef} style={{ borderRadius: '12px', border: '1px solid rgba(var(--fg-rgb), 0.06)', position: 'relative' }}>
+          {items.map((it, i) => {
+            const dragging = drag?.id === it.id
+            return (
             <div
               key={it.id}
               style={{
                 display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px 9px 12px',
-                background: dragId === it.id ? 'rgba(var(--accent-rgb), 0.12)' : 'rgba(var(--fg-rgb), 0.02)',
+                background: dragging ? 'rgba(var(--accent-rgb), 0.14)' : 'rgba(var(--fg-rgb), 0.02)',
                 borderBottom: i < items.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
-                transition: 'background 0.12s ease',
+                borderRadius: i === 0 ? '12px 12px 0 0' : i === items.length - 1 ? '0 0 12px 12px' : 0,
+                transform: `translateY(${rowShift(i)}px)`,
+                transition: dragging ? 'none' : 'transform 0.16s ease, background 0.12s ease',
+                position: 'relative',
+                zIndex: dragging ? 5 : 1,
+                boxShadow: dragging ? '0 8px 24px rgba(0,0,0,0.45)' : 'none',
               }}
             >
               <span
@@ -340,7 +355,8 @@ function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
                 <IconBtn onClick={() => onRemove(it.id)} title="Remove from queue">✕</IconBtn>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
