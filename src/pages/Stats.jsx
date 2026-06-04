@@ -2726,6 +2726,327 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
   )
 }
 
+// ─── Connection Web · 6 Degrees ──────────────────────────────────────────────
+// A custom node-link "constellation": every film the club has watched, laid out
+// on a ring, with edges drawn between films that share a top-billed actor or a
+// director. Hover/tap a film to light up its threads and read who links them.
+// Built as raw SVG (no Recharts) — the graph shape is bespoke. Pure theme tokens
+// so it reads on both light and dark.
+
+// Shorten a film title for the ring labels: drop trailing subtitle clauses after
+// a colon, then a comma, and hard-cap the length so labels never collide.
+function shortFilmTitle(title) {
+  if (!title) return ''
+  let t = String(title).split(':')[0].split(',')[0].trim()
+  if (t.length > 22) t = t.slice(0, 20).trimEnd() + '…'
+  return t
+}
+
+function buildConnectionGraph(movies) {
+  // Index people → film ids. Actors are exact, case-sensitive matches on the
+  // tmdb_cast array; a shared non-null director is also a bridge (labelled).
+  const personFilms = new Map() // personLabel -> Set(movieId)
+  const add = (label, id) => {
+    if (!personFilms.has(label)) personFilms.set(label, new Set())
+    personFilms.get(label).add(id)
+  }
+  for (const m of movies) {
+    if (Array.isArray(m.tmdb_cast)) {
+      for (const name of m.tmdb_cast) {
+        if (typeof name === 'string' && name.trim()) add(name, m.id)
+      }
+    }
+    if (typeof m.director === 'string' && m.director.trim()) {
+      add(`dir. ${m.director.trim()}`, m.id)
+    }
+  }
+
+  // For each bridge person (in ≥2 films), connect every pair of their films.
+  // Edge key is the sorted id pair; we accumulate the people on each edge.
+  const movieById = new Map(movies.map(m => [m.id, m]))
+  const edgeMap = new Map() // "a|b" -> { a, b, people:Set }
+  const connectedIds = new Set()
+  for (const [label, set] of personFilms) {
+    if (set.size < 2) continue
+    const ids = [...set]
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = ids[i], b = ids[j]
+        const key = a < b ? `${a}|${b}` : `${b}|${a}`
+        if (!edgeMap.has(key)) edgeMap.set(key, { a: key.split('|')[0], b: key.split('|')[1], people: new Set() })
+        edgeMap.get(key).people.add(label)
+        connectedIds.add(a); connectedIds.add(b)
+      }
+    }
+  }
+
+  const edges = [...edgeMap.values()].map(e => ({
+    a: e.a, b: e.b, people: [...e.people].sort(),
+  }))
+
+  // Degree = number of distinct neighbour films (drives node size / hub glow).
+  const degree = new Map()
+  for (const id of connectedIds) degree.set(id, 0)
+  const neighbours = new Map()
+  for (const id of connectedIds) neighbours.set(id, new Set())
+  for (const e of edges) {
+    neighbours.get(e.a).add(e.b)
+    neighbours.get(e.b).add(e.a)
+  }
+  for (const id of connectedIds) degree.set(id, neighbours.get(id).size)
+
+  // Order nodes so hubs sit opposite-ish and labels breathe: sort by degree desc
+  // then title — keeps the busiest films from clustering on one arc.
+  const nodes = [...connectedIds]
+    .map(id => movieById.get(id))
+    .filter(Boolean)
+    .sort((x, y) => (degree.get(y.id) - degree.get(x.id)) || String(x.title).localeCompare(String(y.title)))
+    .map(m => ({ id: m.id, movie: m, title: m.title, degree: degree.get(m.id) || 0 }))
+
+  return { nodes, edges, neighbours }
+}
+
+function ConnectionWeb({ movies = [], onFilm }) {
+  const accent = accentColor()
+  const [active, setActive] = useState(null) // hovered/tapped movie id
+
+  const graph = useMemo(() => buildConnectionGraph(movies), [movies])
+  const { nodes, edges } = graph
+
+  // Radial layout in a fixed viewBox; the SVG scales to its container width.
+  const VB = 460
+  const cx = VB / 2
+  const cy = VB / 2
+  const R = VB * 0.34 // ring radius — leaves room for outside labels
+  const pos = useMemo(() => {
+    const map = new Map()
+    const n = nodes.length || 1
+    nodes.forEach((node, i) => {
+      // Start at the top (−90°) and go clockwise.
+      const ang = (-Math.PI / 2) + (i / n) * Math.PI * 2
+      map.set(node.id, {
+        x: cx + R * Math.cos(ang),
+        y: cy + R * Math.sin(ang),
+        ang,
+      })
+    })
+    return map
+  }, [nodes, cx, cy, R])
+
+  // Which edges/nodes are lit by the current selection.
+  const litNodeIds = useMemo(() => {
+    if (active == null) return null
+    const s = new Set([active])
+    for (const e of edges) {
+      if (e.a === active) s.add(e.b)
+      if (e.b === active) s.add(e.a)
+    }
+    return s
+  }, [active, edges])
+
+  const activeEdges = useMemo(
+    () => (active == null ? [] : edges.filter(e => e.a === active || e.b === active)),
+    [active, edges],
+  )
+
+  // Caption: people linking the active film to its neighbours (deduped).
+  const linkPeople = useMemo(() => {
+    const set = new Set()
+    for (const e of activeEdges) for (const p of e.people) set.add(p)
+    return [...set]
+  }, [activeEdges])
+
+  const activeMovie = active != null ? nodes.find(n => n.id === active)?.movie : null
+
+  if (nodes.length === 0) {
+    return (
+      <div>
+        <ConnectionWebHeading />
+        <GlassCard style={{ padding: '28px 20px' }}>
+          <ChartPlaceholder height={90}>
+            No shared actors or directors yet — connections appear as the club watches more films.
+          </ChartPlaceholder>
+        </GlassCard>
+      </div>
+    )
+  }
+
+  // Build a gentle quadratic curve between two points, bowing toward centre.
+  const curve = (p1, p2) => {
+    const mx = (p1.x + p2.x) / 2
+    const my = (p1.y + p2.y) / 2
+    // Pull the control point a fraction of the way toward the hub for an arc.
+    const qx = mx + (cx - mx) * 0.22
+    const qy = my + (cy - my) * 0.22
+    return `M ${p1.x} ${p1.y} Q ${qx} ${qy} ${p2.x} ${p2.y}`
+  }
+
+  const clear = () => setActive(null)
+
+  return (
+    <div>
+      <ConnectionWebHeading />
+      <GlassCard style={{ padding: '14px 10px 18px', overflow: 'hidden' }}>
+        <svg
+          viewBox={`0 0 ${VB} ${VB}`}
+          width="100%"
+          role="img"
+          aria-label="Connection web of films linked by shared actors or directors"
+          style={{ display: 'block', maxWidth: '520px', margin: '0 auto', touchAction: 'manipulation' }}
+          onClick={(e) => { if (e.target === e.currentTarget) clear() }}
+        >
+          {/* faint backing ring for depth */}
+          <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(var(--fg-rgb),0.05)" strokeWidth="1" />
+
+          {/* EDGES — drawn under nodes. Dim when something else is selected. */}
+          <g>
+            {edges.map((e, i) => {
+              const p1 = pos.get(e.a)
+              const p2 = pos.get(e.b)
+              if (!p1 || !p2) return null
+              const lit = active != null && (e.a === active || e.b === active)
+              const dim = active != null && !lit
+              return (
+                <path
+                  key={i}
+                  d={curve(p1, p2)}
+                  fill="none"
+                  stroke={lit ? accent : 'rgba(var(--fg-rgb),0.16)'}
+                  strokeWidth={lit ? 2 : 1}
+                  strokeLinecap="round"
+                  style={{
+                    opacity: dim ? 0.12 : lit ? 0.95 : 0.6,
+                    transition: 'opacity 0.25s ease, stroke 0.25s ease, stroke-width 0.25s ease',
+                  }}
+                />
+              )
+            })}
+          </g>
+
+          {/* NODES */}
+          <g>
+            {nodes.map((node) => {
+              const p = pos.get(node.id)
+              if (!p) return null
+              const isActive = active === node.id
+              const lit = litNodeIds == null || litNodeIds.has(node.id)
+              const dim = litNodeIds != null && !litNodeIds.has(node.id)
+              // Hubs read a touch bigger.
+              const r = 6 + Math.min(node.degree, 4) * 1.6
+              // Label sits just outside the ring; anchor by side to avoid overlap.
+              const out = 1 + (r + 9) / R
+              const lx = cx + (p.x - cx) * out
+              const ly = cy + (p.y - cy) * out
+              const cosA = Math.cos(p.ang)
+              const anchor = Math.abs(cosA) < 0.3 ? 'middle' : cosA > 0 ? 'start' : 'end'
+              return (
+                <g
+                  key={node.id}
+                  style={{ cursor: 'pointer', transition: 'opacity 0.25s ease', opacity: dim ? 0.32 : 1 }}
+                  onMouseEnter={() => setActive(node.id)}
+                  onMouseLeave={() => setActive(a => (a === node.id ? null : a))}
+                  onClick={(e) => { e.stopPropagation(); onFilm?.(node.movie) }}
+                  onTouchStart={(e) => { e.stopPropagation(); setActive(node.id) }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`${node.title} — open film`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFilm?.(node.movie) }
+                  }}
+                  onFocus={() => setActive(node.id)}
+                  onBlur={() => setActive(a => (a === node.id ? null : a))}
+                >
+                  {/* glow halo for the active node */}
+                  {(isActive || (lit && active != null)) && (
+                    <circle cx={p.x} cy={p.y} r={r + 5} fill={accent} opacity={isActive ? 0.22 : 0.12} />
+                  )}
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={r}
+                    fill={lit && active != null ? accent : 'var(--surface)'}
+                    stroke={lit && active != null ? accent : 'rgba(var(--fg-rgb),0.4)'}
+                    strokeWidth={isActive ? 2.5 : 1.5}
+                    style={{ transition: 'fill 0.25s ease, stroke 0.25s ease' }}
+                  />
+                  <text
+                    x={lx}
+                    y={ly}
+                    textAnchor={anchor}
+                    dominantBaseline="middle"
+                    fontFamily="'DM Sans',sans-serif"
+                    fontSize="11"
+                    fontWeight={isActive ? 700 : 500}
+                    fill={dim ? 'var(--text-faint)' : isActive ? 'var(--text-strong)' : 'var(--text-muted)'}
+                    style={{ transition: 'fill 0.25s ease', pointerEvents: 'none' }}
+                  >
+                    {shortFilmTitle(node.title)}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
+        </svg>
+
+        {/* Caption / tooltip area — live updates with the active film. Reserve a
+            fixed height so the layout doesn't jump as it appears. */}
+        <div style={{ minHeight: '44px', marginTop: '8px', padding: '0 10px', textAlign: 'center' }}>
+          {activeMovie ? (
+            <>
+              <p style={{
+                fontFamily: "'Bebas Neue',sans-serif", letterSpacing: '0.04em',
+                fontSize: '1.05rem', color: 'var(--text-strong)', margin: '0 0 2px',
+              }}>
+                {activeMovie.title}
+              </p>
+              <p style={{
+                fontFamily: "'DM Mono',monospace", fontSize: '10.5px', color: 'var(--text-dim)',
+                margin: 0, lineHeight: 1.5,
+              }}>
+                {linkPeople.length > 0
+                  ? <>linked by <span style={{ color: 'var(--accent)' }}>{linkPeople.join(' · ')}</span></>
+                  : 'no shared links'}
+              </p>
+            </>
+          ) : (
+            <p style={{
+              fontFamily: "'DM Mono',monospace", fontSize: '10.5px', color: 'var(--text-faint)',
+              margin: '12px 0 0',
+            }}>
+              Hover or tap a film to trace its connections · tap a film to open it
+            </p>
+          )}
+        </div>
+      </GlassCard>
+    </div>
+  )
+}
+
+function ConnectionWebHeading() {
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <h3 style={{
+        fontFamily: "'Bebas Neue',sans-serif",
+        fontSize: '1.5rem',
+        letterSpacing: '0.04em',
+        color: 'var(--text-strong)',
+        margin: '0 0 2px',
+        lineHeight: 1.05,
+      }}>
+        Connection Web · 6 Degrees
+      </h3>
+      <p style={{
+        fontFamily: "'DM Sans',sans-serif",
+        fontSize: '12px',
+        color: 'var(--text-dim)',
+        margin: 0,
+      }}>
+        Films your club has watched, linked by a shared actor or director.
+      </p>
+    </div>
+  )
+}
+
 function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onMember, onGenre }) {
   // Trend x-axis mode: monthly average vs per-film (chronological watch order).
   const [trendMode, setTrendMode] = useState('month')
@@ -3736,6 +4057,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         </GlassCard>
       </div>
 
+      {/* Connection Web · 6 Degrees — films linked by a shared actor/director */}
+      <ConnectionWeb movies={movies} onFilm={onFilm} />
+
     </div>
   )
 }
@@ -4168,7 +4492,7 @@ export default function Stats() {
       ] = await Promise.all([
         supabase
           .from('movies_safe')
-          .select('id, month_id, title, tmdb_id, poster_url, year_released, director, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
+          .select('id, month_id, title, tmdb_id, poster_url, year_released, director, tmdb_cast, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
         supabase
           .from('ratings')
           .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
