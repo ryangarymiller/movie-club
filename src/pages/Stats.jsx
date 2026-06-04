@@ -3327,6 +3327,12 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
   const [trendMode, setTrendMode] = useState('film')
   // Collapse the (potentially long) per-film spread list to a few rows by default.
   const [spreadShowAll, setSpreadShowAll] = useState(false)
+  // Connection web must not leak UPCOMING-month picks (they aren't revealed yet,
+  // e.g. June's Gattaca) — only films from active/revealed months belong here.
+  const connectionMovies = useMemo(
+    () => movies.filter(m => monthsById[m.month_id]?.status !== 'upcoming'),
+    [movies, monthsById],
+  )
   const stats = useMemo(() => {
     if (!movies.length) return null
 
@@ -4346,7 +4352,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       </div>
 
       {/* Connection Web · 6 Degrees — films linked by a shared actor/director */}
-      <ConnectionWeb movies={movies} onFilm={onFilm} />
+      <ConnectionWeb movies={connectionMovies} onFilm={onFilm} />
 
     </div>
   )
@@ -4873,7 +4879,7 @@ export default function Stats() {
           .eq('user_id', profile.id),
         supabase
           .from('months')
-          .select('id, month_year'),
+          .select('id, month_year, status'),
         supabase
           .from('picker_guesses')
           .select('movie_id, guessed_user_id')
