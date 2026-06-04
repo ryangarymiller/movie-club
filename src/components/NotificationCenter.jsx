@@ -289,6 +289,7 @@ function PanelInner({ notifications, unreadCount, loading, onActivate, onMarkAll
           overflowY: 'auto',
           maxHeight: variant === 'sheet' ? '70vh' : '60vh',
           WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
         }}
       >
         {loading && notifications.length === 0 ? (
@@ -466,7 +467,11 @@ export default function NotificationBell({ className = '', style }) {
           {/* ── Mobile: full-width bottom sheet (below md) ── */}
           <div
             className="mc-modal-backdrop mc-notif-sheet"
-            style={{ zIndex: 80, background: 'rgba(0,0,0,0.6)', alignItems: 'flex-end' }}
+            // Override the generic modal backdrop for a bottom sheet: no padding
+            // (so the panel sits flush to the bottom — otherwise the 0.75rem gap
+            // shows dark backdrop beneath it) and no backdrop scroll/rubber-band
+            // (only the inner list scrolls).
+            style={{ zIndex: 80, background: 'rgba(0,0,0,0.6)', alignItems: 'flex-end', padding: 0, overflowY: 'hidden', overscrollBehavior: 'contain' }}
             onClick={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
           >
             <div

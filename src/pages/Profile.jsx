@@ -473,7 +473,7 @@ export default function Profile({ overlayUserId = null } = {}) {
     setViewedUserLoading(true)
     supabase
       .from('users')
-      .select('id, name, email, user_color, joined_at, role, is_active')
+      .select('id, name, email, user_color, joined_at, role, is_op, is_active')
       .eq('id', userId)
       .single()
       .then(({ data }) => {
@@ -728,13 +728,25 @@ export default function Profile({ overlayUserId = null } = {}) {
     else set.add(typeKey)
     updateNotifPrefs({ muted_types: [...set] })
   }
+  // Sensible default quiet window (overnight) shown when nothing is set yet.
+  const QUIET_DEFAULTS = { quiet_start: '22:00', quiet_end: '08:00' }
   function setQuietHour(field, value) {
     // Empty input clears the bound (stored as null).
-    updateNotifPrefs({ [field]: value ? `${value}:00` : null })
+    if (!value) { updateNotifPrefs({ [field]: null }); return }
+    const other = field === 'quiet_start' ? 'quiet_end' : 'quiet_start'
+    const otherCurrent = (notifPrefs?.[other] ?? '').slice(0, 5)
+    const patch = { [field]: `${value}:00` }
+    // Completing the window: if the other bound is still unset, seed it with its
+    // default so touching either field yields a full, active quiet range.
+    if (!otherCurrent) patch[other] = `${QUIET_DEFAULTS[other]}:00`
+    updateNotifPrefs(patch)
   }
   // <input type="time"> wants HH:MM; the DB stores HH:MM:SS — trim for display.
+  // Fall back to the defaults so the fields autofill instead of showing blank.
   const quietStartVal = (notifPrefs?.quiet_start ?? '').slice(0, 5)
   const quietEndVal = (notifPrefs?.quiet_end ?? '').slice(0, 5)
+  const quietStartShown = quietStartVal || QUIET_DEFAULTS.quiet_start
+  const quietEndShown = quietEndVal || QUIET_DEFAULTS.quiet_end
 
   // ── Sign out ─────────────────────────────────────────────────────────────────
   async function handleSignOut() {
@@ -818,7 +830,10 @@ export default function Profile({ overlayUserId = null } = {}) {
                 >
                   {displayProfile?.name ?? '—'}
                 </h1>
-                {isAdmin && (
+                {/* Tier badge reflects the DISPLAYED member's role (op > admin),
+                    not the signed-in viewer's — so it shows only for actual
+                    admins/op, on their own profile and in the member overlay. */}
+                {(displayProfile?.is_op || displayProfile?.role === 'admin') && (
                   <span
                     style={{
                       fontFamily: "'DM Mono', monospace",
@@ -832,7 +847,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                       lineHeight: 1.6,
                     }}
                   >
-                    Admin
+                    {displayProfile?.is_op ? 'Op' : 'Admin'}
                   </span>
                 )}
               </div>
@@ -1064,7 +1079,7 @@ export default function Profile({ overlayUserId = null } = {}) {
             <button
               onClick={() => {
                 closeMemberOverlay()
-                navigate('/stats?tab=members&memberId=' + displayProfile.id)
+                navigate('/stats?member=' + displayProfile.id)
               }}
               style={{
                 width: '100%',
@@ -1368,8 +1383,8 @@ export default function Profile({ overlayUserId = null } = {}) {
               </p>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
                 {[
-                  { label: 'From', field: 'quiet_start', value: quietStartVal },
-                  { label: 'Until', field: 'quiet_end', value: quietEndVal },
+                  { label: 'From', field: 'quiet_start', value: quietStartShown },
+                  { label: 'Until', field: 'quiet_end', value: quietEndShown },
                 ].map(({ label, field, value }) => (
                   <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ ...LABEL_STYLE, color: 'var(--text-dim)' }}>{label}</span>

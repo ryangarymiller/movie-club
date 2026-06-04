@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
@@ -302,7 +302,7 @@ function ComparisonBar({ data, keys, height = 200, layout = 'vertical', labelKey
   const memberTick = makeMemberTick(memberIds, onMember)
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} layout={layout} margin={{ top: 14, right: 14, left: layout === 'vertical' ? 4 : -20, bottom: 0 }}>
+      <BarChart data={data} layout={layout} margin={{ top: 14, right: 14, left: layout === 'vertical' ? 4 : 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={layout === 'horizontal'} vertical={layout === 'vertical'} />
         {layout === 'vertical' ? (
           <>
@@ -355,10 +355,17 @@ function DonutChart({ data, height = 200, onLegendClick }) {
   // selectedIndex is the single source of truth for which slice is highlighted,
   // so exactly one slice ever lights up and the info line always matches it.
   const [selectedIndex, setSelectedIndex] = useState(null)
+  // Set true the instant a slice is clicked so the chart-background click-away
+  // handler — which fires on bubble immediately after — keeps the new selection
+  // instead of clearing it. Ref-based so it's touch-safe and doesn't rely on
+  // event.stopPropagation (unreliable across Recharts versions).
+  const slicePicked = useRef(false)
   const total = useMemo(() => data.reduce((s, d) => s + (Number(d.value) || 0), 0), [data])
   const sel = selectedIndex != null ? data[selectedIndex] : null
   return (
     <div>
+      {/* Click-away: a click that isn't on a slice clears the selection. */}
+      <div onClick={() => { if (slicePicked.current) { slicePicked.current = false; return } setSelectedIndex(null) }} style={{ cursor: 'default' }}>
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie
@@ -374,7 +381,7 @@ function DonutChart({ data, height = 200, onLegendClick }) {
             isAnimationActive={false}
             activeIndex={selectedIndex == null ? [] : [selectedIndex]}
             activeShape={(props) => <ActiveDonutSlice {...props} />}
-            onClick={(_, i) => setSelectedIndex(prev => (prev === i ? null : i))}
+            onClick={(_, i) => { slicePicked.current = true; setSelectedIndex(prev => (prev === i ? null : i)) }}
             style={{ cursor: 'pointer', outline: 'none' }}
           >
             {data.map((_, i) => (
@@ -386,9 +393,9 @@ function DonutChart({ data, height = 200, onLegendClick }) {
               />
             ))}
           </Pie>
-          <Tooltip content={<ChartTooltip />} />
         </PieChart>
       </ResponsiveContainer>
+      </div>
 
       {/* Selected-slice info line — always reflects the current single selection. */}
       <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--text-dim)', margin: '4px 0 10px', minHeight: '14px' }}>
@@ -1370,7 +1377,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
 
 // ─── Me Tab ───────────────────────────────────────────────────────────────────
 
-function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, monthsById = {}, onFilm, onGenre }) {
+function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, monthsById = {}, onFilm, onGenre, subject = { name: 'You', possessive: 'Your' } }) {
   // Your guess-the-picker accuracy across resolved (picker-revealed) films.
   const guessAcc = useMemo(() => {
     const movieById = {}
@@ -1458,9 +1465,13 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
         const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
         return ta - tb
       })
-      .map(r => {
+      .map((r, i) => {
         const my = r.movie.month_id ? monthsById[r.movie.month_id]?.month_year : null
         return {
+          // Unique numeric x so same-month films stay distinct points (else the
+          // tooltip repeats one film across adjacent points). groupLabel is the
+          // human month label recovered for the (sparse) axis ticks.
+          idx: i,
           groupLabel: my ? formatMonthLabel(my) : '—',
           title: r.movie.title,
           value: Number(r.score),
@@ -1574,7 +1585,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
     )
   }
 
-  const visibleExcVsFinal = showAll ? stats.excVsFinal : stats.excVsFinal.slice(0, 15)
+  const visibleExcVsFinal = showAll ? stats.excVsFinal : stats.excVsFinal.slice(0, 6)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
@@ -1619,7 +1630,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
 
       {/* You vs Club average */}
       <div>
-        <SectionLabel>You vs. Club Average</SectionLabel>
+        <SectionLabel>{subject.name} vs. Club Average</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           <ComparisonBar
             data={stats.myVsClub}
@@ -1644,13 +1655,14 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
 
       {/* Scores Over Time (each individual score, chronological) */}
       <div>
-        <SectionLabel>Your Scores Over Time</SectionLabel>
+        <SectionLabel>{subject.possessive} Scores Over Time</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.scoresOverTime.length >= 2 ? (
             <MonthLineChart
               data={stats.scoresOverTime}
               height={190}
-              xKey="groupLabel"
+              xKey="idx"
+              xLabelKey="groupLabel"
               sparseTicks
               tooltipLabelKey="title"
             />
@@ -1674,7 +1686,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
 
       {/* Percentile */}
       <div>
-        <SectionLabel>Your Generosity Percentile</SectionLabel>
+        <SectionLabel>{subject.possessive} Generosity Percentile</SectionLabel>
         <GlassCard style={{ padding: '18px 20px', textAlign: 'center' }}>
           {stats.myPercentile != null ? (
             <>
@@ -1682,7 +1694,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
                 {Math.round(stats.myPercentile)}<span style={{ fontSize: '1.4rem' }}>%</span>
               </p>
               <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-dim)', fontSize: '12px', margin: '8px 0 0' }}>
-                Your average score is higher than {Math.round(stats.myPercentile)}% of members.
+                {subject.possessive} average score is higher than {Math.round(stats.myPercentile)}% of members.
               </p>
             </>
           ) : (
@@ -1725,7 +1737,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
 
       {/* Personal Season Rankings */}
       <div>
-        <SectionLabel>Your Season Rankings</SectionLabel>
+        <SectionLabel>{subject.possessive} Season Rankings</SectionLabel>
         {stats.seasonRankings.length === 0 ? (
           <ChartPlaceholder>No season data yet.</ChartPlaceholder>
         ) : (
@@ -1739,7 +1751,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
 
       {/* Personal Year Rankings */}
       <div>
-        <SectionLabel>Your Year Rankings</SectionLabel>
+        <SectionLabel>{subject.possessive} Year Rankings</SectionLabel>
         {stats.yearRankings.length === 0 ? (
           <ChartPlaceholder>No yearly data yet.</ChartPlaceholder>
         ) : (
@@ -1834,7 +1846,7 @@ function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, months
             </div>
           ))}
         </GlassCard>
-        {stats.excVsFinal.length > 15 && (
+        {stats.excVsFinal.length > 6 && (
           <button
             onClick={() => setShowAll(v => !v)}
             style={{
@@ -2143,9 +2155,11 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
             const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0
             return ta - tb
           })
-          .map(r => {
+          .map((r, i) => {
             const my = r.movie.month_id ? monthsById[r.movie.month_id]?.month_year : null
             return {
+              // Unique numeric x so same-month films stay distinct points.
+              idx: i,
               groupLabel: my ? formatMonthLabel(my) : '—',
               title: r.movie.title,
               value: Number(r.score),
@@ -2401,7 +2415,8 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
                     data={u.overTime}
                     height={170}
                     color={u.color}
-                    xKey="groupLabel"
+                    xKey="idx"
+                    xLabelKey="groupLabel"
                     sparseTicks
                     tooltipLabelKey="title"
                   />
@@ -2592,7 +2607,7 @@ function ClubVsTmdbChart({ candidates }) {
   return (
     <>
       <ResponsiveContainer width="100%" height={260}>
-        <ScatterChart margin={{ top: 10, right: 16, left: -16, bottom: 18 }}>
+        <ScatterChart margin={{ top: 10, right: 16, left: 0, bottom: 18 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
             type="number" dataKey="tmdb" name="TMDB" domain={axisDomain} allowDecimals
@@ -2808,7 +2823,8 @@ function buildConnectionGraph(movies) {
 
 function ConnectionWeb({ movies = [], onFilm }) {
   const accent = accentColor()
-  const [active, setActive] = useState(null) // hovered/tapped movie id
+  const [active, setActive] = useState(null)         // selected node (film) id
+  const [activeEdge, setActiveEdge] = useState(null) // selected edge index (a single line)
 
   const graph = useMemo(() => buildConnectionGraph(movies), [movies])
   const { nodes, edges } = graph
@@ -2833,8 +2849,13 @@ function ConnectionWeb({ movies = [], onFilm }) {
     return map
   }, [nodes, cx, cy, R])
 
-  // Which edges/nodes are lit by the current selection.
+  const selectedEdge = activeEdge != null ? (edges[activeEdge] || null) : null
+  const anySelection = active != null || selectedEdge != null
+
+  // Which nodes are lit. An edge selection lights ONLY that line's two endpoints;
+  // a node selection lights the node and every film it shares a person with.
   const litNodeIds = useMemo(() => {
+    if (selectedEdge) return new Set([selectedEdge.a, selectedEdge.b])
     if (active == null) return null
     const s = new Set([active])
     for (const e of edges) {
@@ -2842,12 +2863,15 @@ function ConnectionWeb({ movies = [], onFilm }) {
       if (e.b === active) s.add(e.a)
     }
     return s
-  }, [active, edges])
+  }, [active, selectedEdge, edges])
 
-  const activeEdges = useMemo(
-    () => (active == null ? [] : edges.filter(e => e.a === active || e.b === active)),
-    [active, edges],
-  )
+  // Edges feeding the caption: just the one line when an edge is selected, else
+  // every line touching the selected node.
+  const activeEdges = useMemo(() => {
+    if (selectedEdge) return [selectedEdge]
+    if (active == null) return []
+    return edges.filter(e => e.a === active || e.b === active)
+  }, [active, selectedEdge, edges])
 
   // Caption: people linking the active film to its neighbours (deduped).
   const linkPeople = useMemo(() => {
@@ -2857,6 +2881,9 @@ function ConnectionWeb({ movies = [], onFilm }) {
   }, [activeEdges])
 
   const activeMovie = active != null ? nodes.find(n => n.id === active)?.movie : null
+  const edgeFilms = selectedEdge
+    ? [nodes.find(n => n.id === selectedEdge.a)?.movie, nodes.find(n => n.id === selectedEdge.b)?.movie].filter(Boolean)
+    : []
 
   if (nodes.length === 0) {
     return (
@@ -2881,7 +2908,7 @@ function ConnectionWeb({ movies = [], onFilm }) {
     return `M ${p1.x} ${p1.y} Q ${qx} ${qy} ${p2.x} ${p2.y}`
   }
 
-  const clear = () => setActive(null)
+  const clear = () => { setActive(null); setActiveEdge(null) }
 
   return (
     <div>
@@ -2892,33 +2919,45 @@ function ConnectionWeb({ movies = [], onFilm }) {
           width="100%"
           role="img"
           aria-label="Connection web of films linked by shared actors or directors"
-          style={{ display: 'block', maxWidth: '520px', margin: '0 auto', touchAction: 'manipulation' }}
+          style={{ display: 'block', maxWidth: '520px', margin: '0 auto', touchAction: 'manipulation', outline: 'none' }}
           onClick={(e) => { if (e.target === e.currentTarget) clear() }}
         >
           {/* faint backing ring for depth */}
           <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(var(--fg-rgb),0.05)" strokeWidth="1" />
 
-          {/* EDGES — drawn under nodes. Dim when something else is selected. */}
+          {/* EDGES — drawn under nodes. Click a line to isolate that single
+              connection. A fat transparent path gives the thin line a tap target. */}
           <g>
             {edges.map((e, i) => {
               const p1 = pos.get(e.a)
               const p2 = pos.get(e.b)
               if (!p1 || !p2) return null
-              const lit = active != null && (e.a === active || e.b === active)
-              const dim = active != null && !lit
+              const lit = selectedEdge ? i === activeEdge : (active != null && (e.a === active || e.b === active))
+              const dim = anySelection && !lit
+              const d = curve(p1, p2)
               return (
-                <path
-                  key={i}
-                  d={curve(p1, p2)}
-                  fill="none"
-                  stroke={lit ? accent : 'rgba(var(--fg-rgb),0.16)'}
-                  strokeWidth={lit ? 2 : 1}
-                  strokeLinecap="round"
-                  style={{
-                    opacity: dim ? 0.12 : lit ? 0.95 : 0.6,
-                    transition: 'opacity 0.25s ease, stroke 0.25s ease, stroke-width 0.25s ease',
-                  }}
-                />
+                <g key={i}>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={14}
+                    style={{ cursor: 'pointer', outline: 'none' }}
+                    onClick={(ev) => { ev.stopPropagation(); setActive(null); setActiveEdge(prev => (prev === i ? null : i)) }}
+                  />
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={lit ? accent : 'rgba(var(--fg-rgb),0.16)'}
+                    strokeWidth={lit ? 2 : 1}
+                    strokeLinecap="round"
+                    pointerEvents="none"
+                    style={{
+                      opacity: dim ? 0.1 : lit ? 0.95 : 0.6,
+                      transition: 'opacity 0.25s ease, stroke 0.25s ease, stroke-width 0.25s ease',
+                    }}
+                  />
+                </g>
               )
             })}
           </g>
@@ -2942,30 +2981,36 @@ function ConnectionWeb({ movies = [], onFilm }) {
               return (
                 <g
                   key={node.id}
-                  style={{ cursor: 'pointer', transition: 'opacity 0.25s ease', opacity: dim ? 0.32 : 1 }}
-                  onMouseEnter={() => setActive(node.id)}
-                  onMouseLeave={() => setActive(a => (a === node.id ? null : a))}
-                  onClick={(e) => { e.stopPropagation(); onFilm?.(node.movie) }}
-                  onTouchStart={(e) => { e.stopPropagation(); setActive(node.id) }}
+                  style={{ cursor: 'pointer', outline: 'none', transition: 'opacity 0.25s ease', opacity: dim ? 0.32 : 1 }}
+                  // First tap selects the film (traces its connections); a second
+                  // tap on the already-selected film opens its page.
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (active === node.id) onFilm?.(node.movie)
+                    else { setActiveEdge(null); setActive(node.id) }
+                  }}
                   tabIndex={0}
                   role="button"
-                  aria-label={`${node.title} — open film`}
+                  aria-label={`${node.title} — tap to trace connections, tap again to open`}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFilm?.(node.movie) }
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      if (active === node.id) onFilm?.(node.movie)
+                      else { setActiveEdge(null); setActive(node.id) }
+                    }
                   }}
-                  onFocus={() => setActive(node.id)}
-                  onBlur={() => setActive(a => (a === node.id ? null : a))}
                 >
-                  {/* glow halo for the active node */}
-                  {(isActive || (lit && active != null)) && (
+                  {/* glow halo for the highlighted node(s) — the selected node,
+                      or either endpoint of a selected line. */}
+                  {(isActive || (lit && anySelection)) && (
                     <circle cx={p.x} cy={p.y} r={r + 5} fill={accent} opacity={isActive ? 0.22 : 0.12} />
                   )}
                   <circle
                     cx={p.x}
                     cy={p.y}
                     r={r}
-                    fill={lit && active != null ? accent : 'var(--surface)'}
-                    stroke={lit && active != null ? accent : 'rgba(var(--fg-rgb),0.4)'}
+                    fill={lit && anySelection ? accent : 'var(--surface)'}
+                    stroke={lit && anySelection ? accent : 'rgba(var(--fg-rgb),0.4)'}
                     strokeWidth={isActive ? 2.5 : 1.5}
                     style={{ transition: 'fill 0.25s ease, stroke 0.25s ease' }}
                   />
@@ -3008,12 +3053,29 @@ function ConnectionWeb({ movies = [], onFilm }) {
                   : 'no shared links'}
               </p>
             </>
+          ) : selectedEdge ? (
+            <>
+              <p style={{
+                fontFamily: "'Bebas Neue',sans-serif", letterSpacing: '0.04em',
+                fontSize: '1.05rem', color: 'var(--text-strong)', margin: '0 0 2px',
+              }}>
+                {edgeFilms.map(m => m.title).join('  ↔  ')}
+              </p>
+              <p style={{
+                fontFamily: "'DM Mono',monospace", fontSize: '10.5px', color: 'var(--text-dim)',
+                margin: 0, lineHeight: 1.5,
+              }}>
+                {linkPeople.length > 0
+                  ? <>linked by <span style={{ color: 'var(--accent)' }}>{linkPeople.join(' · ')}</span></>
+                  : 'shared link'}
+              </p>
+            </>
           ) : (
             <p style={{
               fontFamily: "'DM Mono',monospace", fontSize: '10.5px', color: 'var(--text-faint)',
               margin: '12px 0 0',
             }}>
-              Hover or tap a film to trace its connections · tap a film to open it
+              Tap a film to trace its connections, tap again to open it · tap a line to isolate one connection
             </p>
           )}
         </div>
@@ -3048,8 +3110,9 @@ function ConnectionWebHeading() {
 }
 
 function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onMember, onGenre }) {
-  // Trend x-axis mode: monthly average vs per-film (chronological watch order).
-  const [trendMode, setTrendMode] = useState('month')
+  // Trend x-axis mode: per-film (chronological watch order) vs monthly average.
+  // Default to per-film — it's the more granular, requested-first view.
+  const [trendMode, setTrendMode] = useState('film')
   // Collapse the (potentially long) per-film spread list to a few rows by default.
   const [spreadShowAll, setSpreadShowAll] = useState(false)
   const stats = useMemo(() => {
@@ -3501,7 +3564,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
           <SectionLabel>Score Over Time · Club vs Members</SectionLabel>
           <div style={{ display: 'flex', gap: '4px', background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: '8px', padding: '3px', marginBottom: '12px', flexShrink: 0 }}>
-            {['month', 'film'].map(mode => (
+            {['film', 'month'].map(mode => (
               <button
                 key={mode}
                 onClick={() => setTrendMode(mode)}
@@ -4441,21 +4504,54 @@ const TABS = ['Overview', 'Me', 'Members', 'Club', 'Head to Head']
 export default function Stats() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  // Honor a ?tab= deep link (e.g. Home's "all caught up" box → ?tab=me), matched case-insensitively.
-  // Deep link: /stats?tab=members&memberId=<id> opens the Members tab focused on
-  // a specific member (Profile produces this link). Read both on mount.
-  const initialQuery = (() => {
-    const q = new URLSearchParams(window.location.search)
+  const location = useLocation()
+  // Deep-link query params (matched case-insensitively):
+  //   ?tab=<name>                 → open that tab (e.g. Home's "all caught up")
+  //   ?tab=members&memberId=<id>  → Members tab focused on a member (legacy)
+  //   ?member=<id>                → that member's full Me-style stats breakdown
+  const parseQuery = (search) => {
+    const q = new URLSearchParams(search)
     const t = q.get('tab')
     const tab = TABS.find(x => x.toLowerCase() === (t ?? '').toLowerCase()) ?? 'Overview'
     const memberId = q.get('memberId')
-    // A memberId implies the Members tab even if tab= is absent/mismatched.
-    return { tab: memberId ? 'Members' : tab, memberId: memberId || null }
-  })()
+    const member = q.get('member')
+    return { tab: memberId ? 'Members' : tab, memberId: memberId || null, member: member || null }
+  }
+  const initialQuery = parseQuery(window.location.search)
   const [activeTab, setActiveTab] = useState(initialQuery.tab)
   // One-shot focus target consumed by MembersTab (expand + scroll), then cleared.
   const [focusMemberId, setFocusMemberId] = useState(initialQuery.memberId)
+  // When set (and not the signed-in user), Stats shows that member's full
+  // Me-tab-style breakdown in place of the tab bar.
+  const [viewMemberId, setViewMemberId] = useState(initialQuery.member)
+  const [viewMemberGuesses, setViewMemberGuesses] = useState([])
   const [selectedMovie, setSelectedMovie] = useState(null)
+
+  // Re-sync from the URL on every navigation so the links work even when Stats
+  // is already mounted (React Router updates location.search without remounting,
+  // which the old mount-only read missed → "stays on the last location").
+  useEffect(() => {
+    const q = parseQuery(location.search)
+    setViewMemberId(q.member)
+    if (!q.member) {
+      if (q.memberId) { setActiveTab('Members'); setFocusMemberId(q.memberId) }
+      else setActiveTab(q.tab)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search])
+
+  // Load the viewed member's picker guesses (for their guess-accuracy stat).
+  // RLS may scope this to revealed films; an empty result degrades cleanly.
+  useEffect(() => {
+    if (!viewMemberId || viewMemberId === profile?.id) { setViewMemberGuesses([]); return }
+    let cancelled = false
+    supabase
+      .from('picker_guesses')
+      .select('movie_id, guessed_user_id')
+      .eq('guessing_user_id', viewMemberId)
+      .then(({ data }) => { if (!cancelled) setViewMemberGuesses(data ?? []) })
+    return () => { cancelled = true }
+  }, [viewMemberId, profile?.id])
 
   // Spec: films are clickable everywhere in Stats (open the film overlay) and
   // member names navigate to that member's profile.
@@ -4548,6 +4644,20 @@ export default function Stats() {
     load()
   }, [profile])
 
+  // The viewed member's own ratings, sliced from the shared (already test/Zack-
+  // filtered) set — no extra fetch needed since allRatings carries user_id.
+  const viewedRatings = useMemo(
+    () => (viewMemberId && profile && viewMemberId !== profile.id)
+      ? allRatings.filter(r => r.user_id === viewMemberId)
+      : [],
+    [viewMemberId, profile, allRatings],
+  )
+
+  // Plain (non-hook) derivations for render.
+  const isViewingOther = !!viewMemberId && !!profile && viewMemberId !== profile.id
+  const viewedMember = isViewingOther ? users.find(u => u.id === viewMemberId) : null
+  const viewedFirstName = viewedMember?.name?.split(' ')[0] || ''
+
   return (
     <div style={{
       background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
@@ -4584,6 +4694,45 @@ export default function Stats() {
           </h1>
         </div>
 
+        {isViewingOther ? (
+          <div style={{ animation: 'fadeUp 0.3s ease both' }}>
+            {/* Viewing-member banner + back affordance. Renders that member's full
+                Me-tab breakdown (not the limited Members card). */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: '12px', marginBottom: '20px', padding: '12px 14px',
+              borderRadius: '12px', background: 'rgba(var(--fg-rgb), 0.04)',
+              border: '1px solid rgba(var(--fg-rgb), 0.07)',
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--hairline)', margin: '0 0 3px' }}>
+                  Viewing member
+                </p>
+                <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', letterSpacing: '0.03em', color: 'var(--text-strong)', margin: 0, lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {viewedMember ? `${viewedFirstName}'s Stats` : 'Member Stats'}
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/stats?tab=me')}
+                style={{ flexShrink: 0, padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(var(--fg-rgb), 0.12)', background: 'transparent', color: 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif", fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                ← Back to my stats
+              </button>
+            </div>
+            <MeTab
+              movies={movies}
+              ratings={viewedRatings}
+              allRatings={allRatings}
+              guesses={viewMemberGuesses}
+              loading={loading}
+              monthsById={monthsById}
+              onFilm={onFilm}
+              onGenre={onGenre}
+              subject={{ name: viewedFirstName || 'They', possessive: viewedFirstName ? `${viewedFirstName}'s` : 'Their' }}
+            />
+          </div>
+        ) : (
+        <>
         {/* Tab Bar */}
         <div style={{
           display: 'flex', gap: '4px',
@@ -4677,6 +4826,8 @@ export default function Stats() {
             />
           )}
         </div>
+        </>
+        )}
       </div>
 
       {/* Film detail overlay — opened by clicking any film card in Stats */}

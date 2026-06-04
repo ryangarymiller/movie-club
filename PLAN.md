@@ -2,7 +2,31 @@
 
 > Living document. Update status as work completes.
 > Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
-> Last updated: 2026-06-04 (session 10)
+> Last updated: 2026-06-04 (session 11)
+
+---
+
+## Session 11 — Browser-test fixes (charts, profiles, admin, connection web)
+
+### Stats
+- [x] **Genre pie** — true single-select; removed the Recharts `<Tooltip>` whose touch-persistent active index kept the first slice + its tooltip stuck on; click-away on the chart background deselects (ref-flag, not `stopPropagation`).
+- [x] **Y-axis label clipping** — Club-vs-TMDB scatter (`left:-16→0`) and Avg-by-Decade bar (ComparisonBar horizontal `left:-20→0`) no longer clip their numeric Y labels (the clipped `X.0` remnants were reading as "0").
+- [x] **Trend tooltips** — Me + Members "scores over time" key each point by a unique `idx` (+ `xLabelKey`), so same-month films stay distinct (no more one film repeated across adjacent points). Same fix the Club by-film chart already had.
+- [x] **Score Over Time toggle** defaults to per-**Film** (Month second).
+- [x] **Excitement-vs-final list** collapses to a 6-row preview with a reliable Show all / Show less.
+- [x] **Full member stats** — "View full stats" → `/stats?member=<id>` renders that member's full Me-tab breakdown (relabeled to their name) instead of the limited Members card; Stats re-syncs from the URL via `useLocation` so it works when already mounted.
+- [x] **Connection Web** — single-tap selects a node (traces its links), second tap opens it; tap a line to isolate one connection (fat invisible hit-path); removed the white focus box; edge endpoints light in accent.
+
+### Theme
+- [x] **`--accent-rgb` defined** for all 7 accents × light/dark — fixes taste-correlation + genre-blindspot (and all `rgba(var(--accent-rgb),…)`) silently falling back to purple.
+
+### Profile / Notifications
+- [x] **Tier badge** reflects the displayed member's role (Op / Admin), not the viewer's — others no longer show "Admin".
+- [x] **Quiet-hours** fields autofill 22:00–08:00 and complete the window when either bound is set.
+- [x] **Bulletin** mobile sheet pinned flush to the bottom with contained scroll (no backdrop gap / rubber-band).
+
+### Admin
+- [x] **Deactivate month** button (status → `upcoming`, non-destructive, confirm) — counterpart to Activate / Trigger now; for reopening June pick-collection.
 
 ---
 

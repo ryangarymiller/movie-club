@@ -173,10 +173,10 @@ A `public.notifications` table (see Key Data Models) stores all in-app notificat
 
 ### Notification center
 - `src/context/NotificationsContext.jsx` — loads notifications, subscribes to Supabase Realtime for live updates, exposes `markRead`/`markAllRead`, and surfaces preference state (muted types gate the unread badge count).
-- `src/components/NotificationCenter.jsx` — bell icon with unread badge; desktop sidebar renders as a popover, mobile as a bottom sheet. Per-type glyphs, click-to-navigate + mark-read, "mark all read" action, empty state.
+- `src/components/NotificationCenter.jsx` — bell icon with unread badge; desktop sidebar renders as a popover, mobile as a bottom sheet. Per-type glyphs, click-to-navigate + mark-read, "mark all read" action, empty state. The mobile sheet overrides the generic `.mc-modal-backdrop` (padding 0 + `overflow:hidden` + `overscroll-behavior:contain`) so it sits flush to the viewport bottom with the scroll contained to the inner list — no dark backdrop gap beneath it or rubber-band scroll.
 
 ### Notification preferences
-Profile page ("Notifications" settings section, own profile only): per-event-type mute toggles, quiet-hours from/until, and Email + Browser-push delivery toggles. Preferences stored in `notification_preferences`; muting filters the in-app center + unread badge immediately.
+Profile page ("Notifications" settings section, own profile only): per-event-type mute toggles, quiet-hours from/until, and Email + Browser-push delivery toggles. Preferences stored in `notification_preferences`; muting filters the in-app center + unread badge immediately. Quiet-hours fields **autofill** to a 22:00–08:00 default when unset, and setting either bound seeds the other's default so the window is always complete.
 
 ### Email delivery (Resend via pg_net)
 A DB trigger (`email_notification`) POSTs to the Resend API via the `pg_net` extension when the recipient has `channel_email = true`, has not muted the event type, and is outside quiet hours (evaluated in their timezone). The Resend API key and app base URL are stored in `supabase_vault` (never in code). Verified end-to-end (HTTP 200 from Resend). Note: full multi-member delivery requires a verified sending domain in Resend; test mode reaches the account owner only.
@@ -383,7 +383,8 @@ Overview · Me · Members · Club · Head to Head
 - Clicking a stat value expands a relevant chart (per-member bars, mean/stddev for divisive/unanimous)
 - **Additional stats implemented:** avg score per release decade, per-user scoring granularity, per-user std dev, per-movie breakdown, club-vs-TMDB comparison (uses `tmdb_vote_average`), expandable per-member cards, dynamic histogram bins, Club "score over time" trend line (club avg + per-member lines + neutral grey dotted TMDB average line)
 - **Session 9 stat polish:** Member names in scoring granularity, scoring variation, picker power rankings, score percentile generosity, most active scorer, and scoring streaks all link to the member overlay. Film titles in per-film spread, season/year rankings, and excitement-vs-final open the film overlay. Season/year ranking lists are collapsible. Genres link to the genre-filtered Films page. Genre pie single-selects + updates tooltip + legend links out. Club by-film trend chart click maps to the correct film (keyed by id). Histogram selected bar glows. Club-vs-TMDB scatter auto-scales to the data. Given/Received/Club-avg has y-axis labels + a data-driven domain. Taste-correlation uses the accent color. Std-dev/mean overlay lines are visually distinct with numeric values. Scoring-variation x-axis labels rounded.
-- **Connection Web · 6 Degrees:** Films linked by a shared actor or director, rendered as a custom radial SVG node-link graph. Hover/tap a film node lights its connections and shows who bridges them (actor/director name). Nodes open the film overlay. Backed by `movies.tmdb_cast` (top-billed cast backfilled from TMDB).
+- **Stats chart polish (this session):** genre pie is true single-select with click-away to deselect (removed the Recharts `<Tooltip>` whose touch-persistent active index kept the first slice + tooltip stuck); Club-vs-TMDB scatter and Avg-by-Decade bar no longer clip their Y-axis labels (negative left margins removed — clipped `X.0` labels were reading as "0"); Me/Members "scores over time" trend keys each point by a unique `idx` (+ `xLabelKey`) so same-month films don't repeat one title in the tooltip; Club "Score Over Time" defaults to the per-Film view (Month second); the excitement-vs-final list collapses to a 6-row preview.
+- **Connection Web · 6 Degrees:** Films linked by a shared actor or director, rendered as a custom radial SVG node-link graph. **Single-tap a film node** to select it (lights its connections + shows who bridges them); **tap the selected node again** to open its film overlay. **Tap a connecting line** to isolate that single connection (only that line + its two endpoint films light up; a fat invisible hit-path makes thin lines tappable). No browser focus box on nodes/lines. Backed by `movies.tmdb_cast` (top-billed cast backfilled from TMDB).
 - **Genre Blindspot Grid:** Per-member genre coverage — shows which genres each member has and hasn't scored.
 - **All Films member filter:** A filter-by-member control on the All Films view (revealed picks only).
 
@@ -403,7 +404,7 @@ Monthly · Season · Annual · All-Time
 
 Member profiles open as an **overlay/popup** (`MemberOverlayContext`) anywhere you click a member name or avatar — Home, Stats, Awards, Films legend, film overlay. Closing the overlay returns the user exactly where they were. The bottom-bar **Profile** tab is always the signed-in user's own profile. The `/profile/:id` route is kept as a deep-link fallback (e.g. from external links or direct navigation).
 
-Member overlay contains: profile card, awards badge grid (collapsible), "Films [member] picked" section (by month, with score), recent scores (each opens the film overlay), and a "View full stats" link.
+Member overlay contains: profile card, awards badge grid (collapsible), "Films [member] picked" section (by month, with score), recent scores (each opens the film overlay), and a "View full stats" link. **"View full stats"** navigates to `/stats?member=<id>`, which renders that member's **full Me-tab-style breakdown** (their own scoring distribution, trends, rankings, genres, percentile — not the limited Members-tab card; section labels are re-subjected to their name). The Stats page re-syncs from the URL on every navigation (via `useLocation`), so the link works even when Stats is already mounted. The profile **tier badge** (Op / Admin) reflects the *displayed* member's role, not the signed-in viewer's.
 
 ### Smart Linking (global)
 
@@ -426,6 +427,8 @@ Light/dark mode is bound to the `.dark` CSS class (not `prefers-color-scheme`) �
 Displayed as a colored ring around the member's avatar and as the color of the initials text when no avatar is set.
 
 **Light-mode accent overrides:** Each accent color has a vibrant `--accent` CSS variable + a dark accent-text companion in light mode so all 7 accents remain legible (dark mode unchanged). Active bottom-nav tab uses the accent color. Home poster-row shadow no longer clips.
+
+**`--accent-rgb`:** Every accent also defines an `--accent-rgb` triple (e.g. Sage = `22, 163, 74` in light, `77, 124, 95` in dark) alongside `--accent`, for both light and dark. This fixes all `rgba(var(--accent-rgb), …)` usages — the taste-correlation heatmap, the genre-blindspot grid, and accent-tinted surfaces — which previously had no `--accent-rgb` defined and silently fell back to the purple default regardless of the selected accent.
 
 **Vault films:** Gold star indicator only — no gold border (would clash with user color border on picks).
 
@@ -474,6 +477,7 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
   - Zack is backfillable for pre-join months via the matrix
 - Trigger by month: bulk-reveal scores or pickers for all films in a month
 - **Activate / Trigger now:** runs `materialize_and_split_month` for a month, materializing picks into films and splitting deadlines. The `status='active'` update now persists correctly — admin INSERT/UPDATE RLS policies were added to `months` in Session 9 to fix a silent block that previously prevented persistence.
+- **Deactivate:** counterpart to Activate — sets an active month back to `status='upcoming'` (after a confirm) so members can keep adding/changing picks. **Non-destructive:** films already materialized for that month are left in place (re-activating re-splits deadlines). Enabled only when the selected month is currently active.
 - **Upcoming Picks preview:** Admin-only section (behind a "Reveal" toggle on the Admin dashboard) showing all pending `upcoming_picks` before materialization. Regular members — including admins in their member-facing view — never see others' picks pre-reveal; this preview is strictly the admin panel.
 - Auto genre backfill runs on the Admin dashboard when any film is missing a genre (fetches from TMDB and updates `movies` in the background).
 - **Op-only (Ryan Miller):** Admin Members tab shows Op / Admin / Member tiers; op can promote members to admin or demote admins to member. No other admin can change roles. **DB-enforced:** the `trg_enforce_op_role` trigger rejects any `role`/`is_op` change by a non-op, so it can't be bypassed via the API (the `materialize_and_split_month` RPC is likewise authorization-gated).

@@ -15,6 +15,7 @@
  */
 :root, [data-theme="dark"] {
   --accent: #b91c1c;
+  --accent-rgb: 185, 28, 28;
   --accent-light: #fca5a5;
   --accent-dark: #7f1d1d;
   --accent-muted: #fef2f2;
@@ -58,13 +59,13 @@
 }
 
 /* Accent color variants (mode-independent) */
-[data-accent="crimson"]   { --accent: #b91c1c; --accent-light: #fca5a5; --accent-dark: #7f1d1d; }
-[data-accent="ember"]     { --accent: #c2410c; --accent-light: #fdba74; --accent-dark: #7c2d12; }
-[data-accent="amber"]     { --accent: #b45309; --accent-light: #fcd34d; --accent-dark: #78350f; }
-[data-accent="sage"]      { --accent: #4d7c5f; --accent-light: #86efac; --accent-dark: #14532d; }
-[data-accent="slate-blue"]{ --accent: #2563eb; --accent-light: #93c5fd; --accent-dark: #1e3a8a; }
-[data-accent="indigo"]    { --accent: #4338ca; --accent-light: #a5b4fc; --accent-dark: #312e81; }
-[data-accent="violet"]    { --accent: #7c3aed; --accent-light: #c4b5fd; --accent-dark: #4c1d95; }
+[data-accent="crimson"]   { --accent: #b91c1c; --accent-rgb: 185, 28, 28;  --accent-light: #fca5a5; --accent-dark: #7f1d1d; }
+[data-accent="ember"]     { --accent: #c2410c; --accent-rgb: 194, 65, 12;  --accent-light: #fdba74; --accent-dark: #7c2d12; }
+[data-accent="amber"]     { --accent: #b45309; --accent-rgb: 180, 83, 9;   --accent-light: #fcd34d; --accent-dark: #78350f; }
+[data-accent="sage"]      { --accent: #4d7c5f; --accent-rgb: 77, 124, 95;  --accent-light: #86efac; --accent-dark: #14532d; }
+[data-accent="slate-blue"]{ --accent: #2563eb; --accent-rgb: 37, 99, 235;  --accent-light: #93c5fd; --accent-dark: #1e3a8a; }
+[data-accent="indigo"]    { --accent: #4338ca; --accent-rgb: 67, 56, 202;  --accent-light: #a5b4fc; --accent-dark: #312e81; }
+[data-accent="violet"]    { --accent: #7c3aed; --accent-rgb: 124, 58, 237; --accent-light: #c4b5fd; --accent-dark: #4c1d95; }
 
 /* Light-mode accent overrides. The base (dark-mode) values use a bright pastel
    --accent-light that is used as TEXT — unreadable on a white background — and a
@@ -72,13 +73,13 @@
    --accent the vibrant swatch color, and --accent-light a DARK shade so accent text
    stays legible on white. (Dark mode is unchanged.) Two attributes => higher
    specificity than the base [data-accent] rule, so these win in light mode. */
-[data-theme="light"][data-accent="crimson"]    { --accent: #dc2626; --accent-light: #b91c1c; }
-[data-theme="light"][data-accent="ember"]      { --accent: #ea580c; --accent-light: #c2410c; }
-[data-theme="light"][data-accent="amber"]      { --accent: #d97706; --accent-light: #b45309; }
-[data-theme="light"][data-accent="sage"]       { --accent: #16a34a; --accent-light: #15803d; }
-[data-theme="light"][data-accent="slate-blue"] { --accent: #2563eb; --accent-light: #1d4ed8; }
-[data-theme="light"][data-accent="indigo"]     { --accent: #4f46e5; --accent-light: #4338ca; }
-[data-theme="light"][data-accent="violet"]     { --accent: #7c3aed; --accent-light: #6d28d9; }
+[data-theme="light"][data-accent="crimson"]    { --accent: #dc2626; --accent-rgb: 220, 38, 38;  --accent-light: #b91c1c; }
+[data-theme="light"][data-accent="ember"]      { --accent: #ea580c; --accent-rgb: 234, 88, 12;  --accent-light: #c2410c; }
+[data-theme="light"][data-accent="amber"]      { --accent: #d97706; --accent-rgb: 217, 119, 6;  --accent-light: #b45309; }
+[data-theme="light"][data-accent="sage"]       { --accent: #16a34a; --accent-rgb: 22, 163, 74;  --accent-light: #15803d; }
+[data-theme="light"][data-accent="slate-blue"] { --accent: #2563eb; --accent-rgb: 37, 99, 235;  --accent-light: #1d4ed8; }
+[data-theme="light"][data-accent="indigo"]     { --accent: #4f46e5; --accent-rgb: 79, 70, 229;  --accent-light: #4338ca; }
+[data-theme="light"][data-accent="violet"]     { --accent: #7c3aed; --accent-rgb: 124, 58, 237; --accent-light: #6d28d9; }
 
 body {
   margin: 0;

@@ -281,6 +281,27 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
     onRefresh()
   }
 
+  // Reverse activation: set the month back to "upcoming" so members can keep
+  // adding/changing picks. Non-destructive — any films already materialized this
+  // month are left in place (re-activating re-splits deadlines).
+  async function deactivateNow() {
+    if (!target) return
+    if (!window.confirm(`Deactivate ${target.month_year}? It returns to "upcoming" so members can keep adding picks. Films already materialized this month are left as-is.`)) return
+    setBusy(true)
+    setActivationResult(null)
+    const { error: updErr } = await supabase
+      .from('months')
+      .update({ status: 'upcoming' })
+      .eq('id', target.id)
+    setBusy(false)
+    if (updErr) {
+      setError('Failed to deactivate month: ' + updErr.message)
+      return
+    }
+    setSuccess(`${target.month_year} is no longer active — set back to "upcoming".`)
+    onRefresh()
+  }
+
   const fieldStyle = {
     display: 'block', width: '100%', marginTop: '6px', padding: '9px 10px', borderRadius: '8px',
     background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
@@ -328,6 +349,20 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
           }}
         >
           {busy ? 'Working…' : 'Activate / Trigger now'}
+        </button>
+        <button
+          onClick={deactivateNow}
+          disabled={!target || busy || target?.status !== 'active'}
+          title={target?.status === 'active' ? 'Set this month back to upcoming so members can keep adding picks' : 'Only an active month can be deactivated'}
+          style={{
+            padding: '9px 14px', borderRadius: '8px', border: '1px solid rgba(220,38,38,0.4)',
+            background: 'transparent',
+            color: (!target || busy || target?.status !== 'active') ? 'var(--text-faint)' : '#f87171',
+            fontSize: '12px', cursor: (!target || busy || target?.status !== 'active') ? 'not-allowed' : 'pointer',
+            fontFamily: "'DM Mono',monospace",
+          }}
+        >
+          Deactivate
         </button>
         <button
           onClick={saveActiveDate}
