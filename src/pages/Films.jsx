@@ -960,6 +960,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const [fullMovie, setFullMovie] = useState(null)
   const [showScoreModal, setShowScoreModal] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const [showCast, setShowCast] = useState(false)
   const [predictions, setPredictions] = useState([])
   const [isPicker, setIsPicker] = useState(false) // is the current user the picker of THIS film?
   const [activeMonthId, setActiveMonthId] = useState(null) // the currently-active month (for pick-change gating)
@@ -1626,6 +1627,66 @@ export function FilmDetailOverlay({ movie, onClose }) {
                 )}
               </div>
             )}
+
+            {/* Collapsible Cast & Crew — director, writers, and the full TMDB
+                billed cast (the same names that power the Connection Web). */}
+            {(Array.isArray(m.tmdb_cast) && m.tmdb_cast.length > 0) || m.director || (Array.isArray(m.tmdb_writers) && m.tmdb_writers.length > 0) ? (
+              <div style={{ marginTop: '14px' }}>
+                <button
+                  onClick={() => setShowCast(v => !v)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '7px', width: '100%',
+                    padding: '9px 12px', borderRadius: '10px',
+                    background: 'rgba(var(--fg-rgb), 0.03)',
+                    border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                    fontFamily: "'DM Mono', monospace", fontSize: '11px',
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                  }}
+                >
+                  <span style={{ color: 'var(--accent)' }}>{showCast ? '▾' : '▸'}</span>
+                  Cast &amp; Crew
+                  {Array.isArray(m.tmdb_cast) && m.tmdb_cast.length > 0 && (
+                    <span style={{ marginLeft: 'auto', color: 'var(--text-faint)' }}>{m.tmdb_cast.length}</span>
+                  )}
+                </button>
+                {showCast && (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {(m.director || (Array.isArray(m.tmdb_writers) && m.tmdb_writers.length > 0)) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {m.director && (
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '12.5px' }}>
+                            <span style={{ flexShrink: 0, width: '64px', color: 'var(--text-faint)', fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', paddingTop: '1px' }}>Director</span>
+                            <span style={{ color: 'var(--text)' }}>{m.director}</span>
+                          </div>
+                        )}
+                        {Array.isArray(m.tmdb_writers) && m.tmdb_writers.length > 0 && (
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '12.5px' }}>
+                            <span style={{ flexShrink: 0, width: '64px', color: 'var(--text-faint)', fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', paddingTop: '1px' }}>Writers</span>
+                            <span style={{ color: 'var(--text)' }}>{m.tmdb_writers.join(', ')}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {Array.isArray(m.tmdb_cast) && m.tmdb_cast.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {m.tmdb_cast.map((name, i) => (
+                          <span key={`${name}-${i}`} style={{
+                            fontFamily: "'DM Sans',sans-serif", fontSize: '12px',
+                            padding: '4px 9px', borderRadius: '999px',
+                            background: 'rgba(var(--fg-rgb), 0.05)',
+                            border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                            color: 'var(--text)',
+                          }}>
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {/* ── TAGS (aggregated; viewer can add/remove their own once they've scored) ── */}
