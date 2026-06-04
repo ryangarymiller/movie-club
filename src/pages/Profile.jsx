@@ -1355,11 +1355,16 @@ export default function Profile({ overlayUserId = null } = {}) {
               </div>
             </div>
 
-            {/* Delivery channels — placeholders, not wired yet. */}
+            {/* Delivery channels. Email is live (sent via Resend for enabled, unmuted
+                notifications, respecting quiet hours); browser push is still coming. */}
             <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
               <p style={{ ...LABEL_STYLE, margin: '0 0 6px', display: 'block' }}>Delivery</p>
-              <ChannelPlaceholderRow glyph="🔔" label="Browser push" desc="Get notified even when the app is closed" />
-              <ChannelPlaceholderRow glyph="✉️" label="Email" desc="A digest of what you missed" isLast />
+              <NotifTypeRow
+                type={{ key: 'channel_email', glyph: '✉️', label: 'Email', desc: 'Also email me for notifications I haven’t muted' }}
+                enabled={!!notifPrefs?.channel_email}
+                onToggle={(on) => updateNotifPrefs({ channel_email: on })}
+              />
+              <ChannelPlaceholderRow glyph="🔔" label="Browser push" desc="Get notified even when the app is closed" isLast />
             </div>
           </div>
         </section>}
