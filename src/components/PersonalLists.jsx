@@ -161,7 +161,7 @@ function EmptyState({ children }) {
 }
 
 // ── Watchlist ────────────────────────────────────────────────────────────────
-function WatchlistSection({ userId }) {
+function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   const [items, setItems] = useState(null) // null = loading
 
   const load = useCallback(async () => {
@@ -204,75 +204,73 @@ function WatchlistSection({ userId }) {
         <EmptyState>Nothing saved yet. Search above to add films.</EmptyState>
       ) : (
         <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--fg-rgb), 0.06)' }}>
-          {items.map((it, i) => (
-            <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px', background: 'rgba(var(--fg-rgb), 0.02)', borderBottom: i < items.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none' }}>
-              <Poster path={it.poster_url} title={it.title} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13.5px', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</p>
-                {it.year_released && <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)', margin: '2px 0 0' }}>{it.year_released}</p>}
+          {items.map((it, i) => {
+            const queued = queueTmdbIds?.has(it.tmdb_id)
+            return (
+              <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px', background: 'rgba(var(--fg-rgb), 0.02)', borderBottom: i < items.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none' }}>
+                <Poster path={it.poster_url} title={it.title} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13.5px', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</p>
+                  {it.year_released && <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)', margin: '2px 0 0' }}>{it.year_released}</p>}
+                </div>
+                {/* Add to draft queue (or show it's already queued) */}
+                <button
+                  onClick={() => !queued && onAddToQueue?.({ tmdb_id: it.tmdb_id, title: it.title, poster_url: it.poster_url, year_released: it.year_released })}
+                  disabled={queued}
+                  title={queued ? 'Already in your draft queue' : 'Add to draft queue'}
+                  style={{
+                    flexShrink: 0, padding: '5px 10px', borderRadius: '999px',
+                    border: `1px solid ${queued ? 'rgba(var(--fg-rgb),0.12)' : 'var(--accent)'}`,
+                    background: queued ? 'transparent' : 'rgba(var(--accent-rgb),0.1)',
+                    color: queued ? 'var(--text-faint)' : 'var(--accent)',
+                    fontFamily: "'DM Mono',monospace", fontSize: '10px', letterSpacing: '0.04em',
+                    cursor: queued ? 'default' : 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {queued ? '✓ Queued' : '+ Queue'}
+                </button>
+                <IconBtn onClick={() => remove(it.id)} title="Remove from watchlist">✕</IconBtn>
               </div>
-              <IconBtn onClick={() => remove(it.id)} title="Remove from watchlist">✕</IconBtn>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-// ── Draft Queue (ranked) ─────────────────────────────────────────────────────
-function DraftQueueSection({ userId }) {
-  const [items, setItems] = useState(null)
-  const [dragIdx, setDragIdx] = useState(null)
+// ── Draft Queue (ranked) — presentational; state is owned by PersonalLists ────
+function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
+  // Pointer-based drag (works on touch, unlike native HTML5 drag). The handle
+  // captures the pointer; as it moves past a row's midpoint we reorder one step.
+  const containerRef = useRef(null)
+  const [dragId, setDragId] = useState(null)
+  const dragIndexRef = useRef(null)
 
-  const load = useCallback(async () => {
-    const { data } = await supabase
-      .from('draft_queue')
-      .select('id, tmdb_id, title, poster_url, year_released, position')
-      .eq('user_id', userId)
-      .order('position', { ascending: true })
-    setItems(data ?? [])
-  }, [userId])
-
-  useEffect(() => { load() }, [load])
-
-  // Persist the current order as position = index.
-  async function persistOrder(ordered) {
-    await Promise.all(ordered.map((it, i) =>
-      it.position === i ? Promise.resolve() : supabase.from('draft_queue').update({ position: i }).eq('id', it.id),
-    ))
+  function handlePointerDown(e, idx) {
+    setDragId(items[idx].id)
+    dragIndexRef.current = idx
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* unsupported */ }
   }
-
-  function move(from, to) {
-    setItems(prev => {
-      if (!prev) return prev
-      if (to < 0 || to >= prev.length) return prev
-      const next = prev.slice()
-      const [m] = next.splice(from, 1)
-      next.splice(to, 0, m)
-      const reindexed = next.map((it, i) => ({ ...it, position: i }))
-      persistOrder(reindexed)
-      return reindexed
+  function handlePointerMove(e) {
+    if (dragId == null || !containerRef.current) return
+    const rows = Array.from(containerRef.current.children)
+    const y = e.clientY
+    let target = rows.findIndex(r => {
+      const rect = r.getBoundingClientRect()
+      return y < rect.top + rect.height / 2
     })
+    if (target === -1) target = rows.length - 1
+    const from = dragIndexRef.current
+    if (from != null && target >= 0 && target !== from) {
+      onMove(from, target)
+      dragIndexRef.current = target
+    }
   }
-
-  async function add(film) {
-    const nextPos = (items ?? []).length
-    const { data, error } = await supabase
-      .from('draft_queue')
-      .insert({ user_id: userId, position: nextPos, ...film })
-      .select('id, tmdb_id, title, poster_url, year_released, position')
-      .single()
-    if (!error && data) setItems(prev => [...(prev ?? []), data])
-  }
-
-  async function remove(id) {
-    setItems(prev => {
-      const next = (prev ?? []).filter(i => i.id !== id).map((it, i) => ({ ...it, position: i }))
-      persistOrder(next)
-      return next
-    })
-    await supabase.from('draft_queue').delete().eq('id', id)
+  function handlePointerUp(e) {
+    setDragId(null)
+    dragIndexRef.current = null
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
   }
 
   const existingIds = new Set((items ?? []).map(i => i.tmdb_id))
@@ -283,28 +281,36 @@ function DraftQueueSection({ userId }) {
       <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', color: 'var(--text-dim)', margin: '4px 0 12px' }}>
         Films you’re planning to pick, ranked — drag the handle or use the arrows. Private to you.
       </p>
-      <FilmSearchAdd onAdd={add} existingIds={existingIds} placeholder="Search to queue a pick idea…" />
+      <FilmSearchAdd onAdd={onAdd} existingIds={existingIds} placeholder="Search to queue a pick idea…" />
       {items === null ? (
         <EmptyState>Loading…</EmptyState>
       ) : items.length === 0 ? (
         <EmptyState>Your draft queue is empty. Queue up pick ideas above.</EmptyState>
       ) : (
-        <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--fg-rgb), 0.06)' }}>
+        <div ref={containerRef} style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--fg-rgb), 0.06)' }}>
           {items.map((it, i) => (
             <div
               key={it.id}
-              draggable
-              onDragStart={() => setDragIdx(i)}
-              onDragOver={e => e.preventDefault()}
-              onDrop={() => { if (dragIdx != null && dragIdx !== i) move(dragIdx, i); setDragIdx(null) }}
-              onDragEnd={() => setDragIdx(null)}
               style={{
                 display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px 9px 12px',
-                background: dragIdx === i ? 'rgba(var(--accent-rgb), 0.08)' : 'rgba(var(--fg-rgb), 0.02)',
+                background: dragId === it.id ? 'rgba(var(--accent-rgb), 0.12)' : 'rgba(var(--fg-rgb), 0.02)',
                 borderBottom: i < items.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
+                transition: 'background 0.12s ease',
               }}
             >
-              <span title="Drag to reorder" style={{ flexShrink: 0, cursor: 'grab', color: 'var(--text-faint)', fontSize: '14px', lineHeight: 1, userSelect: 'none' }}>⠿</span>
+              <span
+                title="Drag to reorder"
+                onPointerDown={e => handlePointerDown(e, i)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                style={{
+                  flexShrink: 0, cursor: 'grab', color: 'var(--text-faint)', fontSize: '16px',
+                  lineHeight: 1, userSelect: 'none', touchAction: 'none', padding: '6px 4px',
+                }}
+              >
+                ⠿
+              </span>
               <span style={{ flexShrink: 0, width: '18px', textAlign: 'center', fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.05rem', color: 'var(--accent)' }}>{i + 1}</span>
               <Poster path={it.poster_url} title={it.title} />
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -312,9 +318,9 @@ function DraftQueueSection({ userId }) {
                 {it.year_released && <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)', margin: '2px 0 0' }}>{it.year_released}</p>}
               </div>
               <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                <IconBtn onClick={() => move(i, i - 1)} disabled={i === 0} title="Move up">▲</IconBtn>
-                <IconBtn onClick={() => move(i, i + 1)} disabled={i === items.length - 1} title="Move down">▼</IconBtn>
-                <IconBtn onClick={() => remove(it.id)} title="Remove from queue">✕</IconBtn>
+                <IconBtn onClick={() => onMove(i, i - 1)} disabled={i === 0} title="Move up">▲</IconBtn>
+                <IconBtn onClick={() => onMove(i, i + 1)} disabled={i === items.length - 1} title="Move down">▼</IconBtn>
+                <IconBtn onClick={() => onRemove(it.id)} title="Remove from queue">✕</IconBtn>
               </div>
             </div>
           ))}
@@ -325,11 +331,69 @@ function DraftQueueSection({ userId }) {
 }
 
 export default function PersonalLists({ userId }) {
+  // Draft-queue state lives here so the watchlist can push films into it and the
+  // queue reflects the change immediately.
+  const [queue, setQueue] = useState(null)
+
+  const loadQueue = useCallback(async () => {
+    if (!userId) return
+    const { data } = await supabase
+      .from('draft_queue')
+      .select('id, tmdb_id, title, poster_url, year_released, position')
+      .eq('user_id', userId)
+      .order('position', { ascending: true })
+    setQueue(data ?? [])
+  }, [userId])
+
+  useEffect(() => { loadQueue() }, [loadQueue])
+
+  async function persistOrder(ordered) {
+    await Promise.all(ordered.map((it, i) =>
+      it.position === i ? Promise.resolve() : supabase.from('draft_queue').update({ position: i }).eq('id', it.id),
+    ))
+  }
+
+  function move(from, to) {
+    setQueue(prev => {
+      if (!prev) return prev
+      if (to < 0 || to >= prev.length || from === to) return prev
+      const next = prev.slice()
+      const [m] = next.splice(from, 1)
+      next.splice(to, 0, m)
+      const reindexed = next.map((it, i) => ({ ...it, position: i }))
+      persistOrder(reindexed)
+      return reindexed
+    })
+  }
+
+  async function addToQueue(film) {
+    if ((queue ?? []).some(q => q.tmdb_id === film.tmdb_id)) return // no dupes
+    const nextPos = (queue ?? []).length
+    const { data, error } = await supabase
+      .from('draft_queue')
+      .insert({ user_id: userId, position: nextPos, tmdb_id: film.tmdb_id, title: film.title, poster_url: film.poster_url ?? null, year_released: film.year_released ?? null })
+      .select('id, tmdb_id, title, poster_url, year_released, position')
+      .single()
+    if (!error && data) setQueue(prev => [...(prev ?? []), data])
+  }
+
+  async function removeFromQueue(id) {
+    setQueue(prev => {
+      const next = (prev ?? []).filter(i => i.id !== id).map((it, i) => ({ ...it, position: i }))
+      persistOrder(next)
+      return next
+    })
+    await supabase.from('draft_queue').delete().eq('id', id)
+  }
+
   if (!userId) return null
+
+  const queueTmdbIds = new Set((queue ?? []).map(q => q.tmdb_id))
+
   return (
     <div>
-      <WatchlistSection userId={userId} />
-      <DraftQueueSection userId={userId} />
+      <WatchlistSection userId={userId} queueTmdbIds={queueTmdbIds} onAddToQueue={addToQueue} />
+      <DraftQueueSection items={queue} onAdd={addToQueue} onRemove={removeFromQueue} onMove={move} />
     </div>
   )
 }
