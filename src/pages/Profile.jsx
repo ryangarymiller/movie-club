@@ -10,6 +10,7 @@ import PersonalLists from '../components/PersonalLists'
 import { deliberateSignOut } from '../lib/authLog'
 import { FilmDetailOverlay } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
+import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { useNotifications } from '../context/NotificationsContext'
 
 const ACCENT_SWATCHES = [
@@ -433,6 +434,7 @@ export default function Profile({ overlayUserId = null } = {}) {
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, toggleMode } = useTheme()
   const { close: closeMemberOverlay } = useMemberOverlay()
+  const { openStats: openMemberStats } = useMemberStatsOverlay()
   const {
     prefs: notifPrefs,
     updatePrefs: updateNotifPrefs,
@@ -1080,7 +1082,7 @@ export default function Profile({ overlayUserId = null } = {}) {
             <button
               onClick={() => {
                 closeMemberOverlay()
-                navigate('/stats?member=' + displayProfile.id)
+                openMemberStats(displayProfile.id)
               }}
               style={{
                 width: '100%',

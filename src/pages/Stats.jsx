@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
+import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { FilmDetailOverlay } from './Films'
 import { userColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt } from '../lib/colors'
 import {
@@ -674,7 +675,7 @@ function initials(name) {
 
 // "First L." — first name + last initial. There are two Ryans, so a bare first
 // name is ambiguous; this disambiguates them in every member-comparison label.
-function firstLast(name) {
+export function firstLast(name) {
   const parts = (name || '').split(' ').filter(Boolean)
   if (parts.length === 0) return '?'
   if (parts.length === 1) return parts[0]
@@ -807,7 +808,7 @@ export function seasonForMonthYear(monthYear) {
 
 // Zack joined April 2026 — exclude him from Jan/Feb/Mar 2026 data entirely.
 const ZACK_NAME = 'Zack'
-function isZackPreApril(userName, monthYear) {
+export function isZackPreApril(userName, monthYear) {
   if (!userName || !monthYear) return false
   if (!userName.toLowerCase().startsWith(ZACK_NAME.toLowerCase())) return false
   return ['2026-01', '2026-02', '2026-03'].includes(monthYear)
@@ -1455,7 +1456,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
 
 // ─── Me Tab ───────────────────────────────────────────────────────────────────
 
-function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, monthsById = {}, onFilm, onGenre, subject = { name: 'You', possessive: 'Your' } }) {
+export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading, monthsById = {}, onFilm, onGenre, subject = { name: 'You', possessive: 'Your' } }) {
   // Your guess-the-picker accuracy across resolved (picker-revealed) films.
   const guessAcc = useMemo(() => {
     const movieById = {}
@@ -2168,7 +2169,7 @@ export function calcGivenVsReceived(userId, ratings, moviePickedBy, scoresByMovi
 
 // ─── Members Tab ─────────────────────────────────────────────────────────────
 
-function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember, onFilm, focusMemberId = null, onFocusConsumed }) {
+function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember, onFilm, onFullStats, focusMemberId = null, onFocusConsumed }) {
   // Which member's card is expanded into its detailed plots (null = none).
   const [expandedId, setExpandedId] = useState(null)
   // Refs to each member card so a deep link (?memberId=) can scroll it into view.
@@ -2451,6 +2452,20 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
           {/* Expandable detailed plots — keeps the page uncluttered by default */}
           {expandedId === u.id && (
             <div style={{ borderTop: '1px solid rgba(var(--fg-rgb), 0.05)', marginTop: '14px', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Full-stats popup (their complete Me-tab breakdown, in their colour) */}
+              {onFullStats && (
+                <button
+                  onClick={() => onFullStats(u.id)}
+                  style={{
+                    width: '100%', padding: '11px 14px', borderRadius: '11px',
+                    background: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.22)',
+                    color: 'var(--accent)', fontFamily: "'DM Sans',sans-serif", fontSize: '13.5px', fontWeight: 500,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  }}
+                >
+                  View full stats <span style={{ fontSize: '15px', lineHeight: 1 }}>→</span>
+                </button>
+              )}
               {/* Secondary stat chips: std dev + granularity */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', borderRadius: '9px', padding: '10px 12px' }}>
@@ -4677,6 +4692,7 @@ export default function Stats() {
   // member names navigate to that member's profile.
   const onFilm = useCallback((movie) => { if (movie) setSelectedMovie(movie) }, [])
   const { openMember } = useMemberOverlay()
+  const { openStats: onFullStats } = useMemberStatsOverlay()
   const onMember = useCallback((userId) => { if (userId) openMember(userId) }, [openMember])
   // Genre deep-link → Films page filtered by that genre.
   const onGenre = useCallback((g) => {
@@ -4919,6 +4935,7 @@ export default function Stats() {
               monthsById={monthsById}
               onMember={onMember}
               onFilm={onFilm}
+              onFullStats={onFullStats}
               focusMemberId={focusMemberId}
               onFocusConsumed={() => setFocusMemberId(null)}
             />
