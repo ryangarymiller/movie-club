@@ -2565,6 +2565,7 @@ const TABS = ['Monthly', 'Season', 'Annual', 'All-Time']
 
 export default function Awards() {
   const location = useLocation()
+  const navigate = useNavigate()
 
   // Parse deep-link params once on mount
   const deepLink = useMemo(() => {
@@ -2577,11 +2578,21 @@ export default function Awards() {
   }, [location.search])
 
   const initialTab = useMemo(() => {
+    const t = new URLSearchParams(location.search).get('tab')
+    if (TABS.includes(t)) return t
     if (deepLink?.scope) return SCOPE_TO_TAB[deepLink.scope] ?? 'Monthly'
     return 'Monthly'
-  }, [deepLink])
+  }, [deepLink, location.search])
 
   const [activeTab, setActiveTab] = useState(initialTab)
+
+  // Sync the tab from the URL on Back/Forward (each tab switch pushes ?tab=).
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab')
+    if (TABS.includes(t)) setActiveTab(t)
+    else if (deepLink?.scope) setActiveTab(SCOPE_TO_TAB[deepLink.scope] ?? 'Monthly')
+    else setActiveTab('Monthly')
+  }, [location.search, deepLink])
   const [selectedMovie, setSelectedMovie] = useState(null)
 
   // Clicking a film title/poster opens the shared film overlay.
@@ -2690,7 +2701,8 @@ export default function Awards() {
           {TABS.map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              // Push the tab into the URL so Back returns to the previous tab.
+              onClick={() => { setActiveTab(tab); navigate('/awards?tab=' + encodeURIComponent(tab)) }}
               style={{
                 flex: '1 0 auto',
                 padding: '8px 12px',

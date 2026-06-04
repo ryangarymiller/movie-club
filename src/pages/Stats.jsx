@@ -4883,7 +4883,9 @@ export default function Stats() {
           {TABS.map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              // Push the tab into the URL so Back returns to the previous tab; the
+              // location-sync effect mirrors it back into activeTab.
+              onClick={() => { setActiveTab(tab); navigate('/stats?tab=' + encodeURIComponent(tab)) }}
               style={{
                 flexShrink: 0,
                 padding: '8px 12px',

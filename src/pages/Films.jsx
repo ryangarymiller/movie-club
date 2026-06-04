@@ -2626,9 +2626,10 @@ export default function Films() {
   // across tab switches within the page.
   const [hideScores, setHideScores] = useState(false)
 
-  // Respond to URL changes (e.g. a genre tag / vault badge clicked in the overlay).
+  // Respond to URL changes — including Back/Forward, which step through tabs since
+  // each tab switch pushes ?tab=. No tab in the URL → the default (All Films).
   useEffect(() => {
-    if (TABS.includes(urlTab)) setActiveTab(urlTab)
+    setActiveTab(TABS.includes(urlTab) ? urlTab : 'All Films')
     setGenreFilter(urlGenre)
   }, [urlTab, urlGenre])
 
@@ -2776,9 +2777,10 @@ export default function Films() {
               active={activeTab === tab}
               onClick={() => {
                 setActiveTab(tab)
-                // Switching tabs clears any genre deep-link so it doesn't linger.
-                if (searchParams.has('tab') || searchParams.has('genre')) setSearchParams({}, { replace: true })
-                if (tab !== 'All Films') setGenreFilter('')
+                setGenreFilter('')
+                // Push the tab into the URL so Android/browser Back returns to the
+                // previous tab before leaving the page. Genre deep-link is dropped.
+                setSearchParams({ tab }, { replace: false })
               }}
             />
           ))}
