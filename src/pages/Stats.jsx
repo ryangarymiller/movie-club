@@ -139,6 +139,15 @@ function ScoreHistogram({ data, height = 150, color, onSelect, selectedIndex = n
 // Tight axis domain for a set of scores so clustered values (e.g. everyone > 7)
 // spread across the plot instead of wasting the full 0–10 range. Pads, snaps to
 // 0.5, clamps to [0,10]. Falls back to [0,10] when there's nothing to fit.
+// "#a855f7" -> "168, 85, 247" for rgba(); null for non-hex (e.g. a CSS var).
+function hexToRgbStr(hex) {
+  if (!hex || typeof hex !== 'string' || hex[0] !== '#') return null
+  const h = hex.slice(1)
+  const n = h.length === 3 ? h.split('').map(c => c + c).join('') : h
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16)
+  return [r, g, b].some(Number.isNaN) ? null : `${r}, ${g}, ${b}`
+}
+
 // Choose a "nice" tick step ≥ the ideal step, from a fixed ladder so ticks land on
 // clean values (…0.25, 0.5, 1, 2…) and are always evenly spaced.
 function chooseStep(range, targetCount) {
@@ -571,6 +580,8 @@ function DonutChart({ data, height = 200, onLegendClick }) {
 // whose q1===q3 collapsed and made every median appear to line up.
 function BoxWhisker({ c, x, y, width, height: bh, payload }) {
   if (!payload) return null
+  // Prefer the row's member colour when present (per-member spread chart).
+  c = payload._color || c
   const span = payload.max - payload.min
   const cx = x + width / 2
   const cy = y + bh / 2
@@ -1774,6 +1785,7 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
             data={stats.myVsClub}
             keys={[{ key: 'value', name: 'Avg Score' }]}
             layout="vertical"
+            smartDomain
             height={110}
           />
         </GlassCard>
@@ -2797,6 +2809,11 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
   // grid template: a fixed label column + one min-sized column per genre.
   const gridTemplate = `${labelW}px repeat(${genres.length}, minmax(${cellMin}px, 1fr))`
   return (
+    <div>
+    {/* Legend OUTSIDE the horizontal scroll area so it's fully readable. */}
+    <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-dim)', margin: '0 0 12px', lineHeight: 1.5 }}>
+      Films each member has picked, per genre · faint red = never picked (a blindspot) · brighter = more picks
+    </p>
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ minWidth: `${labelW + genres.length * cellMin}px` }}>
         {/* Header row — genre labels rotated vertical so the full name fits each
@@ -2826,7 +2843,9 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
         </div>
 
         {/* Member rows */}
-        {rows.map(r => (
+        {rows.map(r => {
+          const rowRgb = hexToRgbStr(r._color) || 'var(--accent-rgb, 168,85,247)'
+          return (
           <div key={r.id} style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '3px', marginBottom: '3px' }}>
             <div
               onClick={onMember ? () => onMember(r.id) : undefined}
@@ -2852,7 +2871,7 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
               const intensity = 0.22 + 0.78 * (c / denom)
               const bg = isBlind
                 ? 'rgba(220, 38, 38, 0.12)'
-                : `rgba(var(--accent-rgb, 168,85,247), ${intensity.toFixed(3)})`
+                : `rgba(${rowRgb}, ${intensity.toFixed(3)})`
               return (
                 <div
                   key={i}
@@ -2875,13 +2894,10 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
               )
             })}
           </div>
-        ))}
-
-        {/* Legend */}
-        <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '10px 0 0', textAlign: 'center' }}>
-          Films picked per genre · faint red = never picked (blindspot) · darker = more picks
-        </p>
+          )
+        })}
       </div>
+    </div>
     </div>
   )
 }
@@ -3404,7 +3420,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         if (c > blindspotMax) blindspotMax = c
         return c
       })
-      return { id: u.id, name: u.name, counts }
+      return { id: u.id, name: u.name, _color: userColor(u), counts }
     })
     const hasBlindspotData = blindspotGenres.length > 0 && blindspotRows.length > 0
 
@@ -3512,7 +3528,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
 
     const memberBox = users
       .filter(u => u.is_active !== false && (scoresByUser[u.id] || []).length >= 2)
-      .map(u => ({ name: firstLast(u.name), ...quartiles(scoresByUser[u.id]) }))
+      .map(u => ({ name: firstLast(u.name), _color: userColor(u), ...quartiles(scoresByUser[u.id]) }))
 
     const clubAvgAll = avg(allScores)
     const givenReceived = users
@@ -3526,21 +3542,6 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
           club: clubAvgAll,
         }
       })
-
-    // Data-driven Y domain for the Given/Received/Club chart: a fixed 0–10 makes
-    // every member's bars look identical. Zoom to the actual value range (padded,
-    // never inverted) so the differences between members become visible.
-    const grValues = givenReceived
-      .flatMap(d => [d.given, d.received, d.club])
-      .filter(v => v != null && !Number.isNaN(v))
-    const givenReceivedDomain = grValues.length
-      ? (() => {
-          const lo = Math.min(...grValues)
-          const hi = Math.max(...grValues)
-          const pad = Math.max(0.25, (hi - lo) * 0.15)
-          return [Math.max(0, Math.floor((lo - pad) * 10) / 10), Math.min(10, Math.ceil((hi + pad) * 10) / 10)]
-        })()
-      : [0, 10]
 
     // ── Picker power rankings: avg score of films each member picked ──
     let pickerRankings = []
@@ -3556,7 +3557,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       }
       pickerRankings = users
         .filter(u => byPicker[u.id]?.length)
-        .map(u => ({ id: u.id, name: u.name, avg: avg(byPicker[u.id]), count: byPicker[u.id].length }))
+        .map(u => ({ id: u.id, name: u.name, _color: userColor(u), avg: avg(byPicker[u.id]), count: byPicker[u.id].length }))
         .sort((a, b) => b.avg - a.avg)
     }
 
@@ -3684,7 +3685,6 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       distBuckets,
       memberBox,
       givenReceived,
-      givenReceivedDomain,
       pickerRankings,
       havePickerData,
       corrNames,
@@ -3949,7 +3949,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         <SectionLabel>Picker Power Rankings</SectionLabel>
         {stats.havePickerData && stats.pickerRankings.length > 0 ? (
           <GlassCard style={{ padding: '4px 0' }}>
-            {stats.pickerRankings.map((p, i) => (
+            {stats.pickerRankings.map((p, i) => {
+              const col = p._color || 'var(--accent)'
+              return (
               <div
                 key={p.id}
                 onClick={p.id ? () => onMember?.(p.id) : undefined}
@@ -3961,15 +3963,15 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   padding: '11px 16px', cursor: p.id ? 'pointer' : 'default',
                   borderBottom: i < stats.pickerRankings.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
                 }}>
-                <span style={{ flexShrink: 0, width: '20px', textAlign: 'center', fontFamily: "'Bebas Neue',sans-serif", color: i === 0 ? 'var(--accent)' : 'var(--text-faint)', fontSize: '1.3rem' }}>
+                <span style={{ flexShrink: 0, width: '20px', textAlign: 'center', fontFamily: "'Bebas Neue',sans-serif", color: i === 0 ? col : 'var(--text-faint)', fontSize: '1.3rem' }}>
                   {i + 1}
                 </span>
                 <div style={{
                   flexShrink: 0, width: '32px', height: '32px', borderRadius: '50%',
-                  border: '1.5px solid var(--accent)', background: 'rgba(var(--fg-rgb), 0.04)',
+                  border: `1.5px solid ${col}`, background: 'rgba(var(--fg-rgb), 0.04)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '12px', letterSpacing: '0.04em' }}>
+                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: col, fontSize: '12px', letterSpacing: '0.04em' }}>
                     {initials(p.name)}
                   </span>
                 </div>
@@ -3980,7 +3982,8 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   {fmt(p.avg)}
                 </span>
               </div>
-            ))}
+              )
+            })}
           </GlassCard>
         ) : (
           <GlassCard style={{ padding: '16px' }}>
@@ -4016,7 +4019,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   ]}
               layout="horizontal"
               labelKey="name"
-              domain={stats.givenReceivedDomain}
+              smartDomain
               height={210}
             />
           ) : (
@@ -4094,11 +4097,11 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
               flexShrink: 0,
               width: '44px', height: '44px',
               borderRadius: '50%',
-              border: '2px solid var(--accent)',
+              border: `2px solid ${userColor(stats.mostActiveUser) || 'var(--accent)'}`,
               background: 'rgba(var(--fg-rgb), 0.04)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '15px', letterSpacing: '0.04em' }}>
+              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: userColor(stats.mostActiveUser) || 'var(--accent)', fontSize: '15px', letterSpacing: '0.04em' }}>
                 {initials(stats.mostActiveUser.name)}
               </span>
             </div>
@@ -4111,7 +4114,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
               </p>
             </div>
             <div style={{ flexShrink: 0, textAlign: 'right' }}>
-              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
+              <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: userColor(stats.mostActiveUser) || 'var(--accent)', fontSize: '2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
                 {stats.mostActiveCount}
               </p>
               <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '2px 0 0' }}>
@@ -4130,6 +4133,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         <GlassCard style={{ padding: '4px 0' }}>
           {stats.activeUsers.map((u, i) => {
             const streak = stats.streaks[u.id] || 0
+            const col = userColor(u) || 'var(--accent)'
             return (
               <div
                 key={u.id}
@@ -4146,11 +4150,11 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   flexShrink: 0,
                   width: '32px', height: '32px',
                   borderRadius: '50%',
-                  border: '1.5px solid var(--accent)',
+                  border: `1.5px solid ${col}`,
                   background: 'rgba(var(--fg-rgb), 0.04)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '12px', letterSpacing: '0.04em' }}>
+                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: col, fontSize: '12px', letterSpacing: '0.04em' }}>
                     {initials(u.name)}
                   </span>
                 </div>
