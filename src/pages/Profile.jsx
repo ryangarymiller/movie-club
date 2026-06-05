@@ -50,12 +50,14 @@ const LABEL_STYLE = {
   fontSize: '10px',
   letterSpacing: '0.18em',
   textTransform: 'uppercase',
-  color: 'var(--hairline)',
+  // A readable text token (not the dim divider colour) so field labels like
+  // "Theme" / "Accent Color" have enough pop.
+  color: 'var(--text-dim)',
 }
 
 const SECTION_LABEL = {
   ...LABEL_STYLE,
-  color: 'var(--text-faint)',
+  color: 'var(--text-muted)',
   marginBottom: '12px',
   display: 'block',
 }
