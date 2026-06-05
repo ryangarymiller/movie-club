@@ -54,13 +54,18 @@ function avatarColor(name = '') {
   return AVATAR_FALLBACK[Math.abs(h) % AVATAR_FALLBACK.length]
 }
 
-export default function CommentThread({ movieId, currentUserId, isAdmin, users = [], canParticipate }) {
+export default function CommentThread({ movieId, currentUserId, isAdmin, users = [], canParticipate, focusId = null }) {
   const [reviews, setReviews] = useState([])
   const [comments, setComments] = useState([])
   const [reactions, setReactions] = useState([])
   const [votes, setVotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // Deep-link focus: a comment/review id to scroll to + highlight (from a
+  // notification "Open"). The highlight clears on the next click anywhere.
+  const rootRef = useRef(null)
+  const [highlightId, setHighlightId] = useState(null)
+  const scrolledForRef = useRef(null)
   // Ticks every 30s so the 15-min edit window can expire without a manual refresh.
   const [now, setNow] = useState(() => Date.now())
 
@@ -317,16 +322,37 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
     }
   }
 
+  // Once the thread has rendered, scroll the deep-linked post into view and light
+  // it up. Runs once per focusId (so reactions/edits don't re-scroll).
+  useEffect(() => {
+    if (!focusId || loading) return
+    if (scrolledForRef.current === focusId) return
+    const el = rootRef.current?.querySelector(`[data-thread-id="${focusId}"]`)
+    if (!el) return
+    scrolledForRef.current = focusId
+    setHighlightId(focusId)
+    requestAnimationFrame(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+  }, [focusId, loading, reviews, comments])
+
+  // Clear the highlight on the next click anywhere (deferred so the click that
+  // opened the thread doesn't immediately clear it).
+  useEffect(() => {
+    if (!highlightId) return
+    const clear = () => setHighlightId(null)
+    const t = setTimeout(() => document.addEventListener('click', clear, true), 0)
+    return () => { clearTimeout(t); document.removeEventListener('click', clear, true) }
+  }, [highlightId])
+
   const shared = {
     userById, mentionable, reactionsByTarget, votesByTarget,
-    currentUserId, isAdmin, canParticipate, now,
+    currentUserId, isAdmin, canParticipate, now, highlightId,
     onToggleReaction: toggleReaction, onVote: castVote,
     onDeleteComment: deleteComment, onError: setError,
     movieId, onMutated: fetchAll,
   }
 
   return (
-    <div style={{ fontFamily: BODY_FONT, color: 'var(--text)' }}>
+    <div ref={rootRef} style={{ fontFamily: BODY_FONT, color: 'var(--text)' }}>
       <p style={{
         fontFamily: MONO, fontSize: '10px', textTransform: 'uppercase',
         letterSpacing: '0.1em', color: 'var(--text-dim)', margin: '0 0 16px',
@@ -420,15 +446,22 @@ function ReviewThread({ review, childComments, onDeleteReview, ...shared }) {
   const {
     userById, mentionable, reactionsByTarget, votesByTarget, currentUserId,
     isAdmin, canParticipate, now, onToggleReaction, onVote,
-    onError, movieId, onMutated,
+    onError, movieId, onMutated, highlightId,
   } = shared
   const [replying, setReplying] = useState(false)
+  const lit = highlightId === review.id
 
   return (
-    <div style={{
-      border: '1px solid rgba(var(--fg-rgb),0.1)', borderRadius: '14px',
-      padding: '16px', background: 'rgba(var(--fg-rgb),0.02)',
-    }}>
+    <div
+      data-thread-id={review.id}
+      style={{
+        border: lit ? '1px solid rgba(var(--accent-rgb),0.6)' : '1px solid rgba(var(--fg-rgb),0.1)',
+        borderRadius: '14px',
+        padding: '16px',
+        background: lit ? 'rgba(var(--accent-rgb),0.08)' : 'rgba(var(--fg-rgb),0.02)',
+        boxShadow: lit ? '0 0 0 2px rgba(var(--accent-rgb),0.45), 0 0 18px rgba(var(--accent-rgb),0.35)' : 'none',
+        transition: 'box-shadow 0.4s ease, background 0.4s ease, border-color 0.4s ease',
+      }}>
       <PostCard
         post={review}
         targetType="review"
@@ -505,18 +538,25 @@ function CommentNode({ node, reviewId, depth, ...shared }) {
   const {
     userById, mentionable, reactionsByTarget, votesByTarget, currentUserId,
     isAdmin, canParticipate, now, onToggleReaction, onVote, onDeleteComment,
-    onError, movieId, onMutated,
+    onError, movieId, onMutated, highlightId,
   } = shared
   const [replying, setReplying] = useState(false)
   const indent = depth < MAX_DEPTH
+  const lit = highlightId === node.id
 
   return (
-    <div style={{
-      marginTop: depth === 0 ? 0 : '14px',
-      paddingLeft: indent ? '14px' : 0,
-      marginLeft: indent ? '4px' : 0,
-      borderLeft: indent ? '2px solid rgba(var(--fg-rgb),0.08)' : 'none',
-    }}>
+    <div
+      data-thread-id={node.id}
+      style={{
+        marginTop: depth === 0 ? 0 : '14px',
+        paddingLeft: indent ? '14px' : 0,
+        marginLeft: indent ? '4px' : 0,
+        borderLeft: indent ? '2px solid rgba(var(--fg-rgb),0.08)' : 'none',
+        borderRadius: lit ? '10px' : 0,
+        background: lit ? 'rgba(var(--accent-rgb),0.08)' : 'transparent',
+        boxShadow: lit ? '0 0 0 2px rgba(var(--accent-rgb),0.45), 0 0 18px rgba(var(--accent-rgb),0.3)' : 'none',
+        transition: 'box-shadow 0.4s ease, background 0.4s ease',
+      }}>
       <PostCard
         post={node}
         targetType="comment"

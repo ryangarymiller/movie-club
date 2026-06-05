@@ -953,7 +953,7 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, isPic
   )
 }
 
-export function FilmDetailOverlay({ movie, onClose }) {
+export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
   const { profile, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [visible, setVisible] = useState(false)
@@ -1885,6 +1885,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
                   isAdmin={isAdmin && profile?.admin_mode_enabled}
                   users={users}
                   canParticipate={myRating?.score != null}
+                  focusId={focusPostId}
                 />
               </div>
             </>
@@ -2782,34 +2783,43 @@ export default function Films() {
     load()
   }, [])
 
+  // A discussion post (comment/review id) to scroll to + highlight after opening,
+  // carried from a notification deep-link.
+  const [focusPostId, setFocusPostId] = useState(null)
+  // Dedupes the deep-link open in the brief window before the consumed URL settles;
+  // reset on close so the same film can be deep-linked again.
+  const openedFilmRef = useRef(null)
+
   const handleSelect = useCallback((movie) => {
+    setFocusPostId(null)
     setSelectedMovie(movie)
   }, [])
 
   const handleClose = useCallback(() => {
     setSelectedMovie(null)
-    // Drop the deep-link params so closing doesn't immediately re-open the film.
-    if (searchParams.get('film')) {
-      const sp = new URLSearchParams(searchParams)
-      sp.delete('film'); sp.delete('review'); sp.delete('comment')
-      setSearchParams(sp, { replace: true })
-    }
-  }, [searchParams, setSearchParams])
+    setFocusPostId(null)
+    openedFilmRef.current = null
+  }, [])
 
-  // Deep-link: /films?film=<movie_id> opens that film's overlay (e.g. from a
-  // notification's "Open"). Fires once the films have loaded; guarded so it
-  // opens a given id only once (so closing it doesn't re-trigger).
-  const openedFilmRef = useRef(null)
+  // Deep-link: /films?film=<id>[&comment=<id>|&review=<id>] opens that film's
+  // overlay (from a notification "Open" / tapped push). We CONSUME the params
+  // immediately on open (replace the URL) so they don't linger — that's what made
+  // closing reopen the film (useBackClose's history.back landed back on the
+  // deep-link URL) and made "Open" on the same film do nothing (same URL = no
+  // navigation).
   useEffect(() => {
     const filmId = searchParams.get('film')
-    if (!filmId || loading) { if (!filmId) openedFilmRef.current = null; return }
+    if (!filmId || loading) return
     if (openedFilmRef.current === filmId) return
     const movie = movies.find(m => m.id === filmId)
-    if (movie) {
-      openedFilmRef.current = filmId
-      setSelectedMovie(movie)
-    }
-  }, [searchParams, movies, loading])
+    if (!movie) return
+    openedFilmRef.current = filmId
+    setFocusPostId(searchParams.get('comment') || searchParams.get('review') || null)
+    setSelectedMovie(movie)
+    const sp = new URLSearchParams(searchParams)
+    sp.delete('film'); sp.delete('comment'); sp.delete('review')
+    setSearchParams(sp, { replace: true })
+  }, [searchParams, movies, loading, setSearchParams])
 
   return (
     <div
@@ -2944,7 +2954,7 @@ export default function Films() {
       )}
 
       {/* Film detail overlay */}
-      <FilmDetailOverlay movie={selectedMovie} onClose={handleClose} />
+      <FilmDetailOverlay movie={selectedMovie} onClose={handleClose} focusPostId={focusPostId} />
 
       <style>{`
         @media (min-width: 480px) { .films-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; } }
