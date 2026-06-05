@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { memberColor } from '../lib/colors'
+import { memberColor, userColor } from '../lib/colors'
 
 // --- Shared helpers ---
 function initials(name = '') {
@@ -665,7 +665,7 @@ function PostCard({
             aria-hidden="true"
             style={{
               flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%',
-              background: avatarColor(name), display: 'flex', alignItems: 'center',
+              background: userColor(author) || avatarColor(name), display: 'flex', alignItems: 'center',
               justifyContent: 'center', color: '#fff', fontFamily: BODY_FONT,
               fontWeight: 700, fontSize: '10px', letterSpacing: '0.02em',
             }}
@@ -1045,7 +1045,7 @@ function Composer({
                   aria-hidden="true"
                   style={{
                     flexShrink: 0, width: '22px', height: '22px', borderRadius: '50%',
-                    background: avatarColor(m.name), display: 'flex', alignItems: 'center',
+                    background: userColor(m) || avatarColor(m.name), display: 'flex', alignItems: 'center',
                     justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '9px',
                   }}
                 >

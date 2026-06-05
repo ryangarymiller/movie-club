@@ -2,7 +2,7 @@ import {
   ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis,
   CartesianGrid, ReferenceLine, Tooltip,
 } from 'recharts'
-import { memberColor } from '../lib/colors'
+import { userColor } from '../lib/colors'
 
 // Per-member score bar chart for a single film, with glowing mean (μ) and ±1
 // std-dev (σ) reference lines and a data-fitted x-domain. Self-contained so it
@@ -50,7 +50,7 @@ export default function FilmScoreBars({ ratings = [], users = [], height, onMemb
     .filter(r => r.score != null && userById[r.user_id])
     .map(r => {
       const u = userById[r.user_id]
-      return { id: u.id, name: firstLast(u.name), value: Number(r.score), fill: memberColor(u.name) || 'var(--accent)' }
+      return { id: u.id, name: firstLast(u.name), value: Number(r.score), fill: userColor(u) || 'var(--accent)' }
     })
     .sort((a, b) => b.value - a.value)
 

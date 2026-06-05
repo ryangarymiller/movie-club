@@ -320,7 +320,7 @@ function PickerLegend({ movies, userById }) {
       const name = userById[id]?.name
       if (name && !seen.has(id)) {
         seen.add(id)
-        const color = pickerColor(name)
+        const color = userColor(userById[id])
         if (color) entries.push({ id, name, color })
       }
     }
@@ -398,7 +398,7 @@ function PosterGrid({ movies, vault = false, loading, skeletonCount = 15, onSele
             ))
           : movies.map(m => {
               const name = m.picker_revealed ? (userById[m.picked_by_user_id]?.name ?? null) : null
-              const borderColor = name ? pickerColor(name) : undefined
+              const borderColor = name ? userColor(userById[m.picked_by_user_id]) : undefined
               return (
                 <PosterCard
                   key={m.id}
@@ -1025,7 +1025,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
         .eq('movie_id', movieId),
       supabase
         .from('users')
-        .select('id, name, email, role, joined_at'),
+        .select('id, name, email, role, joined_at, user_color'),
       supabase
         .from('score_predictions')
         .select('id, predicting_user_id, target_user_id, predicted_score')
@@ -1146,7 +1146,7 @@ export function FilmDetailOverlay({ movie, onClose }) {
       ] = await Promise.all([
         supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-        supabase.from('users').select('id, name, email, role, joined_at, is_active'),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color'),
         supabase.from('months').select('id, season_id, month_year, status'),
         supabase.from('seasons').select('id, name, start_date, end_date'),
       ])
@@ -2417,7 +2417,7 @@ function HistoryFilmCard({ movie, userById, onSelect, hideScores = false }) {
   const pickerName = movie.picker_revealed && movie.picked_by_user_id
     ? (userById[movie.picked_by_user_id]?.name ?? null)
     : null
-  const borderColor = pickerName ? pickerColor(pickerName) : undefined
+  const borderColor = pickerName ? userColor(userById[movie.picked_by_user_id]) : undefined
 
   const badgeColor = scored
     ? (computedScore >= 8.5 ? '#fbbf24' : computedScore >= 7 ? '#86efac' : computedScore <= 4 ? '#f87171' : 'var(--accent-light, #fca5a5)')

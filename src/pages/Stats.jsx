@@ -2504,7 +2504,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
               </p>
               <p style={{
                 fontFamily: "'Bebas Neue',sans-serif",
-                color: 'var(--accent)',
+                color: u.color,
                 fontSize: '2rem',
                 letterSpacing: '0.04em',
                 lineHeight: 1,
@@ -2569,7 +2569,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
                   <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {u.highest.movie.title}
                   </p>
-                  <span style={{ flexShrink: 0, fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '1.1rem', letterSpacing: '0.04em' }}>
+                  <span style={{ flexShrink: 0, fontFamily: "'Bebas Neue',sans-serif", color: u.color, fontSize: '1.1rem', letterSpacing: '0.04em' }}>
                     {fmt(u.highest.score)}
                   </span>
                 </div>
@@ -2599,8 +2599,8 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
                   onClick={() => onFullStats(u.id)}
                   style={{
                     width: '100%', padding: '11px 14px', borderRadius: '11px',
-                    background: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.22)',
-                    color: 'var(--accent)', fontFamily: "'DM Sans',sans-serif", fontSize: '13.5px', fontWeight: 500,
+                    background: `${u.color}14`, border: `1px solid ${u.color}55`,
+                    color: u.color, fontFamily: "'DM Sans',sans-serif", fontSize: '13.5px', fontWeight: 500,
                     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                   }}
                 >

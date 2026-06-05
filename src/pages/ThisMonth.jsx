@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
 import MonthReveal from '../components/MonthReveal'
 import { FilmDetailOverlay } from './Films'
-import { MEMBER_COLORS } from '../lib/colors'
+import { userColor } from '../lib/colors'
 import { useBackClose } from '../lib/useBackClose'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -275,7 +275,10 @@ function GuessThePicker({ movie, profile, allUsers }) {
 
 function FilmCard({ movie, rating, clubAvg = null, onScorePress, onOpen, pickerName, profile, allUsers }) {
   const status = scoreStatus(rating)
-  const pickerColor = pickerName ? MEMBER_COLORS[pickerName] : undefined
+  // Resolve the picker's chosen colour (user_color) by id, falling back to name.
+  const pickerColor = pickerName
+    ? userColor(allUsers?.find(u => u.id === movie.picked_by_user_id) ?? { name: pickerName })
+    : undefined
 
   const ctaLabel = status === 'excitement'
     ? 'Excitement'
@@ -1417,7 +1420,7 @@ function PicksTab({ profile, onOpenFilm }) {
       // hidden until reveal. Join user info for the picker label/color.
       const { data: picksData } = await supabase
         .from('upcoming_picks')
-        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, submitted_at, users(name, email)')
+        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, submitted_at, users(name, email, user_color)')
         .eq('month_target', month.month_year)
         .order('submitted_at', { ascending: true })
       // Test account must be invisible in all UI — filter by email.
@@ -1586,7 +1589,7 @@ function PicksTab({ profile, onOpenFilm }) {
 function PickRow({ pick, isOwn = false, expanded, onToggle, onChange }) {
   const meta = pick.metadata ?? {}
   const pickerName = pick.users?.name ?? 'Unknown'
-  const pickerColor = MEMBER_COLORS[pickerName]
+  const pickerColor = userColor(pick.users)
   const justification = meta.justification
 
   return (

@@ -6,7 +6,7 @@ import { useMemberOverlay } from '../context/MemberOverlayContext'
 import ScoreModal from '../components/ScoreModal'
 import ReadjustmentBanner from '../components/ReadjustmentBanner'
 import { FilmDetailOverlay } from './Films'
-import { MEMBER_COLORS, memberColor } from '../lib/colors'
+import { MEMBER_COLORS, memberColor, userColor } from '../lib/colors'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -53,11 +53,11 @@ function Skeleton({ className = '' }) {
   return <div className={`animate-pulse bg-white/5 rounded ${className}`} />
 }
 
-function PosterCard({ movie, pending, pickerName, clubAvg = null }) {
+function PosterCard({ movie, pending, pickerName, pickerColor, clubAvg = null }) {
   // Rolling club average (visible only once the viewer has scored, RLS-gated) takes
   // precedence; otherwise the authoritative historical average for revealed films.
   const score = clubAvg ?? movie.historical_avg_score
-  const borderColor = pickerName ? MEMBER_COLORS[pickerName] : undefined
+  const borderColor = pickerName ? (pickerColor ?? MEMBER_COLORS[pickerName]) : undefined
   return (
     <div
       className="relative shrink-0 w-28 cursor-pointer"
@@ -176,7 +176,7 @@ function StatCard({ label, value, sub, onClick }) {
 }
 
 function ActivityRow({ item, onFilmPress, isLast }) {
-  const color = MEMBER_COLORS[item.memberName] ?? 'var(--accent)'
+  const color = item.memberColor ?? MEMBER_COLORS[item.memberName] ?? 'var(--accent)'
   return (
     <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb),0.08)' }}>
       <div
@@ -301,6 +301,7 @@ export default function Home() {
 
     // Build the Recent Activity feed: merge ratings, reviews, comments into one list.
     const userMap = Object.fromEntries(visibleUsers.map(u => [u.id, u.name]))
+    const colorById = Object.fromEntries(visibleUsers.map(u => [u.id, userColor(u)]))
     const movieMap = Object.fromEntries((movies ?? []).map(m => [m.id, m]))
     const events = []
     for (const r of recentRatings ?? []) {
@@ -327,6 +328,7 @@ export default function Home() {
         verb: 'commented on', suffix: null,
       })
     }
+    for (const e of events) e.memberColor = colorById[e.userId]
     events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     setActivity(events.slice(0, 12))
     setLoading(false)
@@ -468,12 +470,11 @@ export default function Home() {
                   horizontal-scroll container (overflowX:auto also clips overflow-y). */}
               <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '8px 2px 26px', scrollbarWidth: 'none' }}>
                 {activeMovies.map(m => {
-                  const pickerName = m.picker_revealed
-                    ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
-                    : undefined
+                  const picker = m.picker_revealed ? users.find(u => u.id === m.picked_by_user_id) : null
+                  const pickerName = picker?.name ?? undefined
                   return (
                     <div key={m.id} onClick={() => setSelectedMovie(m)} style={{ cursor: 'pointer' }}>
-                      <PosterCard movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} clubAvg={activeClubAvgs[m.id] ?? null} />
+                      <PosterCard movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} pickerColor={userColor(picker)} clubAvg={activeClubAvgs[m.id] ?? null} />
                     </div>
                   )
                 })}
