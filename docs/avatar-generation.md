@@ -135,7 +135,7 @@ the same recipe. Current entries (subject in parens):
 Rebel Ridge (bicycle) · Princess Mononoke (kodama forest spirit) · Kingdom of Heaven (crusader
 cross) · Where the Wild Things Are (wolf costume) · Smashing Machine (championship belt) · City
 of God (favela skyline) · Contact (radio telescope dish) · Frailty (axe) · Oldboy (hammer) ·
-Spirited Away (No-Face mask) · Three Billboards (a billboard) · Birdman (Broadway marquee) ·
+Spirited Away (No-Face mask) · Three Billboards (a billboard) · Birdman (the birdman costume) ·
 Heat (two coffee cups) · Eternal Sunshine (the broken ice scene — lying on the cracked frozen
 river) · American Gangster (chinchilla fur coat) · Cherry (a cherry) · Being John Malkovich
 (the little portal door) · Adaptation (a ghost orchid). *(No icon: The Master, Primer,
