@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { logAuthEvent, consumeUserInitiatedSignOut } from '../lib/authLog'
 
@@ -12,15 +12,37 @@ export function AuthProvider({ children }) {
   // as opposed to genuinely finding no user row. Lets the app show a retry screen
   // instead of bouncing the user to /not-approved on a momentary blip.
   const [profileError, setProfileError] = useState(false)
+  // The user id whose profile is currently loaded/loading. Supabase fires
+  // onAuthStateChange (TOKEN_REFRESHED / SIGNED_IN) every time the tab regains
+  // focus; without this guard we'd refetch the profile each time, hand every
+  // page a NEW `profile` object reference, and re-trigger their `[profile]` load
+  // effects — which blanked the page and reloaded its data on every tab switch.
+  // We only (re)fetch when the user actually changes.
+  const loadedUserRef = useRef(null)
 
   useEffect(() => {
     let mounted = true
+
+    // Load the profile only when the signed-in user changed (or on first load).
+    // Same-user auth events (token refresh on refocus) keep the existing profile.
+    function syncProfile(nextSession) {
+      const uid = nextSession?.user?.id ?? null
+      if (!uid) {
+        loadedUserRef.current = null
+        setProfile(null)
+        setProfileLoaded(true)
+        return
+      }
+      if (uid === loadedUserRef.current) return // same user — already loaded/loading
+      loadedUserRef.current = uid
+      fetchProfile(uid, nextSession.user.email)
+    }
 
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) logAuthEvent('get_session_error', { detail: { message: error.message } })
       if (!mounted) return
       setSession(session)
-      if (session) fetchProfile(session.user.id, session.user.email)
+      if (session) syncProfile(session)
       else setProfileLoaded(true)
     })
 
@@ -38,8 +60,7 @@ export function AuthProvider({ children }) {
         })
       }
       setSession(session)
-      if (session) fetchProfile(session.user.id, session.user.email)
-      else { setProfile(null); setProfileLoaded(true) }
+      syncProfile(session)
     })
 
     return () => { mounted = false; subscription.unsubscribe() }

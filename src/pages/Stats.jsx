@@ -386,7 +386,7 @@ function MonthLineChart({
               )
             })}
           </div>
-          <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-faint)', margin: '4px 0 0', letterSpacing: '0.04em' }}>
+          <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--text-faint)', margin: '4px 0 0', letterSpacing: '0.04em' }}>
             tap a series to highlight it
           </p>
         </>
@@ -689,20 +689,26 @@ function CorrelationHeatmap({ names, matrix }) {
     return `rgba(251,146,60,${a.toFixed(3)})`
   }
   const short = (n) => (n || '?').split(' ')[0]
-  const cols = `64px repeat(${names.length}, minmax(0,1fr))`
+  // Fixed-ish cell sizing: `1fr` cells + `aspect-ratio:1` ballooned each square to
+  // ~200px on a wide desktop card (the "massive" grid). Cap the cell so the grid
+  // stays compact, and size the whole grid to its content (`width:max-content`) so
+  // it sits left-aligned instead of stretching to the full page width.
+  const LABEL_COL = 'clamp(58px, 14vw, 76px)'
+  const CELL = 'clamp(40px, 11vw, 52px)'
+  const cols = `${LABEL_COL} repeat(${names.length}, ${CELL})`
   return (
     <div style={{ overflowX: 'auto' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: cols, gap: '3px', minWidth: `${64 + names.length * 44}px` }}>
+      <div style={{ display: 'grid', gridTemplateColumns: cols, gap: '3px', width: 'max-content' }}>
         {/* header row */}
         <div />
         {names.map((n, i) => (
-          <div key={i} style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '8px', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingBottom: '2px' }}>
+          <div key={i} style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: 'clamp(10px, 1vw, 12px)', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingBottom: '2px' }}>
             {short(n)}
           </div>
         ))}
         {names.map((rowName, r) => (
           <Fragment key={r}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '6px', fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '6px', fontFamily: "'DM Mono',monospace", fontSize: 'clamp(10px, 1vw, 12px)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {short(rowName)}
             </div>
             {names.map((_, c) => {
@@ -712,7 +718,7 @@ function CorrelationHeatmap({ names, matrix }) {
                   aspectRatio: '1', borderRadius: '4px', background: r === c ? 'rgba(var(--fg-rgb), 0.1)' : cellColor(v),
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '8px', color: r === c ? 'var(--text-faint)' : 'rgba(var(--fg-rgb), 0.75)' }}>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: r === c ? 'var(--text-faint)' : 'rgba(var(--fg-rgb), 0.75)' }}>
                     {r === c ? '—' : (v == null ? '' : v.toFixed(2))}
                   </span>
                 </div>
@@ -1046,7 +1052,7 @@ function StatCard({ label, value }) {
     <GlassCard style={{ padding: '14px 16px' }}>
       <p style={{
         fontFamily: "'DM Mono',monospace",
-        fontSize: '9px',
+        fontSize: 'clamp(9px, 1vw, 11px)',
         textTransform: 'uppercase',
         letterSpacing: '0.14em',
         color: 'var(--hairline)',
@@ -1159,7 +1165,7 @@ function ExpandableFilmStat({ movie, label, sublabel, onFilm, onMember, expanded
             <>
               <MemberScoreBars data={chartData.bars} mean={chartData.mean} sd={chartData.sd} onMember={onMember} />
               {caption && (
-                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                   {caption}
                 </p>
               )}
@@ -2537,7 +2543,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
               <p style={{
                 fontFamily: "'DM Mono',monospace",
                 color: 'var(--text-faint)',
-                fontSize: '9px',
+                fontSize: 'clamp(9px, 1vw, 11px)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.12em',
                 margin: '0 0 2px',
@@ -2579,7 +2585,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
               borderRadius: '9px',
               padding: '10px 12px',
             }}>
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
                 Excitement Avg
               </p>
               <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -2591,7 +2597,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
               borderRadius: '9px',
               padding: '10px 12px',
             }}>
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
                 Would Recommend
               </p>
               <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -2605,7 +2611,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
             <div style={{ borderTop: '1px solid rgba(var(--fg-rgb), 0.05)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {u.highest && (
                 <div onClick={() => onFilm?.(u.highest.movie)} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', flexShrink: 0, width: '52px' }}>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', flexShrink: 0, width: '52px' }}>
                     Highest
                   </span>
                   <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2618,7 +2624,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
               )}
               {u.lowest && u.lowest.id !== u.highest?.id && (
                 <div onClick={() => onFilm?.(u.lowest.movie)} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', flexShrink: 0, width: '52px' }}>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', flexShrink: 0, width: '52px' }}>
                     Lowest
                   </span>
                   <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2652,7 +2658,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
               {/* Secondary stat chips: std dev + granularity */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', borderRadius: '9px', padding: '10px 12px' }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
                     Std Dev (spread)
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -2660,7 +2666,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
                   </p>
                 </div>
                 <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', borderRadius: '9px', padding: '10px 12px' }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px' }}>
                     Granularity
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '1.3rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -2671,7 +2677,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
 
               {/* Score distribution */}
               <div>
-                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--hairline)', margin: '0 0 8px' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--hairline)', margin: '0 0 8px' }}>
                   Score Distribution
                 </p>
                 {u.distBins.length > 0 ? (
@@ -2683,7 +2689,7 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
 
               {/* Scores over time */}
               <div>
-                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--hairline)', margin: '0 0 8px' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--hairline)', margin: '0 0 8px' }}>
                   Scores Over Time
                 </p>
                 {u.overTime.length >= 2 ? (
@@ -2920,7 +2926,7 @@ function ClubVsTmdbChart({ candidates }) {
           </Scatter>
         </ScatterChart>
       </ResponsiveContainer>
-      <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+      <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
         x = TMDB community vote · y = club average · above the dashed line = we rated it higher ({above}/{rows.length}) · hover for titles
       </p>
     </>
@@ -2941,7 +2947,7 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
   return (
     <div>
     {/* Legend OUTSIDE the horizontal scroll area so it's fully readable. */}
-    <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-dim)', margin: '0 0 12px', lineHeight: 1.5 }}>
+    <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--text-dim)', margin: '0 0 12px', lineHeight: 1.5 }}>
       Films each member has picked, per genre · empty = never picked (a blindspot) · brighter = more picks
     </p>
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -2960,7 +2966,7 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
                 writingMode: 'vertical-rl',
                 transform: 'rotate(180deg)',
                 fontFamily: "'DM Mono',monospace",
-                fontSize: '9px',
+                fontSize: 'clamp(9px, 1vw, 11px)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
                 color: 'var(--text-faint)',
@@ -3358,8 +3364,12 @@ function ConnectionWeb({ movies = [], onFilm }) {
             </>
           ) : selectedEdge ? (
             <>
-              {/* Flex row so the ↔ stays vertically centred even when a title wraps
-                  to two lines (inline verticalAlign didn't hold across wraps). */}
+              {/* The connector is an SVG arrow (not the ↔ glyph): the unicode
+                  arrow sits on the font's math axis, well below the all-caps
+                  Bebas Neue optical centre, so it always looked low. An SVG is
+                  geometrically centred in its own box; flex-centre + a tiny
+                  upward nudge (caps sit a hair high in the line box) lands it
+                  truly centred on a line, regardless of wrapping. */}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 fontFamily: "'Bebas Neue',sans-serif", letterSpacing: '0.04em',
@@ -3368,7 +3378,16 @@ function ConnectionWeb({ movies = [], onFilm }) {
                 {edgeFilms.map((m, i) => (
                   <Fragment key={i}>
                     {i > 0 && (
-                      <span style={{ flexShrink: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text-faint)', fontSize: '0.85em' }}>↔</span>
+                      <svg
+                        viewBox="0 0 24 24" width="0.8em" height="0.8em" aria-hidden="true"
+                        fill="none" stroke="currentColor" strokeWidth="2.2"
+                        strokeLinecap="round" strokeLinejoin="round"
+                        style={{ flexShrink: 0, color: 'var(--text-faint)', transform: 'translateY(-0.05em)' }}
+                      >
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <polyline points="7 8 3 12 7 16" />
+                        <polyline points="17 8 21 12 17 16" />
+                      </svg>
                     )}
                     <span style={{ minWidth: 0 }}>{m.title}</span>
                   </Fragment>
@@ -3904,7 +3923,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
             stats.trendData.length >= 2 ? (
               <>
                 <ClubTrendChart data={stats.trendData} series={stats.trendSeries} mode="month" height={230} storedVotes={stats.tmdbVoteById} />
-                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                   Thick solid line = club average · grey dotted = TMDB community · others = each member's monthly average
                 </p>
               </>
@@ -3927,7 +3946,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   tooltipLabelKey="title"
                   storedVotes={stats.tmdbVoteById}
                 />
-                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                   Per film, in watch order · thick solid line = club average · grey dotted = TMDB community · others = each member
                 </p>
               </>
@@ -3972,7 +3991,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                 smartDomain
                 height={Math.max(160, stats.decadeData.length * 26 + 50)}
               />
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                 {stats.decadeData.map(d => `${d.decade}: ${d.count}`).join(' · ')} films
               </p>
             </>
@@ -4008,7 +4027,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   </span>
                 </div>
               ))}
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '4px 0 0' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '4px 0 0' }}>
                 Smallest score increment each member actually lands on (1 / 0.5 / 0.25 / 0.1 / 0.01).
               </p>
             </div>
@@ -4098,7 +4117,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
           )}
         </GlassCard>
         {stats.perMovieStats.length > 0 && (
-          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '6px 2px 0' }}>
+          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '6px 2px 0' }}>
             σ = score spread across members · green = most unanimous → red = most divisive
           </p>
         )}
@@ -4312,7 +4331,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
               <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: userColor(stats.mostActiveUser) || 'var(--accent)', fontSize: '2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
                 {stats.mostActiveCount}
               </p>
-              <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '2px 0 0' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '2px 0 0' }}>
                 scores
               </p>
             </div>
@@ -4399,7 +4418,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         <GlassCard style={{ padding: '20px' }}>
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#fbbf24', margin: '0 0 6px' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#fbbf24', margin: '0 0 6px' }}>
                 Avg Excitement
               </p>
               <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: '#fbbf24', fontSize: '2.8rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -4408,7 +4427,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
             </div>
             <div style={{ width: '1px', background: 'rgba(var(--fg-rgb), 0.07)', flexShrink: 0 }} />
             <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--accent)', margin: '0 0 6px' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--accent)', margin: '0 0 6px' }}>
                 Avg Final Score
               </p>
               <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.8rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -4651,7 +4670,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
             <GlassCard style={{ padding: '16px 20px' }}>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', marginBottom: '10px' }}>
                 <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {nameA}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -4662,7 +4681,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                   <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--hairline)' }}>avg</span>
                 </div>
                 <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {nameB}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '2.2rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -4716,7 +4735,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
             <GlassCard style={{ padding: '16px 20px' }}>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {nameA}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--accent)', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -4724,7 +4743,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                   </p>
                 </div>
                 <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px' }}>
                     Ties
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-dim)', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -4732,7 +4751,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                   </p>
                 </div>
                 <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--hairline)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {nameB}
                   </p>
                   <p style={{ fontFamily: "'Bebas Neue',sans-serif", color: 'var(--text-strong)', fontSize: '2.6rem', letterSpacing: '0.04em', lineHeight: 1, margin: 0 }}>
@@ -4785,7 +4804,7 @@ function HeadToHeadTab({ movies, ratings, users, loading, onFilm }) {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                 Bars right = {nameA} scored higher · left = {nameB} scored higher
               </p>
             </GlassCard>
@@ -5086,7 +5105,7 @@ export default function Stats() {
               border: '1px solid rgba(var(--fg-rgb), 0.07)',
             }}>
               <div style={{ minWidth: 0 }}>
-                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--hairline)', margin: '0 0 3px' }}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 'clamp(9px, 1vw, 11px)', textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--hairline)', margin: '0 0 3px' }}>
                   Viewing member
                 </p>
                 <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', letterSpacing: '0.03em', color: 'var(--text-strong)', margin: 0, lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
