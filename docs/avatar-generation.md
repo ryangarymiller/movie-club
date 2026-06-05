@@ -79,6 +79,10 @@ sticker style, no text
 --ar 1:1 --style raw --v 7 --sref <ANCHOR(S)> --sw 50
 ```
 
+flat cartoon avatar icon of <subject, with its real colors>, bold clean thick outlines, simple flat shapes, soft cell shading, centered, plain white background, sticker style, no text, frame, border --ar 1:1 --raw --sw 50 --v 7
+
+
+
 Parameter notes:
 - `--ar 1:1` square (avatars are round-cropped later).
 - `--style raw` less "MJ flair," more literal/icon-like.
@@ -147,40 +151,69 @@ Always **Upscale** the chosen result before downloading (gives ~1024²+). The ic
 ## Step 5 — Process into app-ready icons
 
 Drop every downloaded PNG into `raw/<pack-slug>/<icon-slug>.png` (slugs: lowercase, hyphenated,
-e.g. `raw/star-wars/darth-vader.png`). Then run this once — it cuts out the background, trims to
-the artwork, squares it, and exports a 256px WebP into the right place:
+e.g. `raw/star-wars/darth-vader.png`). Then run this once — it makes the **outer** background
+transparent (so the icon matches the app theme + user-color ring), trims to the artwork, squares
+it, and exports a 256px WebP into the right place:
 
 ```python
 # scripts/avatar_process.py
-# pip install pillow rembg onnxruntime
+# pip install pillow numpy scipy
 import pathlib
+import numpy as np
 from PIL import Image
-from rembg import remove
+from scipy.ndimage import label, binary_erosion
 
 SIZE = 256
+TOL = 22  # how close to the corner colour still counts as background
+
 SRC = pathlib.Path("raw")
 OUT = pathlib.Path("public/avatars")
 
-def process(img: Image.Image) -> Image.Image:
-    img = remove(img.convert("RGBA"))          # background -> transparent
+def cut_background(img):
+    """Make only the OUTER background transparent, preserving white *inside* the
+    icon (Stormtrooper armour, C-3PO highlights, piano keys, Jaws' teeth…). We
+    sample the corner colour and remove just the pixels of that colour that are
+    connected to the image border — interior matches are left alone."""
+    img = img.convert("RGBA")
+    arr = np.array(img)
+    bg_col = arr[0, 0, :3].astype(int)                       # whatever the bg actually is
+    near_bg = (np.abs(arr[:, :, :3].astype(int) - bg_col).max(axis=2) <= TOL)
+    lbl, _ = label(near_bg)
+    border = set(lbl[0]) | set(lbl[-1]) | set(lbl[:, 0]) | set(lbl[:, -1])
+    border.discard(0)
+    bg = np.isin(lbl, list(border))                          # bg = border-connected only
+    bg = ~binary_erosion(~bg, iterations=1)                  # nibble the 1px anti-alias halo
+    arr[bg, 3] = 0
+    return Image.fromarray(arr, "RGBA")
+
+def square_pad(img):
     bbox = img.getbbox()
     if bbox:
-        img = img.crop(bbox)                   # trim to the artwork
+        img = img.crop(bbox)                                 # trim to the artwork
     w, h = img.size
     s = max(w, h)
     canvas = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    canvas.paste(img, ((s - w) // 2, (s - h) // 2), img)  # pad to square, centered
+    canvas.paste(img, ((s - w) // 2, (s - h) // 2), img)     # pad to square, centered
     return canvas.resize((SIZE, SIZE), Image.LANCZOS)
 
 for src in SRC.rglob("*.png"):
     dst = (OUT / src.relative_to(SRC)).with_suffix(".webp")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    process(Image.open(src)).save(dst, "WEBP", quality=90, method=6)
+    square_pad(cut_background(Image.open(src))).save(dst, "WEBP", quality=90, method=6)
     print("✓", dst)
 ```
 
-Result: transparent-background, square, 256px WebP icons under `public/avatars/<pack>/<icon>.webp`.
-(Transparent bg means the member's user-color ring shows through cleanly behind the art.)
+Result: transparent-background, square, 256px WebP icons under `public/avatars/<pack>/<icon>.webp` —
+the member's user-color ring + the theme surface show through cleanly behind the art.
+
+**Tuning:** if a faint outline of the old background remains, bump `TOL` (e.g. 30). If it eats into
+the icon, lower it. For any icon whose background isn't a clean flat colour (a gradient or busy
+backdrop slipped in), fall back to AI cutout for just that file: `pip install rembg onnxruntime`
+then `from rembg import remove; img = remove(img.convert("RGBA"))` in place of `cut_background`.
+
+> Note: keep generating on a **plain, flat background** (the prompt says "plain off-white
+> background") — that's what makes this one-pass keying clean. Avoid prompts that add scenery or
+> gradients behind the icon.
 
 ---
 
