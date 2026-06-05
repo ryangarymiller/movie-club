@@ -3307,21 +3307,22 @@ function ConnectionWeb({ movies = [], onFilm }) {
             </>
           ) : selectedEdge ? (
             <>
-              <p style={{
+              {/* Flex row so the ↔ stays vertically centred even when a title wraps
+                  to two lines (inline verticalAlign didn't hold across wraps). */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
                 fontFamily: "'Bebas Neue',sans-serif", letterSpacing: '0.04em',
-                fontSize: '1.05rem', color: 'var(--text-strong)', margin: '0 0 2px', lineHeight: 1.25,
+                fontSize: '1.05rem', color: 'var(--text-strong)', margin: '0 0 2px', lineHeight: 1.15,
               }}>
                 {edgeFilms.map((m, i) => (
                   <Fragment key={i}>
                     {i > 0 && (
-                      // Render the arrow in a UI font + vertically centred — the Bebas
-                      // glyph set lacks ↔, so it otherwise fell back off-baseline.
-                      <span style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-faint)', fontSize: '0.78em', verticalAlign: 'middle', padding: '0 7px' }}>↔</span>
+                      <span style={{ flexShrink: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text-faint)', fontSize: '0.85em' }}>↔</span>
                     )}
-                    {m.title}
+                    <span style={{ minWidth: 0 }}>{m.title}</span>
                   </Fragment>
                 ))}
-              </p>
+              </div>
               <p style={{
                 fontFamily: "'DM Mono',monospace", fontSize: '10.5px', color: 'var(--text-dim)',
                 margin: 0, lineHeight: 1.5,

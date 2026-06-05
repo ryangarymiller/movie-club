@@ -77,8 +77,9 @@ export default function FilmScoreBars({ ratings = [], users = [], height, onMemb
   const h = height || Math.max(130, data.length * 30 + 44)
 
   return (
+    <div>
     <ResponsiveContainer width="100%" height={h}>
-      <BarChart data={data} layout="vertical" margin={{ top: 20, right: 30, left: 4, bottom: 8 }}>
+      <BarChart data={data} layout="vertical" margin={{ top: 6, right: 30, left: 4, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(var(--fg-rgb),0.07)" horizontal={false} />
         <XAxis type="number" domain={domain} allowDecimals tickFormatter={(v) => Number(v).toFixed(1)} tick={{ fontSize: 9, fill: 'var(--text-faint)', fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
         <YAxis
@@ -105,14 +106,19 @@ export default function FilmScoreBars({ ratings = [], users = [], height, onMemb
             <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.18} />
             <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={6} strokeOpacity={0.18} />
             <ReferenceLine x={sdLo} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.95} />
-            <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.95}
-              label={{ value: `σ ${sd.toFixed(2)}`, position: 'bottom', fontSize: 9, fill: 'var(--accent-light)', fontFamily: 'DM Mono', fontWeight: 700 }} />
+            <ReferenceLine x={sdHi} stroke="var(--accent-light)" strokeWidth={1.8} strokeOpacity={0.95} />
           </>
         )}
         <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={7} strokeOpacity={0.22} />
-        <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={2.4}
-          label={{ value: `μ ${mean.toFixed(2)}`, position: 'top', fontSize: 10, fill: 'var(--text-strong)', fontFamily: 'DM Mono', fontWeight: 700 }} />
+        <ReferenceLine x={mean} stroke="var(--text-strong)" strokeWidth={2.4} />
       </BarChart>
     </ResponsiveContainer>
+    {/* μ/σ in a caption below — inline ReferenceLine labels collided with the
+        y-axis member names. */}
+    <p style={{ textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-dim)', margin: '2px 0 0' }}>
+      <span style={{ color: 'var(--text-strong)' }}>μ {mean.toFixed(2)}</span>
+      {sd > 0 && <span style={{ color: 'var(--accent-light)' }}> · σ {sd.toFixed(2)}</span>}
+    </p>
+    </div>
   )
 }
