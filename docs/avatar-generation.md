@@ -132,14 +132,14 @@ icon"*). Object packs never have this problem.
 
 **Pack 17 — Movie Club Picks (grows monthly).** Generate one as each film gets watched, using
 the same recipe. Current entries (subject in parens):
-The Master (TBD) · Rebel Ridge (bicycle) · Princess Mononoke (kodama forest spirit)
-· Primer (the box / time machine) · Kingdom of Heaven (crusader cross) · Where the Wild Things Are (wolf
-costume) · Smashing Machine (championship belt) · City of God (favela skyline) · Contact (radio
-telescope dish) · Frailty (axe) · Oldboy (hammer) · Spirited Away (No-Face mask) · Three
-Billboards (a billboard) · Birdman (Broadway marquee) · Heat (two coffee cups) · Eternal
-Sunshine (a swirling fading-memory spiral) · Arlington Road (a mailbox) · American Gangster
-(chinchilla fur coat) · Cherry (a cherry) · Being John Malkovich (the little portal door) ·
-Adaptation (a ghost orchid).
+Rebel Ridge (bicycle) · Princess Mononoke (kodama forest spirit) · Kingdom of Heaven (crusader
+cross) · Where the Wild Things Are (wolf costume) · Smashing Machine (championship belt) · City
+of God (favela skyline) · Contact (radio telescope dish) · Frailty (axe) · Oldboy (hammer) ·
+Spirited Away (No-Face mask) · Three Billboards (a billboard) · Birdman (Broadway marquee) ·
+Heat (two coffee cups) · Eternal Sunshine (the broken ice scene — lying on the cracked frozen
+river) · American Gangster (chinchilla fur coat) · Cherry (a cherry) · Being John Malkovich
+(the little portal door) · Adaptation (a ghost orchid). *(No icon: The Master, Primer,
+Arlington Road.)*
 
 ---
 
