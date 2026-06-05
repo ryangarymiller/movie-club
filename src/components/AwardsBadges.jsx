@@ -11,6 +11,7 @@
 //   loading       {boolean}  — show skeleton tiles while data loads (default false)
 
 import { useState } from 'react'
+import { useCollapseScroll } from '../lib/useCollapseScroll'
 
 // ── Scope → human label ───────────────────────────────────────────────────────
 function scopeLabel(scope) {
@@ -168,9 +169,11 @@ function SkeletonBadge() {
 
 // ── Toggle button ─────────────────────────────────────────────────────────────
 function ToggleButton({ expanded, total, onToggle }) {
+  const { anchorRef, beforeCollapse } = useCollapseScroll()
   return (
     <button
-      onClick={onToggle}
+      ref={anchorRef}
+      onClick={() => { if (expanded) beforeCollapse(); onToggle() }}
       style={{
         display: 'flex',
         alignItems: 'center',

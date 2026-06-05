@@ -7,6 +7,7 @@ import ScoreModal from '../components/ScoreModal'
 import ReadjustmentBanner from '../components/ReadjustmentBanner'
 import { FilmDetailOverlay } from './Films'
 import { MEMBER_COLORS, memberColor, userColor } from '../lib/colors'
+import { useCollapseScroll } from '../lib/useCollapseScroll'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -232,6 +233,7 @@ export default function Home() {
 
   // Recent Activity collapse state
   const [activityExpanded, setActivityExpanded] = useState(false)
+  const { anchorRef: activityAnchorRef, beforeCollapse: activityBeforeCollapse } = useCollapseScroll()
 
   const ACTIVITY_COLLAPSED_COUNT = 4
 
@@ -577,7 +579,8 @@ export default function Home() {
               </div>
               {activity.length > ACTIVITY_COLLAPSED_COUNT && (
                 <button
-                  onClick={() => setActivityExpanded(prev => !prev)}
+                  ref={activityAnchorRef}
+                  onClick={() => { if (activityExpanded) activityBeforeCollapse(); setActivityExpanded(prev => !prev) }}
                   style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)', fontFamily: "'DM Mono',monospace", background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', display: 'block' }}
                   onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)' }}
                   onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-dim)' }}

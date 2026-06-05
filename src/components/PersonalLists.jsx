@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useCollapseScroll } from '../lib/useCollapseScroll'
 
 // Phase 7 — private per-member lists rendered on a member's OWN profile:
 //   • Watchlist   — films you want to watch (saved, unordered)
@@ -167,6 +168,7 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   const [items, setItems] = useState(null) // null = loading
   const [expanded, setExpanded] = useState(false) // false = preview (first few)
   const [sortDesc, setSortDesc] = useState(false) // false = least recent (curated order) first
+  const { anchorRef, beforeCollapse } = useCollapseScroll()
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -275,7 +277,8 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
           </div>
           {hasMore && (
             <button
-              onClick={() => setExpanded(e => !e)}
+              ref={anchorRef}
+              onClick={() => { if (expanded) beforeCollapse(); setExpanded(e => !e) }}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 width: '100%', marginTop: '8px', padding: '8px', background: 'none',
@@ -294,6 +297,8 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
 }
 
 // ── Draft Queue (ranked) — presentational; state is owned by PersonalLists ────
+const DRAFT_PREVIEW = 5 // ranked picks shown collapsed; the rest reveal on "Show all"
+
 function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
   // Pointer-based "lift and follow" drag (works on touch, unlike native HTML5
   // drag). The grabbed row tracks the finger continuously via translateY; the
@@ -302,19 +307,27 @@ function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
   // threshold). The data only reorders on release — keeping the drag smooth.
   const containerRef = useRef(null)
   const [drag, setDrag] = useState(null) // { id, from, startY, dy, over, rowH }
+  const [expanded, setExpanded] = useState(false)
+  const { anchorRef, beforeCollapse } = useCollapseScroll()
+
+  const list = items ?? []
+  // Collapsed shows the top few ranked picks; expanded shows all. Drag is scoped
+  // to the rendered rows (collapse to reorder the full list).
+  const visible = expanded ? list : list.slice(0, DRAFT_PREVIEW)
+  const hasMore = list.length > DRAFT_PREVIEW
 
   function handlePointerDown(e, idx) {
     const rows = Array.from(containerRef.current?.children ?? [])
     const rowH = rows[idx]?.getBoundingClientRect().height ?? 56
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* unsupported */ }
-    setDrag({ id: items[idx].id, from: idx, startY: e.clientY, dy: 0, over: idx, rowH })
+    setDrag({ id: visible[idx].id, from: idx, startY: e.clientY, dy: 0, over: idx, rowH })
   }
   function handlePointerMove(e) {
     setDrag(d => {
       if (!d) return d
       const dy = e.clientY - d.startY
       let over = d.from + Math.round(dy / d.rowH)
-      over = Math.max(0, Math.min(items.length - 1, over))
+      over = Math.max(0, Math.min(visible.length - 1, over))
       return { ...d, dy, over }
     })
   }
@@ -335,7 +348,7 @@ function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
     return 0
   }
 
-  const existingIds = new Set((items ?? []).map(i => i.tmdb_id))
+  const existingIds = new Set(list.map(i => i.tmdb_id))
 
   return (
     <div style={{ marginBottom: '1.5rem' }}>
@@ -346,11 +359,12 @@ function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
       <FilmSearchAdd onAdd={onAdd} existingIds={existingIds} placeholder="Search to queue a pick idea…" />
       {items === null ? (
         <EmptyState>Loading…</EmptyState>
-      ) : items.length === 0 ? (
+      ) : list.length === 0 ? (
         <EmptyState>Your draft queue is empty. Queue up pick ideas above.</EmptyState>
       ) : (
+        <>
         <div ref={containerRef} style={{ borderRadius: '12px', border: '1px solid rgba(var(--fg-rgb), 0.06)', position: 'relative' }}>
-          {items.map((it, i) => {
+          {visible.map((it, i) => {
             const dragging = drag?.id === it.id
             return (
             <div
@@ -358,8 +372,8 @@ function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px 9px 12px',
                 background: dragging ? 'rgba(var(--accent-rgb), 0.14)' : 'rgba(var(--fg-rgb), 0.02)',
-                borderBottom: i < items.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
-                borderRadius: i === 0 ? '12px 12px 0 0' : i === items.length - 1 ? '0 0 12px 12px' : 0,
+                borderBottom: i < visible.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
+                borderRadius: i === 0 ? '12px 12px 0 0' : i === visible.length - 1 ? '0 0 12px 12px' : 0,
                 transform: `translateY(${rowShift(i)}px)`,
                 transition: dragging ? 'none' : 'transform 0.16s ease, background 0.12s ease',
                 position: 'relative',
@@ -395,6 +409,22 @@ function DraftQueueSection({ items, onAdd, onRemove, onMove }) {
             )
           })}
         </div>
+        {hasMore && (
+          <button
+            ref={anchorRef}
+            onClick={() => { if (expanded) beforeCollapse(); setExpanded(e => !e) }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+              width: '100%', marginTop: '8px', padding: '8px', background: 'none',
+              border: 'none', cursor: 'pointer', fontFamily: "'DM Mono',monospace",
+              fontSize: '11px', letterSpacing: '0.04em', color: 'var(--accent)',
+            }}
+          >
+            {expanded ? 'Show less' : `Show all ${list.length}`}
+            <span style={{ fontSize: '10px', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>▾</span>
+          </button>
+        )}
+        </>
       )}
     </div>
   )

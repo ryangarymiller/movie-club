@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
+import { useCollapseScroll } from '../lib/useCollapseScroll'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -1613,6 +1614,7 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
   }, [movies, guesses])
 
   const [showAll, setShowAll] = useState(false)
+  const { anchorRef: excAnchorRef, beforeCollapse: excBeforeCollapse } = useCollapseScroll()
 
   const stats = useMemo(() => {
     if (!movies.length && !ratings.length) return null
@@ -2095,7 +2097,8 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
         </GlassCard>
         {stats.excVsFinal.length > 6 && (
           <button
-            onClick={() => setShowAll(v => !v)}
+            ref={excAnchorRef}
+            onClick={() => { if (showAll) excBeforeCollapse(); setShowAll(v => !v) }}
             style={{
               marginTop: '10px',
               width: '100%',
@@ -2191,6 +2194,7 @@ function MiniFilmCard({ movie, score, onClick }) {
 // reveals the rest. Film titles open the film overlay via onFilm.
 function RankingList({ title, films, onFilm, collapseAt = 6 }) {
   const [expanded, setExpanded] = useState(false)
+  const { anchorRef, beforeCollapse } = useCollapseScroll()
   const canCollapse = films.length > collapseAt
   const visible = expanded || !canCollapse ? films : films.slice(0, collapseAt)
   return (
@@ -2225,7 +2229,8 @@ function RankingList({ title, films, onFilm, collapseAt = 6 }) {
       </div>
       {canCollapse && (
         <button
-          onClick={() => setExpanded(v => !v)}
+          ref={anchorRef}
+          onClick={() => { if (expanded) beforeCollapse(); setExpanded(v => !v) }}
           style={{ marginTop: '10px', width: '100%', padding: '7px', borderRadius: '8px', border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'transparent', color: 'var(--text-dim)', fontFamily: "'DM Sans',sans-serif", fontSize: '12px', cursor: 'pointer' }}
         >
           {expanded ? 'Show less' : `Show all (${films.length})`}
@@ -3430,6 +3435,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
   const [trendMode, setTrendMode] = useState('film')
   // Collapse the (potentially long) per-film spread list to a few rows by default.
   const [spreadShowAll, setSpreadShowAll] = useState(false)
+  const { anchorRef: spreadAnchorRef, beforeCollapse: spreadBeforeCollapse } = useCollapseScroll()
   // Connection web is existence-based — show films whose pick is public (active or
   // revealed), never UPCOMING picks (e.g. June's Gattaca).
   const connectionMovies = useMemo(() => movies.filter(m => m._exists), [movies])
@@ -4106,7 +4112,8 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         )}
         {stats.perMovieStats.length > 8 && (
           <button
-            onClick={() => setSpreadShowAll(v => !v)}
+            ref={spreadAnchorRef}
+            onClick={() => { if (spreadShowAll) spreadBeforeCollapse(); setSpreadShowAll(v => !v) }}
             style={{
               marginTop: '10px', width: '100%', padding: '10px', borderRadius: '10px',
               border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'transparent',

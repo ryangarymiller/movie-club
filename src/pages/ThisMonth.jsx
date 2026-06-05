@@ -7,6 +7,7 @@ import MonthReveal from '../components/MonthReveal'
 import { FilmDetailOverlay } from './Films'
 import { userColor } from '../lib/colors'
 import { useBackClose } from '../lib/useBackClose'
+import { useCollapseScroll } from '../lib/useCollapseScroll'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -549,6 +550,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
   // Show only the top few queued picks by default — the queue is rank-ordered, so
   // the highest-priority ideas are what matter; the rest hide behind "show more".
   const [queueExpanded, setQueueExpanded] = useState(false)
+  const { anchorRef: queueAnchorRef, beforeCollapse: queueBeforeCollapse } = useCollapseScroll()
   const QUEUE_PREVIEW = 3
 
   const debounceRef = useRef(null)
@@ -1154,7 +1156,8 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
             ))}
             {queue.length > QUEUE_PREVIEW && (
               <button
-                onClick={() => setQueueExpanded(v => !v)}
+                ref={queueAnchorRef}
+                onClick={() => { if (queueExpanded) queueBeforeCollapse(); setQueueExpanded(v => !v) }}
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '9px 12px',
                   background: 'transparent', border: 'none',
