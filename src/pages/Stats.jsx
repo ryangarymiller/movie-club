@@ -1177,7 +1177,10 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
     // are an incomplete backfill (April/May still pending), so prefer it when set.
     // Only compute from individual scores for live films that have no historical avg.
     const movieAvg = (m) => {
-      if (m.historical_avg_score != null) return Number(m.historical_avg_score)
+      // Authoritative imported average only once revealed (never leaks an active
+      // film's full average to a viewer who hasn't scored it); else the computed
+      // average from the RLS-gated visible scores.
+      if (m.scores_revealed && m.historical_avg_score != null) return Number(m.historical_avg_score)
       const sc = movieScores[m.id]
       if (sc && sc.length >= 1) return avg(sc)
       return null
@@ -3365,7 +3368,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       const filmAvgs = []
       for (const m of films) {
         const sc = ratingsByMovie[m.id] || []
-        const a = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+        const a = (m.scores_revealed && m.historical_avg_score != null) ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
         if (a != null) filmAvgs.push(a)
       }
       const monthYear = monthsById[mid]?.month_year ?? null
@@ -3529,7 +3532,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     }
     const filmTrendData = orderedFilms.map(({ movie: m, month_id }, i) => {
       const sc = ratingsByMovie[m.id] || []
-      const clubAvg = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+      const clubAvg = (m.scores_revealed && m.historical_avg_score != null) ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
       const my = monthsById[month_id]?.month_year ?? null
       const row = {
         // `idx` is a UNIQUE per-film x value. Using the month label as the x-axis
@@ -3595,7 +3598,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         const pid = moviePickedBy[m.id]
         if (!pid) continue
         const sc = ratingsByMovie[m.id] || []
-        const a = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+        const a = (m.scores_revealed && m.historical_avg_score != null) ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
         if (a == null) continue
         ;(byPicker[pid] ||= []).push(a)
       }
@@ -3648,7 +3651,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       const dl = decadeLabel(m.year_released)
       if (!dl) continue
       const sc = ratingsByMovie[m.id] || []
-      const a = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+      const a = (m.scores_revealed && m.historical_avg_score != null) ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
       if (a == null) continue
       ;(decadeBuckets[dl] ||= []).push(a)
     }
@@ -3698,7 +3701,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       .filter(m => m._canSee && m.tmdb_id)
       .map(m => {
         const sc = ratingsByMovie[m.id] || []
-        const clubAvg = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
+        const clubAvg = (m.scores_revealed && m.historical_avg_score != null) ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
         return clubAvg != null ? { id: m.id, tmdb_id: m.tmdb_id, title: m.title, clubAvg } : null
       })
       .filter(Boolean)

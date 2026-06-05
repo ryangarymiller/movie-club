@@ -31,7 +31,7 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
 const NOTIF_TYPES = [
   { key: 'scores_revealed', glyph: '🎬',  label: 'Scores revealed', desc: "A film's scores go public" },
   { key: 'month_active',    glyph: '📅',  label: 'New month starts', desc: 'This month’s films go live' },
-  { key: 'month_reveal',    glyph: '🎭',  label: 'End-of-month reveal', desc: 'Pickers + recap revealed' },
+  { key: 'month_reveal',    glyph: '🎭',  label: 'End-of-month reveal', desc: 'Scores + pickers revealed' },
   { key: 'reply',           glyph: '💬',  label: 'Replies to me', desc: 'Someone replies to your review or comment' },
   { key: 'mention',         glyph: '@',   label: '@mentions', desc: 'You’re tagged in a review or comment' },
   { key: 'score_change',    glyph: '✏️',  label: 'My score-change decisions', desc: 'Admin approves or denies your request' },
