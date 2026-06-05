@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
-import { USER_COLOR_PALETTE, MEMBER_COLORS } from '../lib/colors'
+import { USER_COLOR_PALETTE, MEMBER_COLORS, hexToRgbTriple } from '../lib/colors'
 import AwardsBadges from '../components/AwardsBadges'
 import PersonalLists from '../components/PersonalLists'
 import { deliberateSignOut } from '../lib/authLog'
@@ -779,9 +779,21 @@ export default function Profile({ overlayUserId = null } = {}) {
   const initials = getInitials(displayProfile?.name)
   const memberSince = formatMemberSince(displayProfile?.joined_at)
 
+  // When viewing ANOTHER member's profile, recolor the accent to *their* user
+  // color so the accent-driven bits (colored text, "View full stats" button, etc.)
+  // match their identity — same idea as MemberStatsOverlay. Scoped to this subtree
+  // via CSS custom properties (cascades into the inline var(--accent) styles), so
+  // the rest of the app keeps the viewer's accent. Own profile is unaffected.
+  const memberAccent = !isOwnProfile ? (displayProfile?.user_color || null) : null
+  const memberAccentRgb = memberAccent ? hexToRgbTriple(memberAccent) : null
+  const accentVars = memberAccent
+    ? { '--accent': memberAccent, ...(memberAccentRgb ? { '--accent-rgb': memberAccentRgb } : {}) }
+    : null
+
   return (
     <div
       style={{
+        ...accentVars,
         background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)',
         fontFamily: "'DM Sans', sans-serif",
         minHeight: '100vh',

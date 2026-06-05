@@ -67,3 +67,13 @@ export const CHART_NEUTRAL = 'var(--text-strong)'
 export function chartColorAt(i) {
   return CHART_CATEGORICAL[i % CHART_CATEGORICAL.length]
 }
+
+// "#a855f7" -> "168, 85, 247" for the --accent-rgb CSS token (rgba() usages).
+// Returns null for non-hex input (e.g. a CSS var) so callers can fall back.
+export function hexToRgbTriple(hex) {
+  if (!hex || typeof hex !== 'string' || hex[0] !== '#') return null
+  const h = hex.slice(1)
+  const n = h.length === 3 ? h.split('').map(c => c + c).join('') : h
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16)
+  return [r, g, b].some(Number.isNaN) ? null : `${r}, ${g}, ${b}`
+}
