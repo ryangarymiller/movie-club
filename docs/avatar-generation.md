@@ -103,7 +103,7 @@ each as `raw/<pack-slug>/<icon-slug>.png` (see naming in Step 5).
 Same template for every line below; paste the **subject** into `<subject>`. Keep the same
 `--sref`/`--sw`/`--v` throughout so the whole library matches.
 
-**Trademarked-character note:** packs 3, 8, 9, 10, 11, Ripley (12), and named figures in
+**Trademarked-character note:** packs 3, 8, 9, 10, 11, 19, Ripley (12), and named figures in
 4/5/15 are famous characters. MJ v6+ renders these from their names (e.g. *"flat cartoon
 avatar icon of Darth Vader"*). If one refuses or looks off-model, describe it by features
 instead (e.g. *"a tall black armored helmet with an angular breathing mask, flat cartoon
@@ -113,7 +113,7 @@ icon"*). Object packs never have this problem.
 |---|---|
 | 1. Movie Objects (`movie-objects`) | clapperboard · film reel · popcorn box · VHS tape · director's chair · Oscar statuette · movie ticket · film projector · 35mm camera · director's megaphone |
 | 2. Movie Archetypes (`archetypes`) | film-noir detective · cowboy · astronaut · femme fatale · monster · superhero · villain · samurai · spy · explorer |
-| 3. Star Wars (`star-wars`) | Darth Vader · Yoda · R2-D2 · C-3PO · Stormtrooper · Luke Skywalker · Princess Leia · Han Solo · Chewbacca · Boba Fett |
+| 3. Star Wars (`star-wars`) | Darth Vader · Yoda · R2-D2 · C-3PO · Stormtrooper · Luke Skywalker · Princess Leia · Han Solo · Chewbacca · Boba Fett · Darth Maul (red & black face, double-bladed saber) · General Grievous · Clone Trooper (Phase II white armor) · Padmé Amidala · Battle Droid (tan) |
 | 4. Indiana Jones (`indiana-jones`) | Indiana Jones with hat · the Ark of the Covenant · the golden idol · the brown fedora hat |
 | 5. The Godfather (`godfather`) | Don Corleone · a horse · a single red rose |
 | 6. James Bond (`james-bond`) | secret-agent silhouette holding a pistol · silver Aston Martin · martini glass with olive |
@@ -129,6 +129,7 @@ icon"*). Object packs never have this problem.
 | 16. Tarantino (`tarantino`) | a glowing briefcase · a "Royale with Cheese" burger wrapper · a yellow tracksuit · a severed ear |
 | 17. Standalone Classics (`classics`) | "Rosebud" sled · upright piano (Casablanca) · shower head (Psycho) · shark fin (Jaws) · kid on a bike silhouette (E.T.) · a red coat (Schindler's List) · a bar of soap (Fight Club) · a cardboard box (Se7en) · a moth (Silence of the Lambs) · a sharp suit (Goodfellas) · a captive-bolt cattle gun and a coin (No Country) |
 | 18. Movie Club Picks (`club-picks`) | one per film — see below; **generate per film, ongoing** |
+| 19. Avatar / Pandora (`pandora`) | Neytiri (blue Na'vi, yellow eyes) · Jake Sully's Na'vi avatar (blue) · mountain banshee / ikran (flying creature) |
 
 **Pack 18 — Movie Club Picks (grows monthly).** Generate one as each film gets watched, using
 the same recipe. Current entries (subject in parens):
