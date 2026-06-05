@@ -1,6 +1,6 @@
 # Avatar Library — Generation Guide (Midjourney)
 
-End-to-end runbook for producing the 18-pack avatar library (~85 fixed icons + Pack 17
+End-to-end runbook for producing the 18-pack avatar library (~86 fixed icons + Pack 17
 which grows monthly). Spec style: **consistent flat cartoon**. Source of truth for the
 pack list: Drive `MOVIE_CLUB_SPEC-11.txt` (mirrored into `MOVIE_CLUB_SPEC.md`).
 
@@ -113,7 +113,7 @@ icon"*). Object packs never have this problem.
 |---|---|
 | 1. Movie Objects (`movie-objects`) | clapperboard · film reel · popcorn box · VHS tape · director's chair · Oscar statuette · movie ticket · film projector · 35mm camera · director's megaphone |
 | 2. Movie Archetypes (`archetypes`) | film-noir detective · cowboy · astronaut · femme fatale · monster · superhero · villain · samurai · spy · explorer |
-| 3. Star Wars (`star-wars`) | Darth Vader · Yoda · R2-D2 · C-3PO · Stormtrooper · Luke Skywalker · Princess Leia · Han Solo · Chewbacca · Boba Fett · Darth Maul (red & black face, double-bladed saber) · General Grievous · Clone Trooper (Phase II white armor) · Padmé Amidala · Battle Droid (tan) |
+| 3. Star Wars (`star-wars`) | Darth Vader · Yoda · R2-D2 · C-3PO · Stormtrooper · Luke Skywalker · Princess Leia · Han Solo · Chewbacca · Boba Fett · Darth Maul (red & black face, double-bladed saber) · General Grievous · Clone Trooper (Phase II white armor) · Padmé Amidala · Battle Droid (tan) · Jango Fett (blue & silver Mandalorian armor) |
 | 4. Indiana Jones (`indiana-jones`) | Indiana Jones with hat · the Ark of the Covenant · the golden idol · the brown fedora hat |
 | 5. The Godfather (`godfather`) | Don Corleone · a horse · a single red rose |
 | 6. James Bond (`james-bond`) | secret-agent silhouette holding a pistol · silver Aston Martin · martini glass with olive |
@@ -252,7 +252,7 @@ manifest, the files, and the DB all agree.
 ## Canonical file slugs
 
 Name each file `<pack>/<icon>` (raw `.png` in `raw/`, processed `.webp` in `public/avatars/`).
-Total: 85 fixed + 17 club-picks = 102.
+Total: 86 fixed + 17 club-picks = 103.
 
 ```
 # 1 · movie-objects
@@ -295,6 +295,7 @@ star-wars/general-grievous
 star-wars/clone-trooper
 star-wars/padme-amidala
 star-wars/battle-droid
+star-wars/jango-fett
 
 # 4 · indiana-jones
 indiana-jones/indiana-jones
