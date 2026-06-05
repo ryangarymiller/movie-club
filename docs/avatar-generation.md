@@ -1,6 +1,6 @@
 # Avatar Library — Generation Guide (Midjourney)
 
-End-to-end runbook for producing the 18-pack avatar library (~86 fixed icons + Pack 17
+End-to-end runbook for producing the 18-pack avatar library (~85 fixed icons + Pack 17
 which grows monthly). Spec style: **consistent flat cartoon**. Source of truth for the
 pack list: Drive `MOVIE_CLUB_SPEC-11.txt` (mirrored into `MOVIE_CLUB_SPEC.md`).
 
@@ -128,11 +128,11 @@ icon"*). Object packs never have this problem.
 | 15. Kubrick (`kubrick`) | HAL 9000 red eye · the black monolith · the Overlook hotel carpet pattern · a bowler hat · a bone (from 2001) |
 | 16. Tarantino (`tarantino`) | a "Royale with Cheese" burger wrapper · a yellow tracksuit · a severed ear |
 | 17. Movie Club Picks (`club-picks`) | one per film — see below; **generate per film, ongoing** |
-| 18. Avatar / Pandora (`pandora`) | Neytiri (blue Na'vi, yellow eyes) · mountain banshee / ikran (flying creature) |
+| 18. Avatar / Pandora (`pandora`) | Neytiri (blue Na'vi, yellow eyes) |
 
 **Pack 17 — Movie Club Picks (grows monthly).** Generate one as each film gets watched, using
 the same recipe. Current entries (subject in parens):
-The Master (moonshine jug) · Rebel Ridge (bicycle) · Princess Mononoke (kodama forest spirit)
+The Master (TBD) · Rebel Ridge (bicycle) · Princess Mononoke (kodama forest spirit)
 · Primer (wristwatch) · Kingdom of Heaven (crusader cross) · Where the Wild Things Are (wolf
 costume) · Smashing Machine (championship belt) · City of God (favela skyline) · Contact (radio
 telescope dish) · Frailty (axe) · Oldboy (hammer) · Spirited Away (No-Face mask) · Three
