@@ -133,7 +133,7 @@ icon"*). Object packs never have this problem.
 **Pack 17 — Movie Club Picks (grows monthly).** Generate one as each film gets watched, using
 the same recipe. Current entries (subject in parens):
 The Master (TBD) · Rebel Ridge (bicycle) · Princess Mononoke (kodama forest spirit)
-· Primer (wristwatch) · Kingdom of Heaven (crusader cross) · Where the Wild Things Are (wolf
+· Primer (the box / time machine) · Kingdom of Heaven (crusader cross) · Where the Wild Things Are (wolf
 costume) · Smashing Machine (championship belt) · City of God (favela skyline) · Contact (radio
 telescope dish) · Frailty (axe) · Oldboy (hammer) · Spirited Away (No-Face mask) · Three
 Billboards (a billboard) · Birdman (Broadway marquee) · Heat (two coffee cups) · Eternal
