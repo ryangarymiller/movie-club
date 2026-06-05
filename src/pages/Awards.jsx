@@ -9,24 +9,36 @@ import { FilmDetailOverlay } from './Films.jsx'
 
 // Short "how is this calculated" copy per award, matched by keyword so it covers
 // every scope (month/season/year/all-time) of the same concept.
+// ORDER MATTERS: each label is matched against these in order, first hit wins.
+// The specific FILM awards must precede the generic "film of the…" rule, because
+// e.g. "Most Divisive Film of the Year" / "Worst Film of the Year" contain the
+// substring "film of the" and would otherwise grab the generic description.
 const AWARD_INFO = [
-  [/pick of the|film of the|greatest film/i, 'The highest club-average film for the period.'],
+  // ── Specific film awards (before the generic positive-film rule) ──
   [/flop|worst film/i, 'The lowest club-average film for the period.'],
   [/most divisive/i, 'The film with the biggest score spread (standard deviation) across members — opinions split the most.'],
   [/most unanimous/i, 'The film with the smallest score spread — everyone landed on nearly the same score.'],
+  [/underrated/i, 'The film where the club average most exceeds the TMDB community rating — we rated it far above the mainstream.'],
+  [/deep cut/i, 'The most obscure pick — a rare genre for the club combined with a low TMDB vote count.'],
+  [/letdown/i, 'The film with the biggest drop from average excitement to average final score.'],
+  [/surprise/i, 'The film with the biggest jump from average excitement to average final score.'],
+  // Generic "highest club-average film": Pick of the Month, Film of the Year/Season, Greatest Film Ever.
+  [/pick of the|film of the|greatest film/i, 'The highest club-average film for the period.'],
+  // ── Member scoring-behaviour awards ──
   [/contrarian/i, "The member whose scores deviate most from the club average — the lone-wolf voter."],
   [/oracle/i, "The picker whose predictions for their own film's scores were closest to what everyone actually gave."],
   [/hype machine/i, 'The member with the highest average pre-watch excitement scores.'],
-  [/letdown/i, 'The film with the biggest drop from average excitement to average final score.'],
-  [/surprise/i, 'The film with the biggest jump from average excitement to average final score.'],
-  [/underrated/i, 'The film where the club average most exceeds the TMDB community rating — we rated it far above the mainstream.'],
-  [/deep cut/i, 'The most obscure pick — a rare genre for the club combined with a low TMDB vote count.'],
-  [/harshest|coldest|ice cold/i, 'The member with the lowest average score.'],
-  [/generous|softie|easy crowd/i, 'The member with the highest average score.'],
-  [/picker of the|picker goat|consistent picker/i, 'The member whose own picks earned the best average score.'],
+  [/harshest|coldest critic/i, 'The member who GIVES the lowest average scores — the toughest grader (this is about how they score, not their picks).'],
+  [/easy crowd/i, 'The member who hands out the fewest low scores (≤ 4.0) — the easiest to please.'],
+  [/generous|softie/i, 'The member who GIVES the highest average scores — the most generous grader.'],
+  // ── Picker (curation) awards — about the films a member PICKED ──
+  [/ice cold/i, 'The picker whose films earned the LOWEST average score — the coldest reception.'],
+  [/most consistent picker/i, "The picker whose films earned the most consistent (lowest-variance) scores."],
+  [/picker of the|picker goat/i, 'The member whose own picks earned the best average score.'],
   [/auteur/i, "The season's best picker by average pick score (≥2 scored picks), finalized after the season's readjustment window closes."],
-  [/wildcard/i, 'The member with the most unpredictable scores — the highest score variance.'],
   [/master of disguise/i, 'The picker whose films were guessed correctly the least often (minimum 3 guesses) — the hardest to read.'],
+  // ── Member variance/consistency awards ──
+  [/wildcard/i, 'The member with the most unpredictable scores — the highest score variance.'],
   [/most evolved/i, "The member whose average score shifted the most between the year's first and second half."],
   [/most consistent\b/i, 'The member with the most stable scoring — the lowest score variance.'],
 ]
