@@ -29,7 +29,7 @@ const AWARD_INFO = [
   [/oracle/i, "The picker whose predictions for their own film's scores were closest to what everyone actually gave."],
   [/hype machine/i, 'The member with the highest average pre-watch excitement scores.'],
   [/harshest|coldest critic/i, 'The member who GIVES the lowest average scores — the toughest grader (this is about how they score, not their picks).'],
-  [/easy crowd/i, 'The member who hands out the fewest low scores (≤ 4.0) — the easiest to please.'],
+  [/easy crowd/i, 'The member who hands out the fewest low scores (≤ 6.0) — the easiest to please.'],
   [/generous|softie/i, 'The member who GIVES the highest average scores — the most generous grader.'],
   // ── Picker (curation) awards — about the films a member PICKED ──
   [/ice cold/i, 'The picker whose films earned the LOWEST average score — the coldest reception.'],
@@ -779,15 +779,17 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     }
   })
 
-  // 8b. Easy Crowd — easiest to please: fewest "low" scores given (≤ 4.0), tie-break by
-  //     highest average. Distinct from Most Generous (which is pure highest average).
+  // 8b. Easy Crowd — easiest to please: fewest "low" scores given (≤ 6.0 — a
+  //     lukewarm-or-worse score; the old ≤4 was dead since nobody scores that low),
+  //     tie-break by highest average. Distinct from Most Generous (pure highest avg).
+  const EASY_CROWD_LOW = 6.0
   let easyCrowd = null
   let easyCrowdLowCount = Infinity
   let easyCrowdAvg = -Infinity
   eligibleUserIds.forEach(uid => {
     const scores = userRatingsThisSeason[uid].filter(r => r.score != null).map(r => Number(r.score))
     if (scores.length < 2) return
-    const lowCount = scores.filter(s => s <= 4).length
+    const lowCount = scores.filter(s => s <= EASY_CROWD_LOW).length
     const a = avg(scores)
     if (lowCount < easyCrowdLowCount || (lowCount === easyCrowdLowCount && a > easyCrowdAvg)) {
       easyCrowdLowCount = lowCount
