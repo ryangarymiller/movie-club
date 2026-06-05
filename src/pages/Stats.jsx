@@ -2740,9 +2740,11 @@ function formatMonthShort(monthYear) {
 // Points with no TMDB data get `tmdb: undefined` so the dotted line SKIPS them
 // (connectNulls) rather than dropping to 0. Degrades gracefully: if the token is
 // missing or every fetch fails, the chart simply renders without the TMDB line.
-function ClubTrendChart({ data, series, mode, ...rest }) {
-  // tmdb_id -> vote_average (number), once loaded. null = not yet loaded.
-  const [voteById, setVoteById] = useState(null)
+function ClubTrendChart({ data, series, mode, storedVotes, ...rest }) {
+  // tmdb_id -> vote_average. Seeded instantly from the DB cache (storedVotes) so
+  // the TMDB line + legend paint on first render; the live fetch below refreshes
+  // values on top and never blanks the cached line during the refresh.
+  const [voteById, setVoteById] = useState(() => ({ ...(storedVotes || {}) }))
 
   // All distinct tmdb_ids referenced by the current dataset.
   const ids = useMemo(() => {
@@ -2759,12 +2761,18 @@ function ClubTrendChart({ data, series, mode, ...rest }) {
 
   const sig = useMemo(() => [...ids].sort((a, b) => a - b).join(','), [ids])
 
+  // Fold in cached votes when the parent reloads its data (fresh values, held in
+  // `prev`, win over the cache).
+  useEffect(() => {
+    if (!storedVotes || Object.keys(storedVotes).length === 0) return
+    setVoteById(prev => ({ ...storedVotes, ...prev }))
+  }, [storedVotes])
+
   useEffect(() => {
     const token = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
-    if (!token || ids.length === 0) { setVoteById({}); return }
+    if (!token || ids.length === 0) return // keep the cached values we already have
     let cancelled = false
     ;(async () => {
-      setVoteById(null)
       try {
         const subset = ids.slice(0, 60)
         const results = await Promise.all(subset.map(async (id) => {
@@ -2779,12 +2787,13 @@ function ClubTrendChart({ data, series, mode, ...rest }) {
           } catch { return [id, null] }
         }))
         if (cancelled) return
-        const map = {}
-        for (const [id, va] of results) if (va != null) map[id] = va
-        setVoteById(map)
-      } catch {
-        if (!cancelled) setVoteById({})
-      }
+        // Merge fresh values over the cache — never blank, so no flicker.
+        setVoteById(prev => {
+          const map = { ...prev }
+          for (const [id, va] of results) if (va != null) map[id] = va
+          return map
+        })
+      } catch { /* keep cached values on failure */ }
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3648,6 +3657,15 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       return row
     }).filter(r => r.club != null)
 
+    // DB-cached TMDB community vote per film (tmdb_id -> vote_average). Lets the
+    // Score-Over-Time TMDB line + legend render instantly from stored data; the
+    // chart still does a fresh TMDB pull on top to pick up any rating drift.
+    const tmdbVoteById = {}
+    for (const m of movies) {
+      const v = m.tmdb_vote_average != null ? Number(m.tmdb_vote_average) : null
+      if (m.tmdb_id && v != null && v > 0) tmdbVoteById[m.tmdb_id] = v
+    }
+
     // ── All-time score distribution histogram (0–10 buckets) ──
     const allScores = ratings.filter(r => r.score != null).map(r => Number(r.score))
     const distBuckets = Array.from({ length: 10 }, (_, i) => ({
@@ -3805,6 +3823,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       trendData,
       filmTrendData,
       trendSeries,
+      tmdbVoteById,
       decadeData,
       granularityData,
       stdDevData,
@@ -3884,7 +3903,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
           {trendMode === 'month' ? (
             stats.trendData.length >= 2 ? (
               <>
-                <ClubTrendChart data={stats.trendData} series={stats.trendSeries} mode="month" height={230} />
+                <ClubTrendChart data={stats.trendData} series={stats.trendSeries} mode="month" height={230} storedVotes={stats.tmdbVoteById} />
                 <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                   Thick solid line = club average · grey dotted = TMDB community · others = each member's monthly average
                 </p>
@@ -3906,6 +3925,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   xLabelKey="xLabel"
                   sparseTicks
                   tooltipLabelKey="title"
+                  storedVotes={stats.tmdbVoteById}
                 />
                 <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--hairline)', margin: '8px 0 0', textAlign: 'center' }}>
                   Per film, in watch order · thick solid line = club average · grey dotted = TMDB community · others = each member
@@ -4928,7 +4948,7 @@ export default function Stats() {
       ] = await Promise.all([
         supabase
           .from('movies_safe')
-          .select('id, month_id, title, tmdb_id, poster_url, year_released, director, tmdb_cast, tmdb_writers, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
+          .select('id, month_id, title, tmdb_id, poster_url, year_released, director, tmdb_cast, tmdb_writers, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes, tmdb_vote_average'),
         supabase
           .from('ratings')
           .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
