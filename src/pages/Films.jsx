@@ -2788,7 +2788,28 @@ export default function Films() {
 
   const handleClose = useCallback(() => {
     setSelectedMovie(null)
-  }, [])
+    // Drop the deep-link params so closing doesn't immediately re-open the film.
+    if (searchParams.get('film')) {
+      const sp = new URLSearchParams(searchParams)
+      sp.delete('film'); sp.delete('review'); sp.delete('comment')
+      setSearchParams(sp, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  // Deep-link: /films?film=<movie_id> opens that film's overlay (e.g. from a
+  // notification's "Open"). Fires once the films have loaded; guarded so it
+  // opens a given id only once (so closing it doesn't re-trigger).
+  const openedFilmRef = useRef(null)
+  useEffect(() => {
+    const filmId = searchParams.get('film')
+    if (!filmId || loading) { if (!filmId) openedFilmRef.current = null; return }
+    if (openedFilmRef.current === filmId) return
+    const movie = movies.find(m => m.id === filmId)
+    if (movie) {
+      openedFilmRef.current = filmId
+      setSelectedMovie(movie)
+    }
+  }, [searchParams, movies, loading])
 
   return (
     <div
