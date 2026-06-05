@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { useTheme } from './context/ThemeContext'
 import { MemberOverlayProvider, useMemberOverlay } from './context/MemberOverlayContext'
@@ -132,14 +133,21 @@ function MemberOverlayHost() {
 // the instant first paint on a known device; the DB value wins on a new one.
 function ThemeSync() {
   const { profile } = useAuth()
-  const { setMode, setAccent } = useTheme()
+  const { mode, accent, setMode, setAccent } = useTheme()
   const appliedFor = useRef(null)
   useEffect(() => {
     if (!profile?.id || appliedFor.current === profile.id) return
     appliedFor.current = profile.id
-    if (profile.theme_mode) setMode(profile.theme_mode)
-    if (profile.theme_accent) setAccent(profile.theme_accent)
-  }, [profile?.id, profile?.theme_mode, profile?.theme_accent, setMode, setAccent])
+    if (profile.theme_mode || profile.theme_accent) {
+      // DB has a saved theme → apply it (cross-device sync).
+      if (profile.theme_mode) setMode(profile.theme_mode)
+      if (profile.theme_accent) setAccent(profile.theme_accent)
+    } else {
+      // Not yet persisted → backfill this device's current (localStorage) choice so
+      // other devices pick it up without the user having to re-select.
+      supabase.from('users').update({ theme_mode: mode, theme_accent: accent }).eq('id', profile.id).then(() => {})
+    }
+  }, [profile?.id, profile?.theme_mode, profile?.theme_accent, mode, accent, setMode, setAccent])
   return null
 }
 
