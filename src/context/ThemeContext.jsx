@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 
 const ThemeContext = createContext(null)
 
-const ACCENT_OPTIONS = ['crimson', 'ember', 'amber', 'sage', 'slate-blue', 'indigo', 'violet']
+const ACCENT_OPTIONS = ['crimson', 'ember', 'amber', 'sage', 'slate-blue', 'indigo', 'violet', 'hot-pink']
 
 // Four modes from lightest → darkest. Sepia is a warm light theme; grey is a soft
 // dark theme — the two "in-between" options between stark light and near-black dark.

@@ -21,6 +21,7 @@ const ACCENT_SWATCHES = [
   { name: 'slate-blue', hex: '#2563eb', label: 'Slate Blue' },
   { name: 'indigo',     hex: '#4f46e5', label: 'Indigo'     },
   { name: 'violet',     hex: '#7c3aed', label: 'Violet'     },
+  { name: 'hot-pink',   hex: '#ec4899', label: 'Hot Pink'   },
 ]
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
@@ -50,14 +51,12 @@ const LABEL_STYLE = {
   fontSize: '10px',
   letterSpacing: '0.18em',
   textTransform: 'uppercase',
-  // A readable text token (not the dim divider colour) so field labels like
-  // "Theme" / "Accent Color" have enough pop.
-  color: 'var(--text-dim)',
+  color: 'var(--hairline)',
 }
 
 const SECTION_LABEL = {
   ...LABEL_STYLE,
-  color: 'var(--text-muted)',
+  color: 'var(--text-faint)',
   marginBottom: '12px',
   display: 'block',
 }

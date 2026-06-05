@@ -32,7 +32,7 @@
   --text-muted: #bcc2cc;
   --text-dim: #a4abb6;
   --text-faint: #8c939e;
-  --hairline: #4e5765;
+  --hairline: #838b97;
   color-scheme: dark;
 }
 
@@ -95,7 +95,7 @@
   --text-muted: #d2d5db;
   --text-dim: #bbbfc8;
   --text-faint: #a8adb7;
-  --hairline: #79808c;
+  --hairline: #9aa1ac;
   color-scheme: dark;
 }
 
@@ -107,6 +107,7 @@
 [data-accent="slate-blue"]{ --accent: #3b82f6; --accent-rgb: 59, 130, 246; --accent-light: #93c5fd; --accent-dark: #1e3a8a; }
 [data-accent="indigo"]    { --accent: #6366f1; --accent-rgb: 99, 102, 241; --accent-light: #a5b4fc; --accent-dark: #312e81; }
 [data-accent="violet"]    { --accent: #8b5cf6; --accent-rgb: 139, 92, 246; --accent-light: #c4b5fd; --accent-dark: #4c1d95; }
+[data-accent="hot-pink"]  { --accent: #ec4899; --accent-rgb: 236, 72, 153; --accent-light: #f9a8d4; --accent-dark: #831843; }
 
 /* Light-mode accent overrides. The base (dark-mode) values use a bright pastel
    --accent-light that is used as TEXT — unreadable on a white background — and a
@@ -121,6 +122,7 @@
 [data-base="light"][data-accent="slate-blue"] { --accent: #2767f0; --accent-rgb: 39, 103, 240;  --accent-light: #1d4ed8; }
 [data-base="light"][data-accent="indigo"]     { --accent: #5852f0; --accent-rgb: 88, 82, 240;  --accent-light: #4338ca; }
 [data-base="light"][data-accent="violet"]     { --accent: #8b3df0; --accent-rgb: 139, 61, 240; --accent-light: #6d28d9; }
+[data-base="light"][data-accent="hot-pink"]   { --accent: #e11d80; --accent-rgb: 225, 29, 128; --accent-light: #be185d; }
 
 body {
   margin: 0;
