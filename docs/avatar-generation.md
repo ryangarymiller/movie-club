@@ -56,24 +56,36 @@ Consistency across 91 icons comes from one reusable style reference. Make it onc
 4. Note the `--sref` value (URL or the `--sref <number>` code the web app gives you). You'll
    paste the **same** `--sref` + `--sw` on every icon from here on.
 
-> Tip: keep `--sw` (style weight) constant — start at `--sw 100`. Higher = stronger style lock.
+> **Tip — match the *style*, not the *palette*.** A `--sref` transfers the reference's COLORS
+> along with its art style, and at `--sw 100` that color bleed is heavy (every icon drifts toward
+> the anchor's palette). To keep the linework/shading consistent but let each icon keep its own
+> real colors: **(a)** name the subject's colors in the prompt (see Step 2), **(b)** lower
+> `--sw` to ~**40–70**, and **(c)** ideally pass 2–4 style references with *different* palettes
+> (`--sref url1 url2 url3`) so MJ blends them and learns the style without locking one palette.
 
 ---
 
 ## Step 2 — The per-icon prompt recipe
 
-Reusable template — only `<subject>` changes:
+Reusable template — only `<subject>` changes. **Always include the subject's real
+colors** in `<subject>` (e.g. "Darth Vader, glossy black helmet and cape"; "Yoda,
+green skin, brown robe"; "Iron Man helmet, red and gold") — explicit color words
+override the palette bleed from the `--sref`:
 
 ```
-flat cartoon avatar icon of <subject>, bold clean outlines, simple flat shapes,
-soft cell shading, centered, plain off-white background, sticker style, no text
---ar 1:1 --style raw --v 7 --sref <ANCHOR> --sw 100
+flat cartoon avatar icon of <subject, with its real colors>, bold clean outlines,
+simple flat shapes, soft cell shading, centered, plain off-white background,
+sticker style, no text
+--ar 1:1 --style raw --v 7 --sref <ANCHOR(S)> --sw 50
 ```
 
 Parameter notes:
 - `--ar 1:1` square (avatars are round-cropped later).
 - `--style raw` less "MJ flair," more literal/icon-like.
-- `--sref <ANCHOR> --sw 100` the consistency lock — identical on every icon.
+- `--sref <ANCHOR(S)> --sw 50` the style lock — keep `--sref` and `--sw` identical on
+  every icon. `--sw ~50` (vs 100) keeps the art style while letting each icon use its
+  own colors; pass multiple refs (`--sref url1 url2 url3`) of varied palettes to dilute
+  color bleed further. See the palette-vs-style tip in Step 1.
 - Add `--no text, letters, words, frame, border` if stray text/frames appear.
 - `--v 7` use the current model (newer is fine; keep the SAME version across all icons).
 
@@ -217,13 +229,15 @@ You don't need every pack done first — even one pack is enough to build and te
 
 ## Consistency checklist (so all 91 match)
 
-- ✅ Same `--sref <anchor> --sw 100` on **every** prompt.
+- ✅ Same `--sref <anchor(s)> --sw 50` on **every** prompt (keep `--sw` constant across the set).
 - ✅ Same `--v` (model version) and `--style raw` throughout — don't switch mid-library.
 - ✅ Same style words ("bold clean outlines, simple flat shapes, soft cell shading, sticker
   style, plain off-white background") on every prompt.
+- ✅ **Name each subject's real colors** in the prompt so icons keep their own palette instead
+  of drifting toward the reference's colors (the `--sref` bleeds palette; the words fight back).
 - ✅ One subject per icon, centered, nothing else in frame.
-- ✅ If a character comes out off-model, re-roll or describe by features — don't lower `--sw`
-  (that breaks style match).
+- ✅ If a character comes out off-model, re-roll or describe by features. If the *colors* are
+  wrong (matching the reference instead of the subject), name the colors and/or lower `--sw`.
 
 ---
 
@@ -231,7 +245,7 @@ You don't need every pack done first — even one pack is enough to build and te
 
 MJ always returns a 2×2 of four *variations*; to get a content-grid, ask for a "sticker sheet."
 Prompt e.g.: `sticker sheet of 9 flat cartoon movie-object icons in a clean 3x3 grid, evenly
-spaced, plain white background, no text --ar 1:1 --sref <anchor> --sw 100`. Pick the cleanest of
+spaced, plain white background, no text --ar 1:1 --sref <anchor> --sw 50`. Pick the cleanest of
 the 4, **Upscale**, then slice:
 
 ```python
