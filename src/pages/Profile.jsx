@@ -433,6 +433,11 @@ export default function Profile({ overlayUserId = null } = {}) {
   const navigate = useNavigate()
   const { profile, isAdmin, fetchProfile } = useAuth()
   const { accent, setAccent, mode, setMode, MODE_OPTIONS } = useTheme()
+  // Persist theme to the user's row so it follows them across devices (it's also
+  // kept in localStorage by ThemeContext for instant first paint on this device).
+  const persistTheme = (patch) => {
+    if (profile?.id) supabase.from('users').update(patch).eq('id', profile.id).then(() => {})
+  }
   const { close: closeMemberOverlay } = useMemberOverlay()
   const { openStats: openMemberStats } = useMemberStatsOverlay()
   const {
@@ -1276,7 +1281,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                 {(MODE_OPTIONS ?? ['light', 'sepia', 'grey', 'dark']).map(opt => (
                   <button
                     key={opt}
-                    onClick={() => mode !== opt && setMode(opt)}
+                    onClick={() => { if (mode !== opt) { setMode(opt); persistTheme({ theme_mode: opt }) } }}
                     aria-pressed={mode === opt}
                     style={{
                       flex: 1,
@@ -1316,7 +1321,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                 return (
                   <button
                     key={swatch.name}
-                    onClick={() => setAccent(swatch.name)}
+                    onClick={() => { setAccent(swatch.name); persistTheme({ theme_accent: swatch.name }) }}
                     title={swatch.label}
                     style={{
                       width: 34,

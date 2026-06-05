@@ -1697,8 +1697,11 @@ export function FilmDetailOverlay({ movie, onClose }) {
             </div>
           )}
 
-          {/* ── REQUEST PICK CHANGE (the picker's own locked active-month pick) ── */}
-          {profile && isPicker && activeMonthId && m.month_id === activeMonthId && !m.scores_revealed && !m.picker_revealed && (
+          {/* ── REQUEST PICK CHANGE (the picker's own locked active-month pick) ──
+              Only offered while NO ONE has scored the film yet — once a score
+              exists, changing the pick would orphan it (and admin approval is
+              server-guarded on zero scores anyway). */}
+          {profile && isPicker && activeMonthId && m.month_id === activeMonthId && !m.scores_revealed && !m.picker_revealed && scoredRatings.length === 0 && (
             <div style={{ marginTop: '14px' }}>
               <PickChangeRequestButton movie={{ id: m.id }} currentUserId={profile.id} />
             </div>

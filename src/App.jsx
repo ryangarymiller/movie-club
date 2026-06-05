@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { useTheme } from './context/ThemeContext'
 import { MemberOverlayProvider, useMemberOverlay } from './context/MemberOverlayContext'
 import { MemberStatsOverlayProvider } from './context/MemberStatsOverlayContext'
 import MemberStatsOverlay from './components/MemberStatsOverlay'
@@ -125,11 +127,28 @@ function MemberOverlayHost() {
   )
 }
 
+// Applies the signed-in user's saved theme (mode + accent from their profile) once
+// it loads, so the choice follows them across devices. localStorage still drives
+// the instant first paint on a known device; the DB value wins on a new one.
+function ThemeSync() {
+  const { profile } = useAuth()
+  const { setMode, setAccent } = useTheme()
+  const appliedFor = useRef(null)
+  useEffect(() => {
+    if (!profile?.id || appliedFor.current === profile.id) return
+    appliedFor.current = profile.id
+    if (profile.theme_mode) setMode(profile.theme_mode)
+    if (profile.theme_accent) setAccent(profile.theme_accent)
+  }, [profile?.id, profile?.theme_mode, profile?.theme_accent, setMode, setAccent])
+  return null
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
+          <ThemeSync />
           <NotificationsProvider>
             <ReadjustmentProvider>
               <MemberOverlayProvider>

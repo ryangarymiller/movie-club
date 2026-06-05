@@ -10,10 +10,11 @@ import { memberColor } from '../lib/colors'
 // already imports from Films, so importing back would be a cycle). Mirrors the
 // look of Stats' MemberScoreBars.
 
+// Full first + last name (drops any middle names) for the score-breakdown axis.
 function firstLast(name) {
   if (!name) return '?'
   const parts = name.trim().split(/\s+/)
-  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0]
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0]
 }
 
 // Tight domain so clustered scores (e.g. all > 7) spread out instead of wasting
@@ -83,7 +84,7 @@ export default function FilmScoreBars({ ratings = [], users = [], height, onMemb
         <YAxis
           type="category"
           dataKey="name"
-          width={90}
+          width={104}
           tick={{ fontSize: 10, fill: 'var(--text-muted)', fontFamily: 'DM Sans' }}
           axisLine={false}
           tickLine={false}
