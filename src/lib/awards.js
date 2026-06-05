@@ -1,8 +1,10 @@
 // ─── Shared Awards module ─────────────────────────────────────────────────────
 //
-// Awards are NOT stored in the database — there is no `awards` table. They are
-// computed at runtime from { movies, ratings, users, months, seasons } by reusing
-// the compute functions that live in src/pages/Awards.jsx.
+// Awards are computed at runtime from { movies, ratings, users, months, seasons }
+// by reusing the compute functions that live in src/pages/Awards.jsx. An `awards`
+// table also exists and writeAwardsToDb()/fetchAwards*() persist+read it (written
+// when an admin reveals scores/pickers); the UI falls back to the runtime compute
+// when the table has no rows, so both paths yield the same result.
 //
 // This module assembles the full award set across every month / season / year
 // present in the data and exposes two lookups:

@@ -1375,7 +1375,7 @@ export default function Profile({ overlayUserId = null } = {}) {
             <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
               <p style={{ ...LABEL_STYLE, margin: '0 0 4px', display: 'block' }}>Quiet hours</p>
               <p style={{ margin: '0 0 12px', fontSize: '11.5px', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-                Used for push &amp; email (coming soon). In-app notifications always appear.
+                Used for push &amp; email. In-app notifications always appear.
               </p>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
                 {[
@@ -1422,8 +1422,9 @@ export default function Profile({ overlayUserId = null } = {}) {
               </div>
             </div>
 
-            {/* Delivery channels. Email is live (sent via Resend for enabled, unmuted
-                notifications, respecting quiet hours); browser push is still coming. */}
+            {/* Delivery channels. Both are live: email via Resend and browser push
+                via the send-push Edge Function — for enabled, unmuted notifications,
+                respecting quiet hours. */}
             <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
               <p style={{ ...LABEL_STYLE, margin: '0 0 6px', display: 'block' }}>Delivery</p>
               <NotifTypeRow
