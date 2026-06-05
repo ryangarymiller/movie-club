@@ -156,6 +156,7 @@ Do not attempt to build everything at once. Phases in order:
 ## Architecture: Auth Stability
 
 - **Random sign-out fix (Session 9):** `fetchProfile` now distinguishes a transient network/DB error from a genuine "no user row". It retries once before drawing any conclusion and never blanks an existing in-memory profile on error. If the retry also fails, the app shows a Retry screen instead of bouncing the user to `/not-approved`.
+- **Blank-reload-on-tab-refocus fix:** Supabase fires `onAuthStateChange` (`TOKEN_REFRESHED`/`SIGNED_IN`) every time the tab regains focus. `AuthContext` previously called `fetchProfile` on each event, handing every page a NEW `profile` object reference and re-triggering their `[profile]` load effects — so the page blanked and re-fetched its data on every tab switch. It now refetches the profile **only when the signed-in user actually changes** (a `loadedUserRef` guard in `AuthContext`); same-user refocus events keep the existing profile. The context-exposed `fetchProfile` (used by Profile edits / onboarding to force a refresh) is unaffected.
 - **Auth diagnostics:** `src/lib/authLog.js` exports `logAuthEvent()` (fire-and-forget insert into `auth_events`) and `deliberateSignOut()` (tags sign-out as user-initiated before calling Supabase signOut). Logs include `SIGNED_OUT` (with `user_initiated` flag, visibility, and online status) and profile-fetch retry/error events. The `auth_events` table has open INSERT so signed-out events can still be logged without an authenticated session; reads are admin-only.
 
 ---
