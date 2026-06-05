@@ -435,7 +435,8 @@ function MemberScoreRow({ rating, user, onNameClick }) {
       padding: '10px 0',
       borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)',
     }}>
-      {/* Avatar */}
+      {/* Avatar — the member's chosen user_color (falls back to the deterministic
+          name colour only when they haven't set one), matching the score bars. */}
       <div
         onClick={handleClick}
         style={{
@@ -443,7 +444,7 @@ function MemberScoreRow({ rating, user, onNameClick }) {
           width: '32px',
           height: '32px',
           borderRadius: '50%',
-          background: avatarColor(name),
+          background: userColor(user) || avatarColor(name),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
