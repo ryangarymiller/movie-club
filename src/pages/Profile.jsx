@@ -7,6 +7,9 @@ import { getAwardsForUser, fetchAwardsForUser } from '../lib/awards'
 import { USER_COLOR_PALETTE, MEMBER_COLORS, hexToRgbTriple } from '../lib/colors'
 import AwardsBadges from '../components/AwardsBadges'
 import PersonalLists from '../components/PersonalLists'
+import Avatar from '../components/Avatar'
+import AvatarPicker from '../components/AvatarPicker'
+import { avatarLabel } from '../lib/avatars'
 import { deliberateSignOut } from '../lib/authLog'
 import { FilmDetailOverlay } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
@@ -59,6 +62,14 @@ const SECTION_LABEL = {
   color: 'var(--text-faint)',
   marginBottom: '12px',
   display: 'block',
+}
+
+// Small pill button matching the "Change" affordance on the color picker.
+const AVATAR_BTN = {
+  flexShrink: 0, fontFamily: "'DM Mono', monospace", fontSize: '11px',
+  letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)',
+  background: 'none', border: '1px solid var(--accent)', borderRadius: '100px',
+  padding: '4px 14px', cursor: 'pointer',
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────────
@@ -411,13 +422,6 @@ function RecentRow({ rating, loading, onFilmClick, isLast }) {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
-function getInitials(name) {
-  if (!name) return '?'
-  const parts = name.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0][0].toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
 function formatMemberSince(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
@@ -506,6 +510,8 @@ export default function Profile({ overlayUserId = null } = {}) {
   const [takenColors, setTakenColors] = useState(new Set())
   // Color picker expand/collapse
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false)
+  const [avatarBusy, setAvatarBusy] = useState(false)
   // Picks section
   const [pickedFilms, setPickedFilms] = useState([])  // [{movie, monthYear, avgScore}]
   const [picksLoading, setPicksLoading] = useState(true)
@@ -776,7 +782,6 @@ export default function Profile({ overlayUserId = null } = {}) {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  const initials = getInitials(displayProfile?.name)
   const memberSince = formatMemberSince(displayProfile?.joined_at)
 
   // When viewing ANOTHER member's profile, recolor the accent to *their* user
@@ -807,34 +812,8 @@ export default function Profile({ overlayUserId = null } = {}) {
         {/* ── Section 1: Profile Header ── */}
         <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s ease both' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Avatar */}
-            <div
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: '50%',
-                background: 'rgba(var(--fg-rgb), 0.06)',
-                border: `2px solid ${displayProfile?.user_color ?? 'var(--accent)'}`,
-                display: 'grid',
-                placeItems: 'center',
-                flexShrink: 0,
-                overflow: 'hidden',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: '1.5rem',
-                  color: displayProfile?.user_color ?? 'var(--accent)',
-                  letterSpacing: '0.05em',
-                  paddingLeft: '0.05em',
-                  lineHeight: 1,
-                  marginTop: '4px',
-                }}
-              >
-                {initials}
-              </span>
-            </div>
+            {/* Avatar (chosen image or colored initials) */}
+            <Avatar user={displayProfile} size={64} />
 
             {/* Name + meta */}
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -1013,6 +992,44 @@ export default function Profile({ overlayUserId = null } = {}) {
                     Cancel
                   </button>
                 </div>
+              </>
+            )}
+          </div>
+        </section>}
+
+        {/* ── Section 1c: Your Avatar ── */}
+        {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.05s ease both' }}>
+          <span style={SECTION_LABEL}>Your Avatar</span>
+          <div style={{ ...CARD, padding: '16px' }}>
+            {!avatarPickerOpen ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Avatar user={displayProfile} size={44} />
+                <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
+                  {avatarLabel(displayProfile?.avatar_id) ?? 'No avatar — colored initials'}
+                </p>
+                <button onClick={() => setAvatarPickerOpen(true)} style={AVATAR_BTN}>Change</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                  <Avatar user={displayProfile} size={44} />
+                  <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
+                    {avatarLabel(displayProfile?.avatar_id) ?? 'No avatar — colored initials'}
+                  </p>
+                  <button onClick={() => setAvatarPickerOpen(false)} style={AVATAR_BTN}>Done</button>
+                </div>
+                <AvatarPicker
+                  currentId={displayProfile?.avatar_id ?? null}
+                  color={displayProfile?.user_color}
+                  busy={avatarBusy}
+                  onSelect={async (id) => {
+                    if (avatarBusy) return
+                    setAvatarBusy(true)
+                    await supabase.from('users').update({ avatar_id: id }).eq('id', profile.id)
+                    await fetchProfile(profile.id)
+                    setAvatarBusy(false)
+                  }}
+                />
               </>
             )}
           </div>
