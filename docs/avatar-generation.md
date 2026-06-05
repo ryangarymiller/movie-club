@@ -123,7 +123,7 @@ icon"*). Object packs never have this problem.
 | 10. Marvel (`marvel`) | Iron Man helmet · Captain America shield · Spider-Man mask · Thanos gauntlet · Thor's hammer (Mjölnir) · the Incredible Hulk (green) |
 | 11. DC (`dc`) | Batman cowl · Superman logo · Wonder Woman tiara |
 | 12. Alien (`alien`) | xenomorph · facehugger · Ripley |
-| 13. Terminator (`terminator`) | T-800 endoskeleton skull · thumbs up from a hand · glowing red robot eye |
+| 13. Terminator (`terminator`) | T-800 endoskeleton skull · thumbs up from a hand |
 | 14. Back to the Future (`back-to-the-future`) | the DeLorean · the flux capacitor · Marty's red puffer vest |
 | 15. Kubrick (`kubrick`) | HAL 9000 red eye · the black monolith · the Overlook hotel carpet pattern · a bowler hat · a bone (from 2001) |
 | 16. Tarantino (`tarantino`) | a glowing briefcase · a "Royale with Cheese" burger wrapper · a yellow tracksuit · a severed ear |
