@@ -625,6 +625,11 @@ function BoxWhisker({ c, x, y, width, height: bh, payload }) {
       />
       {/* median line — themed (was hardcoded white, invisible in light mode) */}
       <line x1={xMed} x2={xMed} y1={boxTop} y2={boxTop + boxH} strokeWidth={2.5} stroke="var(--text-strong)" />
+      {/* mean marker — a filled dot on the centre line, distinct from the median
+          line (shape + colour). Ringed in --text-strong so it reads over the box. */}
+      {payload.mean != null && (
+        <circle cx={px(payload.mean)} cy={cy} r={3.8} fill={c} stroke="var(--text-strong)" strokeWidth={1.4} />
+      )}
     </g>
   )
 }
@@ -653,7 +658,7 @@ function BoxPlotChart({ data, height, color }) {
               <div style={{ background: CHART.tooltipBg, border: `1px solid ${CHART.tooltipBorder}`, borderRadius: '8px', padding: '8px 10px', fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-muted)' }}>
                 <p style={{ margin: '0 0 4px', color: 'var(--text-strong)', fontFamily: "'DM Sans',sans-serif", fontSize: '12px', fontWeight: 600 }}>{d.name}</p>
                 <p style={{ margin: 0 }}>min {fmt(d.min)} · q1 {fmt(d.q1)}</p>
-                <p style={{ margin: 0 }}>med {fmt(d.median)}</p>
+                <p style={{ margin: 0 }}>med {fmt(d.median)}{d.mean != null ? <> · <span style={{ color: 'var(--text-strong)' }}>mean {fmt(d.mean)}</span></> : null}</p>
                 <p style={{ margin: 0 }}>q3 {fmt(d.q3)} · max {fmt(d.max)}</p>
               </div>
             )
@@ -956,17 +961,52 @@ function SectionLabel({ children, style }) {
 }
 
 // ─── Info button ─────────────────────────────────────────────────────────────
+// Single-open coordinator so only one "?" popover is open at a time (mirrors
+// the Awards page's closeActiveAwardInfo).
+let closeActiveInfoButton = null
+
 // Small "?" affordance with a click-toggle popover explaining a chart. Themed
-// (no hardcoded surfaces); closes on a second click. Used where a stat needs a
-// definition (e.g. Given vs Received vs Club avg).
+// (no hardcoded surfaces). Closes on a second click, on Escape, on scroll/resize,
+// and — like the Awards page — on any click outside the popover. Used where a
+// stat needs a definition (e.g. Given vs Received vs Club avg).
 function InfoButton({ label = 'What do these mean?', children }) {
   const [open, setOpen] = useState(false)
+  const close = useCallback(() => setOpen(false), [])
+
+  function toggle(e) {
+    e.stopPropagation()
+    if (open) { setOpen(false); return }
+    if (closeActiveInfoButton && closeActiveInfoButton !== close) closeActiveInfoButton()
+    closeActiveInfoButton = close
+    setOpen(true)
+  }
+
+  useEffect(() => {
+    if (!open) { if (closeActiveInfoButton === close) closeActiveInfoButton = null; return }
+    const dismiss = () => setOpen(false)
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    // Defer so the opening click itself doesn't immediately dismiss it.
+    const t = setTimeout(() => {
+      document.addEventListener('click', dismiss)
+      document.addEventListener('scroll', dismiss, true)
+      window.addEventListener('resize', dismiss)
+      document.addEventListener('keydown', onKey)
+    }, 0)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('click', dismiss)
+      document.removeEventListener('scroll', dismiss, true)
+      window.removeEventListener('resize', dismiss)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, close])
+
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
       <button
         type="button"
         aria-label={label}
-        onClick={() => setOpen(o => !o)}
+        onClick={toggle}
         style={{
           width: '18px', height: '18px', borderRadius: '50%',
           border: '1px solid rgba(var(--fg-rgb), 0.18)',
@@ -980,16 +1020,18 @@ function InfoButton({ label = 'What do these mean?', children }) {
         ?
       </button>
       {open && (
-        <div style={{
-          position: 'absolute', top: '22px', right: 0, zIndex: 20,
-          width: 'min(260px, 78vw)',
-          background: 'var(--surface, #0d0e15)',
-          border: '1px solid rgba(var(--fg-rgb), 0.12)',
-          borderRadius: '10px', padding: '10px 12px',
-          boxShadow: '0 8px 28px rgba(0,0,0,0.35)',
-          fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', lineHeight: 1.45,
-          color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 'normal',
-        }}>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', top: '22px', right: 0, zIndex: 20,
+            width: 'min(260px, 78vw)',
+            background: 'var(--surface, #0d0e15)',
+            border: '1px solid rgba(var(--fg-rgb), 0.12)',
+            borderRadius: '10px', padding: '10px 12px',
+            boxShadow: '0 8px 28px rgba(0,0,0,0.35)',
+            fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', lineHeight: 1.45,
+            color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 'normal',
+          }}>
           {children}
         </div>
       )}
@@ -3624,7 +3666,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
 
     const memberBox = users
       .filter(u => u.is_active !== false && (scoresByUser[u.id] || []).length >= 2)
-      .map(u => ({ name: firstLast(u.name), _color: userColor(u), ...quartiles(scoresByUser[u.id]) }))
+      .map(u => ({ name: firstLast(u.name), _color: userColor(u), mean: avg(scoresByUser[u.id]), ...quartiles(scoresByUser[u.id]) }))
 
     const clubAvgAll = avg(allScores)
     const givenReceived = users
@@ -4140,7 +4182,20 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         <SectionLabel>Per-Member Score Spread</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.memberBox.length > 0 ? (
-            <BoxPlotChart data={stats.memberBox} />
+            <>
+              <BoxPlotChart data={stats.memberBox} />
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap', marginTop: '8px', fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-dim)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: '2px', height: '12px', background: 'var(--text-strong)', borderRadius: '1px' }} />
+                  median
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: 'var(--text-muted)', border: '1.4px solid var(--text-strong)' }} />
+                  mean
+                </span>
+                <span>box = middle 50% · whiskers = min–max</span>
+              </div>
+            </>
           ) : (
             <ChartPlaceholder>Need at least 2 scores per member.</ChartPlaceholder>
           )}
@@ -5054,7 +5109,9 @@ export default function Stats() {
               // location-sync effect mirrors it back into activeTab.
               onClick={() => { setActiveTab(tab); navigate('/stats?tab=' + encodeURIComponent(tab)) }}
               style={{
-                flexShrink: 0,
+                // grow to fill the bar evenly (matches Awards/Admin); on narrow
+                // screens the row still scrolls horizontally rather than shrinking.
+                flex: '1 0 auto',
                 padding: '8px 12px',
                 borderRadius: '9px', border: 'none',
                 background: activeTab === tab ? 'rgba(var(--fg-rgb), 0.09)' : 'transparent',
