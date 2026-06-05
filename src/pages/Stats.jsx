@@ -3532,11 +3532,14 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         genreFilmIds[g].add(m.id)
       }
     }
-    // Order genres by how many films carry them (most common first), cap to keep
-    // the grid mobile-friendly.
+    // Order genres by how many films carry them (most common first). Every genre
+    // that appears on any film auto-populates a column — read live from movies, so
+    // newly-picked films with new genres show up automatically. The grid scrolls
+    // horizontally with vertical labels, so width isn't a concern; the cap is set
+    // above TMDB's fixed 19-genre ceiling purely as a pathological-width backstop.
     const blindspotGenres = Object.entries(genreFilmIds)
       .sort((a, b) => b[1].size - a[1].size)
-      .slice(0, 12)
+      .slice(0, 20)
       .map(([g]) => g)
 
     // Which films each member PICKED (revealed picks carry picked_by_user_id).
