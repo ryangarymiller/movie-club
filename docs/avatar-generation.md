@@ -1,6 +1,6 @@
 # Avatar Library — Generation Guide (Midjourney)
 
-End-to-end runbook for producing the 18-pack avatar library (~91 fixed icons + Pack 18
+End-to-end runbook for producing the 18-pack avatar library (~86 fixed icons + Pack 17
 which grows monthly). Spec style: **consistent flat cartoon**. Source of truth for the
 pack list: Drive `MOVIE_CLUB_SPEC-11.txt` (mirrored into `MOVIE_CLUB_SPEC.md`).
 
@@ -103,7 +103,7 @@ each as `raw/<pack-slug>/<icon-slug>.png` (see naming in Step 5).
 Same template for every line below; paste the **subject** into `<subject>`. Keep the same
 `--sref`/`--sw`/`--v` throughout so the whole library matches.
 
-**Trademarked-character note:** packs 3, 8, 9, 10, 11, 19, Ripley (12), and named figures in
+**Trademarked-character note:** packs 3, 8, 9, 10, 11, 18, Ripley (12), and named figures in
 4/5/15 are famous characters. MJ v6+ renders these from their names (e.g. *"flat cartoon
 avatar icon of Darth Vader"*). If one refuses or looks off-model, describe it by features
 instead (e.g. *"a tall black armored helmet with an angular breathing mask, flat cartoon
@@ -127,11 +127,10 @@ icon"*). Object packs never have this problem.
 | 14. Back to the Future (`back-to-the-future`) | the DeLorean · Marty's red puffer vest |
 | 15. Kubrick (`kubrick`) | HAL 9000 red eye · the black monolith · the Overlook hotel carpet pattern · a bowler hat · a bone (from 2001) |
 | 16. Tarantino (`tarantino`) | a "Royale with Cheese" burger wrapper · a yellow tracksuit · a severed ear |
-| 17. Standalone Classics (`classics`) | "Rosebud" sled · upright piano (Casablanca) · shower head (Psycho) · shark fin (Jaws) · kid on a bike silhouette (E.T.) · a red coat (Schindler's List) · a bar of soap (Fight Club) · a cardboard box (Se7en) · a moth (Silence of the Lambs) · a sharp suit (Goodfellas) · a captive-bolt cattle gun and a coin (No Country) |
-| 18. Movie Club Picks (`club-picks`) | one per film — see below; **generate per film, ongoing** |
-| 19. Avatar / Pandora (`pandora`) | Neytiri (blue Na'vi, yellow eyes) · Jake Sully's Na'vi avatar (blue) · mountain banshee / ikran (flying creature) |
+| 17. Movie Club Picks (`club-picks`) | one per film — see below; **generate per film, ongoing** |
+| 18. Avatar / Pandora (`pandora`) | Neytiri (blue Na'vi, yellow eyes) · mountain banshee / ikran (flying creature) |
 
-**Pack 18 — Movie Club Picks (grows monthly).** Generate one as each film gets watched, using
+**Pack 17 — Movie Club Picks (grows monthly).** Generate one as each film gets watched, using
 the same recipe. Current entries (subject in parens):
 The Master (glass of water) · Rebel Ridge (bicycle) · Princess Mononoke (kodama forest spirit)
 · Primer (wristwatch) · Kingdom of Heaven (crusader cross) · Where the Wild Things Are (wolf
@@ -261,7 +260,7 @@ You don't need every pack done first — even one pack is enough to build and te
 
 ---
 
-## Consistency checklist (so all 91 match)
+## Consistency checklist (so the whole set matches)
 
 - ✅ Same `--sref <anchor(s)> --sw 50` on **every** prompt (keep `--sw` constant across the set).
 - ✅ Same `--v` (model version) and `--style raw` throughout — don't switch mid-library.
