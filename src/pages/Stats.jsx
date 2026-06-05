@@ -1613,8 +1613,6 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
   }, [movies, guesses])
 
   const [showAll, setShowAll] = useState(false)
-  // Which histogram bar the user tapped (null = none) — highlights just that bar.
-  const [histBin, setHistBin] = useState(null)
 
   const stats = useMemo(() => {
     if (!movies.length && !ratings.length) return null
@@ -1848,28 +1846,13 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
         <StatCard label="Granularity" value={stats.granularity != null ? stats.granularity.toFixed(2) : '—'} />
       </div>
 
-      {/* Score Distribution Bar Chart — tap a bar to see its detail */}
+      {/* Score Distribution Bar Chart — hover/tap a bar for its detail (tooltip).
+          No click-to-select: it dimmed every bar and the tooltip already shows
+          each bar's bucket + count, so no bottom caption / clear button needed. */}
       <div>
         <SectionLabel>Score Distribution</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
-          <ScoreHistogram
-            data={stats.bucketCounts}
-            height={160}
-            selectedIndex={histBin}
-            onSelect={(i) => setHistBin(prev => (prev === i ? null : i))}
-          />
-          {histBin != null && stats.bucketCounts[histBin] && (
-            <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-dim)', margin: '8px 0 0', textAlign: 'center' }}>
-              {stats.bucketCounts[histBin].label}: {stats.bucketCounts[histBin].count} film{stats.bucketCounts[histBin].count !== 1 ? 's' : ''}
-              {' · '}
-              <button
-                onClick={() => setHistBin(null)}
-                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: "'DM Mono',monospace", fontSize: '10px', padding: 0 }}
-              >
-                clear
-              </button>
-            </p>
-          )}
+          <ScoreHistogram data={stats.bucketCounts} height={160} />
         </GlassCard>
       </div>
 
