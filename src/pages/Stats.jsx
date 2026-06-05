@@ -1673,20 +1673,39 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
     const myAvg = avg(scores)
     const myPercentile = (myAvg != null && memberAvgList.length) ? percentileRank(memberAvgList, myAvg) : null
 
-    // Favourite genres (mine) — only films I scored that have a genre.
-    // Handle genre as text[] (array) or comma-separated string.
-    const myGenreStrings = scored
-      .map(r => {
-        const g = movieMap[r.movie_id]?.genre
+    // Personal genre charts. (A genre breakdown of "films I scored" is identical for
+    // everyone — and to the club — since everyone scores every film. So instead:)
+    const subjectId = ratings[0]?.user_id ?? null
+
+    // 1) Picks by genre — the genres of films THIS person PICKED (their curation).
+    //    picked_by_user_id is only populated on revealed picks (movies_safe), so
+    //    this is their revealed pick history. Distinct per member.
+    const myPickGenreStrings = movies
+      .filter(m => subjectId && m.picked_by_user_id === subjectId)
+      .map(m => {
+        const g = m.genre
         if (!g) return null
-        if (Array.isArray(g)) return g.join(', ')
-        return String(g)
+        return Array.isArray(g) ? g.join(', ') : String(g)
       })
       .filter(Boolean)
-    const myGenreCounts = calcGenreBreakdown(myGenreStrings)
-    const myGenreDonut = Object.entries(myGenreCounts)
+    const myPickGenreDonut = Object.entries(calcGenreBreakdown(myPickGenreStrings))
       .sort((a, b) => b[1] - a[1]).slice(0, 8)
       .map(([name, value]) => ({ name, value }))
+
+    // 2) Avg score by genre — how this person RATES each genre (their taste).
+    //    Over the films they've scored & can see; distinct per member.
+    const genreScoreAcc = {}
+    for (const r of scored) {
+      const mv = movieMap[r.movie_id]
+      if (!mv) continue
+      const parts = (Array.isArray(mv.genre) ? mv.genre : (mv.genre ? String(mv.genre).split(',') : []))
+        .map(s => String(s).trim()).filter(Boolean)
+      for (const g of parts) (genreScoreAcc[g] ??= []).push(Number(r.score))
+    }
+    const myGenreScoreBars = Object.entries(genreScoreAcc)
+      .map(([name, arr]) => ({ name, value: avg(arr), _count: arr.length }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8)
 
     // Personal season & year rankings (quarterly seasons). Rank my films within
     // each season/year by my score.
@@ -1735,7 +1754,8 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
       scoresOverTime,
       myVsClub,
       myPercentile,
-      myGenreDonut,
+      myPickGenreDonut,
+      myGenreScoreBars,
       seasonRankings,
       yearRankings,
     }
@@ -1901,15 +1921,32 @@ export function MeTab({ movies, ratings, allRatings = [], guesses = [], loading,
         </GlassCard>
       </div>
 
-      {/* Favourite Genres */}
+      {/* Picks by Genre — the genres this person curates (what they pick) */}
       <div>
-        <SectionLabel>Favourite Genres</SectionLabel>
+        <SectionLabel>{subject.possessive} Picks by Genre</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
-          {stats.myGenreDonut.length > 0 ? (
-            <DonutChart data={stats.myGenreDonut} height={220} onLegendClick={onGenre} />
+          {stats.myPickGenreDonut.length > 0 ? (
+            <DonutChart data={stats.myPickGenreDonut} height={220} onLegendClick={onGenre} />
           ) : (
-            /* TODO: needs genre data on movies */
-            <ChartPlaceholder>Genre data not yet available.</ChartPlaceholder>
+            <ChartPlaceholder>No revealed picks with genre data yet.</ChartPlaceholder>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Avg Score by Genre — how this person rates each genre (their taste) */}
+      <div>
+        <SectionLabel>{subject.possessive} Taste · Avg Score by Genre</SectionLabel>
+        <GlassCard style={{ padding: '16px 10px' }}>
+          {stats.myGenreScoreBars.length > 0 ? (
+            <ComparisonBar
+              data={stats.myGenreScoreBars}
+              keys={[{ key: 'value', name: 'Avg' }]}
+              layout="vertical"
+              smartDomain
+              height={Math.max(120, stats.myGenreScoreBars.length * 30 + 20)}
+            />
+          ) : (
+            <ChartPlaceholder>Score this month’s films to see your genre taste.</ChartPlaceholder>
           )}
         </GlassCard>
       </div>
@@ -2854,7 +2891,7 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
     <div>
     {/* Legend OUTSIDE the horizontal scroll area so it's fully readable. */}
     <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-dim)', margin: '0 0 12px', lineHeight: 1.5 }}>
-      Films each member has picked, per genre · faint red = never picked (a blindspot) · brighter = more picks
+      Films each member has picked, per genre · empty = never picked (a blindspot) · brighter = more picks
     </p>
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ minWidth: `${labelW + genres.length * cellMin}px` }}>
@@ -2912,7 +2949,7 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
               // Non-zero: accent fill, opacity ramps 0.22 → 1.0 with the count.
               const intensity = 0.22 + 0.78 * (c / denom)
               const bg = isBlind
-                ? 'rgba(220, 38, 38, 0.12)'
+                ? 'rgba(var(--fg-rgb), 0.03)'
                 : `rgba(${rowRgb}, ${intensity.toFixed(3)})`
               return (
                 <div
@@ -2922,12 +2959,12 @@ function GenreBlindspotGrid({ genres, rows, max, onMember }) {
                     height: '26px',
                     borderRadius: '5px',
                     background: bg,
-                    border: isBlind ? '1px solid rgba(220, 38, 38, 0.28)' : '1px solid rgba(var(--fg-rgb), 0.05)',
+                    border: '1px solid rgba(var(--fg-rgb), 0.05)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontFamily: "'DM Mono',monospace",
                     fontSize: '10px',
                     color: isBlind
-                      ? 'rgba(220, 38, 38, 0.85)'
+                      ? 'var(--text-faint)'
                       : (intensity > 0.6 ? 'var(--bg)' : 'var(--text-strong)'),
                   }}
                 >
@@ -3272,9 +3309,18 @@ function ConnectionWeb({ movies = [], onFilm }) {
             <>
               <p style={{
                 fontFamily: "'Bebas Neue',sans-serif", letterSpacing: '0.04em',
-                fontSize: '1.05rem', color: 'var(--text-strong)', margin: '0 0 2px',
+                fontSize: '1.05rem', color: 'var(--text-strong)', margin: '0 0 2px', lineHeight: 1.25,
               }}>
-                {edgeFilms.map(m => m.title).join('  ↔  ')}
+                {edgeFilms.map((m, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && (
+                      // Render the arrow in a UI font + vertically centred — the Bebas
+                      // glyph set lacks ↔, so it otherwise fell back off-baseline.
+                      <span style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--text-faint)', fontSize: '0.78em', verticalAlign: 'middle', padding: '0 7px' }}>↔</span>
+                    )}
+                    {m.title}
+                  </Fragment>
+                ))}
               </p>
               <p style={{
                 fontFamily: "'DM Mono',monospace", fontSize: '10.5px', color: 'var(--text-dim)',
@@ -3418,6 +3464,8 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     const topGenres = Object.entries(genreCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
+    // Club-wide genre mix as a donut (all club films), shown on the Club tab.
+    const clubGenreDonut = topGenres.map(([name, value]) => ({ name, value }))
     const totalFilmsForGenre = revealedMovies.length
     // Are there any movies with genre data at all?
     const hasAnyGenreData = revealedMovies.some(m => m.genre && (Array.isArray(m.genre) ? m.genre.length > 0 : String(m.genre).trim() !== ''))
@@ -3721,6 +3769,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       streaks,
       activeUsers,
       topGenres,
+      clubGenreDonut,
       hasAnyGenreData,
       totalFilmsForGenre,
       blindspotGenres,
@@ -3759,8 +3808,6 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       </div>
     )
   }
-
-  const maxGenreCount = stats.topGenres.length > 0 ? stats.topGenres[0][1] : 1
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
@@ -4252,62 +4299,17 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         </GlassCard>
       </div>
 
-      {/* Genres — single genre visualization (Genre Breakdown duplicate removed) */}
+      {/* Favourite Genres — club-wide mix across every film picked for the club.
+          (The per-member genre charts live on the Me / member pages.) */}
       <div>
-        <SectionLabel>Genres</SectionLabel>
-        <GlassCard style={{ padding: '16px' }}>
-          {stats.topGenres.length === 0 ? (
+        <SectionLabel>Favourite Genres</SectionLabel>
+        <GlassCard style={{ padding: '16px 12px' }}>
+          {stats.clubGenreDonut.length === 0 ? (
             <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
               {stats.hasAnyGenreData === false ? 'Run genre backfill in Admin to see this chart.' : 'No genre data yet.'}
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {stats.topGenres.map(([genre, count]) => {
-                const pct = (count / maxGenreCount) * 100
-                return (
-                  <div
-                    key={genre}
-                    onClick={onGenre ? () => onGenre(genre) : undefined}
-                    onKeyDown={onGenre ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onGenre(genre) } } : undefined}
-                    role={onGenre ? 'button' : undefined}
-                    tabIndex={onGenre ? 0 : undefined}
-                    title={onGenre ? `View ${genre} films` : undefined}
-                    style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: onGenre ? 'pointer' : 'default' }}
-                  >
-                    <span style={{
-                      fontFamily: "'DM Sans',sans-serif",
-                      fontSize: '12px',
-                      color: 'var(--text-muted)',
-                      flexShrink: 0,
-                      width: '90px',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {genre}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0, height: '14px', background: 'rgba(var(--fg-rgb), 0.04)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{
-                        width: `${pct}%`,
-                        height: '100%',
-                        background: 'var(--accent)',
-                        borderRadius: '3px',
-                        transition: 'width 0.4s ease',
-                        opacity: 0.75,
-                      }} />
-                    </div>
-                    <span style={{
-                      fontFamily: "'DM Mono',monospace",
-                      fontSize: '10px',
-                      color: 'var(--text-dim)',
-                      flexShrink: 0,
-                      width: '24px',
-                      textAlign: 'right',
-                    }}>
-                      {count}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
+            <DonutChart data={stats.clubGenreDonut} height={220} onLegendClick={onGenre} />
           )}
         </GlassCard>
       </div>
