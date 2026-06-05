@@ -482,7 +482,9 @@ Displayed as a colored ring around the member's avatar and as the color of the i
 
 **Light-mode accent overrides:** Each accent color has a vibrant `--accent` CSS variable + a dark accent-text companion in light mode so all 7 accents remain legible (dark mode unchanged). Active bottom-nav tab uses the accent color. Home poster-row shadow no longer clips.
 
-**`--accent-rgb`:** Every accent also defines an `--accent-rgb` triple (e.g. Sage = `22, 163, 74` in light, `77, 124, 95` in dark) alongside `--accent`, for both light and dark. This fixes all `rgba(var(--accent-rgb), …)` usages — the taste-correlation heatmap, the genre-blindspot grid, and accent-tinted surfaces — which previously had no `--accent-rgb` defined and silently fell back to the purple default regardless of the selected accent.
+**`--accent-rgb`:** Every accent also defines an `--accent-rgb` triple (e.g. Sage = `16, 173, 79` in light, `60, 179, 113` in dark) alongside `--accent`, for both light and dark. This fixes all `rgba(var(--accent-rgb), …)` usages — the taste-correlation heatmap, the genre-blindspot grid, and accent-tinted surfaces — which previously had no `--accent-rgb` defined and silently fell back to the purple default regardless of the selected accent.
+
+**Readability/vibrancy pass:** the per-mode text tokens (`--text` → `--text-faint`) were tuned for contrast — brighter in dark/grey, darker in light/sepia — so secondary text/captions stay readable in every mode. The 7 accents were bumped to vibrant `-500`-ish shades (base/dark + grey) with matching light/sepia overrides, so accent fills, the active nav, and accent text pop instead of looking washed out.
 
 **Vault films:** Gold star indicator only — no gold border (would clash with user color border on picks).
 

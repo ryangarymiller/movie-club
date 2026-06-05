@@ -28,11 +28,11 @@
   --surface-2: #1a1b25;
   --surface-3: #0e0f16;
   --text-strong: #ffffff;
-  --text: #d1d5db;
-  --text-muted: #9ca3af;
-  --text-dim: #6b7280;
-  --text-faint: #4b5563;
-  --hairline: #374151;
+  --text: #e3e6ea;
+  --text-muted: #b5bbc5;
+  --text-dim: #8f96a1;
+  --text-faint: #707782;
+  --hairline: #3f4855;
   color-scheme: dark;
 }
 
@@ -46,15 +46,15 @@
   --surface: #ffffff;
   --surface-2: #f3f4f6;
   --surface-3: #fafafb;
-  --text-strong: #0b0d12;
-  --text: #1f2937;
-  --text-muted: #3f4753;
-  --text-dim: #475264;
-  /* Darkened (was #64748b / #94a3b8) — captions/labels that use text-faint or
-     hairline-as-text were too light on white. These now clear ~4.5:1 on the
-     light bg while hairline still reads as a subtle divider. */
-  --text-faint: #525c6b;
-  --hairline: #7b8696;
+  --text-strong: #090b0f;
+  --text: #161d28;
+  --text-muted: #313947;
+  --text-dim: #3a4350;
+  /* Darker than before — captions/labels (text-faint / hairline-as-text) read too
+     light on white. These now clear comfortably above 4.5:1 while hairline still
+     reads as a subtle divider. */
+  --text-faint: #454e5c;
+  --hairline: #6b7686;
   color-scheme: light;
 }
 
@@ -69,12 +69,12 @@
   --surface: #fbf4e2;
   --surface-2: #efe5cd;
   --surface-3: #f6eeda;
-  --text-strong: #2a2017;
-  --text: #3c2f21;
-  --text-muted: #5f4f39;
-  --text-dim: #6d5b41;
-  --text-faint: #7c6a4d;
-  --hairline: #b29b73;
+  --text-strong: #231a11;
+  --text: #2f2417;
+  --text-muted: #4f4029;
+  --text-dim: #5b4a31;
+  --text-faint: #6a5839;
+  --hairline: #9c855e;
   color-scheme: light;
 }
 
@@ -91,22 +91,22 @@
   --surface-2: #44474f;
   --surface-3: #33353b;
   --text-strong: #ffffff;
-  --text: #e3e5e9;
-  --text-muted: #bcbfc7;
-  --text-dim: #9a9ea8;
-  --text-faint: #868a94;
-  --hairline: #585c66;
+  --text: #eceef1;
+  --text-muted: #ccd0d6;
+  --text-dim: #abb0ba;
+  --text-faint: #969ba6;
+  --hairline: #646975;
   color-scheme: dark;
 }
 
 /* Accent color variants (mode-independent) */
-[data-accent="crimson"]   { --accent: #b91c1c; --accent-rgb: 185, 28, 28;  --accent-light: #fca5a5; --accent-dark: #7f1d1d; }
-[data-accent="ember"]     { --accent: #c2410c; --accent-rgb: 194, 65, 12;  --accent-light: #fdba74; --accent-dark: #7c2d12; }
-[data-accent="amber"]     { --accent: #b45309; --accent-rgb: 180, 83, 9;   --accent-light: #fcd34d; --accent-dark: #78350f; }
-[data-accent="sage"]      { --accent: #4d7c5f; --accent-rgb: 77, 124, 95;  --accent-light: #86efac; --accent-dark: #14532d; }
-[data-accent="slate-blue"]{ --accent: #2563eb; --accent-rgb: 37, 99, 235;  --accent-light: #93c5fd; --accent-dark: #1e3a8a; }
-[data-accent="indigo"]    { --accent: #4338ca; --accent-rgb: 67, 56, 202;  --accent-light: #a5b4fc; --accent-dark: #312e81; }
-[data-accent="violet"]    { --accent: #7c3aed; --accent-rgb: 124, 58, 237; --accent-light: #c4b5fd; --accent-dark: #4c1d95; }
+[data-accent="crimson"]   { --accent: #ef4444; --accent-rgb: 239, 68, 68;  --accent-light: #fca5a5; --accent-dark: #7f1d1d; }
+[data-accent="ember"]     { --accent: #f97316; --accent-rgb: 249, 115, 22; --accent-light: #fdba74; --accent-dark: #7c2d12; }
+[data-accent="amber"]     { --accent: #f59e0b; --accent-rgb: 245, 158, 11; --accent-light: #fcd34d; --accent-dark: #78350f; }
+[data-accent="sage"]      { --accent: #3cb371; --accent-rgb: 60, 179, 113; --accent-light: #86efac; --accent-dark: #14532d; }
+[data-accent="slate-blue"]{ --accent: #3b82f6; --accent-rgb: 59, 130, 246; --accent-light: #93c5fd; --accent-dark: #1e3a8a; }
+[data-accent="indigo"]    { --accent: #6366f1; --accent-rgb: 99, 102, 241; --accent-light: #a5b4fc; --accent-dark: #312e81; }
+[data-accent="violet"]    { --accent: #8b5cf6; --accent-rgb: 139, 92, 246; --accent-light: #c4b5fd; --accent-dark: #4c1d95; }
 
 /* Light-mode accent overrides. The base (dark-mode) values use a bright pastel
    --accent-light that is used as TEXT — unreadable on a white background — and a
@@ -114,13 +114,13 @@
    --accent the vibrant swatch color, and --accent-light a DARK shade so accent text
    stays legible on white. (Dark mode is unchanged.) Two attributes => higher
    specificity than the base [data-accent] rule, so these win in light mode. */
-[data-base="light"][data-accent="crimson"]    { --accent: #dc2626; --accent-rgb: 220, 38, 38;  --accent-light: #b91c1c; }
-[data-base="light"][data-accent="ember"]      { --accent: #ea580c; --accent-rgb: 234, 88, 12;  --accent-light: #c2410c; }
-[data-base="light"][data-accent="amber"]      { --accent: #d97706; --accent-rgb: 217, 119, 6;  --accent-light: #b45309; }
-[data-base="light"][data-accent="sage"]       { --accent: #16a34a; --accent-rgb: 22, 163, 74;  --accent-light: #15803d; }
-[data-base="light"][data-accent="slate-blue"] { --accent: #2563eb; --accent-rgb: 37, 99, 235;  --accent-light: #1d4ed8; }
-[data-base="light"][data-accent="indigo"]     { --accent: #4f46e5; --accent-rgb: 79, 70, 229;  --accent-light: #4338ca; }
-[data-base="light"][data-accent="violet"]     { --accent: #7c3aed; --accent-rgb: 124, 58, 237; --accent-light: #6d28d9; }
+[data-base="light"][data-accent="crimson"]    { --accent: #e11d2e; --accent-rgb: 225, 29, 46;  --accent-light: #b91c1c; }
+[data-base="light"][data-accent="ember"]      { --accent: #f1590a; --accent-rgb: 241, 89, 10;  --accent-light: #c2410c; }
+[data-base="light"][data-accent="amber"]      { --accent: #ec8b00; --accent-rgb: 236, 139, 0;  --accent-light: #b45309; }
+[data-base="light"][data-accent="sage"]       { --accent: #10ad4f; --accent-rgb: 16, 173, 79;  --accent-light: #15803d; }
+[data-base="light"][data-accent="slate-blue"] { --accent: #2767f0; --accent-rgb: 39, 103, 240;  --accent-light: #1d4ed8; }
+[data-base="light"][data-accent="indigo"]     { --accent: #5852f0; --accent-rgb: 88, 82, 240;  --accent-light: #4338ca; }
+[data-base="light"][data-accent="violet"]     { --accent: #8b3df0; --accent-rgb: 139, 61, 240; --accent-light: #6d28d9; }
 
 body {
   margin: 0;

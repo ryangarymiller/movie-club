@@ -165,11 +165,11 @@ export default function AppLayout() {
       </div>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-56 border-r border-gray-800 p-4 gap-1 shrink-0">
+      <aside className="hidden md:flex flex-col w-60 border-r border-gray-800 p-4 gap-1 shrink-0">
         <div className="px-3 py-4 mb-2 flex items-center justify-between gap-2">
-          <div className="text-lg font-bold tracking-tight text-white flex items-center gap-2 min-w-0">
+          <div className="text-lg font-bold tracking-tight text-white flex items-center gap-2 shrink-0">
             <FilmsIcon active={true} />
-            <span className="truncate">Movie Club</span>
+            <span className="whitespace-nowrap">Movie Club</span>
           </div>
           <NotificationBell />
         </div>
