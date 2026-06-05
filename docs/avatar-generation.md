@@ -249,6 +249,153 @@ manifest, the files, and the DB all agree.
 
 ---
 
+## Canonical file slugs
+
+Name each file `<pack>/<icon>` (raw `.png` in `raw/`, processed `.webp` in `public/avatars/`).
+Total: 85 fixed + 17 club-picks = 102.
+
+```
+# 1 · movie-objects
+movie-objects/clapperboard
+movie-objects/film-reel
+movie-objects/popcorn
+movie-objects/vhs-tape
+movie-objects/directors-chair
+movie-objects/oscar-statuette
+movie-objects/movie-ticket
+movie-objects/projector
+movie-objects/35mm-camera
+movie-objects/megaphone
+
+# 2 · archetypes
+archetypes/detective
+archetypes/cowboy
+archetypes/astronaut
+archetypes/femme-fatale
+archetypes/monster
+archetypes/superhero
+archetypes/villain
+archetypes/samurai
+archetypes/spy
+archetypes/explorer
+
+# 3 · star-wars
+star-wars/darth-vader
+star-wars/yoda
+star-wars/r2-d2
+star-wars/c-3po
+star-wars/stormtrooper
+star-wars/luke-skywalker
+star-wars/princess-leia
+star-wars/han-solo
+star-wars/chewbacca
+star-wars/boba-fett
+star-wars/darth-maul
+star-wars/general-grievous
+star-wars/clone-trooper
+star-wars/padme-amidala
+star-wars/battle-droid
+
+# 4 · indiana-jones
+indiana-jones/indiana-jones
+indiana-jones/ark
+indiana-jones/golden-idol
+indiana-jones/fedora
+
+# 5 · godfather
+godfather/don-corleone
+godfather/horse-head
+godfather/rose
+
+# 6 · james-bond
+james-bond/gun-silhouette
+james-bond/aston-martin
+james-bond/martini
+
+# 7 · jurassic-park
+jurassic-park/t-rex
+jurassic-park/raptor
+jurassic-park/amber
+jurassic-park/jeep
+
+# 8 · lotr
+lotr/gandalf-grey
+lotr/gandalf-white
+lotr/frodo
+lotr/one-ring
+lotr/gollum
+lotr/eye-of-sauron
+
+# 9 · harry-potter
+harry-potter/harry-potter
+harry-potter/dumbledore
+harry-potter/sorting-hat
+harry-potter/golden-snitch
+harry-potter/hedwig
+
+# 10 · marvel
+marvel/iron-man
+marvel/captain-america
+marvel/spider-man
+marvel/thanos-gauntlet
+marvel/mjolnir
+marvel/hulk
+
+# 11 · dc
+dc/batman
+dc/superman
+dc/wonder-woman
+
+# 12 · alien
+alien/xenomorph
+alien/facehugger
+alien/ripley
+
+# 13 · terminator
+terminator/t-800
+terminator/thumbs-up
+
+# 14 · back-to-the-future
+back-to-the-future/delorean
+back-to-the-future/marty-vest
+
+# 15 · kubrick
+kubrick/hal-9000
+kubrick/monolith
+kubrick/overlook-carpet
+kubrick/bowler-hat
+kubrick/bone
+
+# 16 · tarantino
+tarantino/royale-with-cheese
+tarantino/tracksuit
+tarantino/ear
+
+# 17 · club-picks  (slug = film)
+club-picks/rebel-ridge
+club-picks/princess-mononoke
+club-picks/kingdom-of-heaven
+club-picks/where-the-wild-things-are
+club-picks/smashing-machine
+club-picks/city-of-god
+club-picks/contact
+club-picks/frailty
+club-picks/oldboy
+club-picks/spirited-away
+club-picks/three-billboards
+club-picks/birdman
+club-picks/heat
+club-picks/eternal-sunshine
+club-picks/cherry
+club-picks/being-john-malkovich
+club-picks/adaptation
+
+# 18 · pandora
+pandora/neytiri
+```
+
+---
+
 ## Step 7 — Hand back to Claude
 
 Once `public/avatars/**` is populated, Claude builds the wiring (the deferred part):
