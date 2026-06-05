@@ -193,22 +193,26 @@ Auto month-activation on the 1st and deadline enforcement/auto-reveal via `pg_cr
 
 This is the most architecturally significant system — it affects RLS policies, queries, and UI throughout the app.
 
-### Two-tier reveal
+### Rolling reveal model (current)
+During the **active** month, score visibility is **rolling per viewer**: you see a film's club average + other members' scores ONLY once you've submitted your own final score for it (your own score is always visible). The `ratings` SELECT RLS enforces this server-side: a row is visible iff `movies.scores_revealed` OR you're an admin OR `(score IS NOT NULL AND auth_user_has_scored(movie_id))`. So the client can't even fetch hidden scores — it just must avoid displaying a misleading partial average for a film it can't see (use `src/lib/visibility.js` `canSeeScores`/`visibleAvg`, mirrored in Films/Home/This Month/Stats).
 
-**Per-film reveal (weekly):** Each film has a `scoring_deadline`. When it passes, `movies.scores_revealed` flips to `true` — individual member scores become visible to everyone.
+**Month-end full reveal:** when the next month is activated, `activate_month` flips the demoted month's films to `scores_revealed = true` + `picker_revealed = true` — the whole month becomes public to everyone (even members who never scored it).
 
-**End-of-month reveal:** After all film deadlines pass, a separate event flips `movies.picker_revealed = true` on all films simultaneously — this reveals picker identity, pick justifications, guesses, and predictions.
+**Picker reveal triggers (two paths):**
+- **Month ends** (next month activated) → `picker_revealed = true` via `activate_month`.
+- **Month fully scored** → a trigger (`trg_reveal_picker_complete` on `ratings`) flips `picker_revealed = true` once every member active that month has a score for every film in the month (test account excluded; members expected from the month they joined). Picker-revealed always coincides with full score visibility.
 
-### Rolling score visibility (before deadline)
-Before a film's scoring deadline: you can only see scores and discussions for members who have both watched AND submitted — and only if you've also watched and submitted. RLS enforces this.
+**Stats/Awards are viewer-relative for the active month:** score stats include a film only when the viewer can see it (`scores_revealed` OR they scored it — a `_canSee` flag); existence-only visuals (genre mix, connection web) use a `_exists` flag (active/revealed months, never upcoming). A "stats are based on what you can see" note shows while the viewer still has unscored active-month films. Awards gate on `scores_revealed`/`picker_revealed`, so the active month is simply excluded from awards until it reveals (not per-viewer).
 
-**Exception:** A user can always see their own score for a film regardless of `scores_revealed` status.
+**`notify_scores_revealed`** skips its per-film notification when the film's month is already `revealed` (an end-of-month bulk reveal) so revealing N films at once doesn't blast N emails/pushes — the month-level notification covers it.
 
 ### RLS enforcement
-- `movies.picked_by_user_id` and `pick_justification` must be excluded from non-admin queries until `picker_revealed = true`
-- Individual scores visibility is gated on `scores_revealed` per film AND the rolling watch-and-submitted check
-- Admins always see everything
-- At end-of-month reveal, `picker_revealed` flips and Supabase realtime subscriptions push updates to all clients
+- `movies.picked_by_user_id` and `pick_justification` excluded from non-admin queries until `picker_revealed = true` (via `movies_safe`)
+- Individual scores gated on `scores_revealed` per film OR the rolling "you've scored it" check (`auth_user_has_scored`)
+- A user always sees their own score regardless of reveal status
+- Admins always see everything; realtime subscriptions push reveal updates to all clients
+
+> Note: the old per-film *weekly* `scoring_deadline` auto-reveal is superseded by this rolling model — scores stay rolling per-viewer until the month ends (or an admin reveals a film manually). Deadlines remain display-only.
 
 ---
 
