@@ -1160,7 +1160,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
   const stats = useMemo(() => {
     if (!movies.length) return null
 
-    const revealed = movies.filter(m => m.scores_revealed)
+    const revealed = movies.filter(m => m._canSee)
     const allScores = ratings.filter(r => r.score != null).map(r => Number(r.score))
     const clubAvg = avg(allScores)
 
@@ -3327,12 +3327,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
   const [trendMode, setTrendMode] = useState('film')
   // Collapse the (potentially long) per-film spread list to a few rows by default.
   const [spreadShowAll, setSpreadShowAll] = useState(false)
-  // Connection web must not leak UPCOMING-month picks (they aren't revealed yet,
-  // e.g. June's Gattaca) — only films from active/revealed months belong here.
-  const connectionMovies = useMemo(
-    () => movies.filter(m => monthsById[m.month_id]?.status !== 'upcoming'),
-    [movies, monthsById],
-  )
+  // Connection web is existence-based — show films whose pick is public (active or
+  // revealed), never UPCOMING picks (e.g. June's Gattaca).
+  const connectionMovies = useMemo(() => movies.filter(m => m._exists), [movies])
   const stats = useMemo(() => {
     if (!movies.length) return null
 
@@ -3404,8 +3401,9 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       ratingsByUser,
     )
 
-    // Genre breakdown — only count revealed films; handle genre as text[] (array) or string
-    const revealedMovies = movies.filter(m => m.scores_revealed)
+    // Genre breakdown — existence-only (genre doesn't depend on scores), so include
+    // every film whose pick is public (active or revealed months), not upcoming.
+    const revealedMovies = movies.filter(m => m._exists)
     const genreStrings = revealedMovies
       .map(m => {
         if (!m.genre) return null
@@ -3431,6 +3429,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     // grid stays readable, and to films that carry genre data.
     const genreFilmIds = {} // genre -> Set<movie_id> (movies tagged with that genre)
     for (const m of movies) {
+      if (!m._exists) continue // existence-based: exclude upcoming picks
       if (!m.genre) continue
       const parts = (Array.isArray(m.genre) ? m.genre : String(m.genre).split(','))
         .map(s => String(s).trim()).filter(Boolean)
@@ -3524,7 +3523,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     const orderedFilms = []
     for (const mid of sortedMonths) {
       const films = [...(monthMovies[mid] || [])]
-        .filter(m => m.scores_revealed)
+        .filter(m => m._canSee)
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       for (const m of films) orderedFilms.push({ movie: m, month_id: mid })
     }
@@ -3645,7 +3644,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     // Group films by release decade; average each film's authoritative average.
     const decadeBuckets = {} // "1990s" -> [filmAvg, ...]
     for (const m of movies) {
-      if (!m.scores_revealed) continue
+      if (!m._canSee) continue
       const dl = decadeLabel(m.year_released)
       if (!dl) continue
       const sc = ratingsByMovie[m.id] || []
@@ -3685,7 +3684,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     // One row per revealed film with ≥2 scores: club avg + score stddev across
     // members. Most-divergent first; capped so the chart stays readable.
     const perMovieStats = movies
-      .filter(m => m.scores_revealed && (ratingsByMovie[m.id] || []).length >= 2)
+      .filter(m => m._canSee && (ratingsByMovie[m.id] || []).length >= 2)
       .map(m => {
         const sc = ratingsByMovie[m.id]
         return { id: m.id, title: m.title, movie: m, mean: avg(sc), sd: stddev(sc), count: sc.length }
@@ -3696,7 +3695,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
     // The actual vote_average is fetched client-side (see component) since the DB
     // doesn't store it. Here we just expose the candidate films + club avgs.
     const tmdbCandidates = movies
-      .filter(m => m.scores_revealed && m.tmdb_id)
+      .filter(m => m._canSee && m.tmdb_id)
       .map(m => {
         const sc = ratingsByMovie[m.id] || []
         const clubAvg = m.historical_avg_score != null ? Number(m.historical_avg_score) : (sc.length ? avg(sc) : null)
@@ -4930,6 +4929,27 @@ export default function Stats() {
     [viewMemberId, profile, allRatings],
   )
 
+  // Rolling visibility: the signed-in viewer's set of films they've scored. Score
+  // stats only ever include films they can SEE (revealed, or scored by them); the
+  // existence-only visuals (genre mix, connection web) use _exists (not upcoming).
+  const myScoredIds = useMemo(
+    () => new Set(myRatings.filter(r => r.score != null).map(r => r.movie_id)),
+    [myRatings],
+  )
+  const viewMovies = useMemo(
+    () => movies.map(m => ({
+      ...m,
+      _canSee: !!(m.scores_revealed || myScoredIds.has(m.id)),
+      _exists: (monthsById[m.month_id]?.status ?? 'upcoming') !== 'upcoming',
+    })),
+    [movies, myScoredIds, monthsById],
+  )
+  // Any active-month film the viewer hasn't scored yet → stats are still partial.
+  const hasUnseenActive = useMemo(
+    () => viewMovies.some(m => m._exists && !m.scores_revealed && !myScoredIds.has(m.id)),
+    [viewMovies, myScoredIds],
+  )
+
   // Plain (non-hook) derivations for render.
   const isViewingOther = !!viewMemberId && !!profile && viewMemberId !== profile.id
   const viewedMember = isViewingOther ? users.find(u => u.id === viewMemberId) : null
@@ -4997,7 +5017,7 @@ export default function Stats() {
               </button>
             </div>
             <MeTab
-              movies={movies}
+              movies={viewMovies}
               ratings={viewedRatings}
               allRatings={allRatings}
               guesses={viewMemberGuesses}
@@ -5045,11 +5065,25 @@ export default function Stats() {
           ))}
         </div>
 
+        {/* Stats are personalised: they only include films you can see scores for.
+            Flag it while this month's films are still partially unscored by you. */}
+        {!loading && hasUnseenActive && !isViewingOther && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '9px 12px', marginBottom: '16px', borderRadius: '10px',
+            background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.22)',
+            fontFamily: "'DM Sans',sans-serif", fontSize: '12px', color: 'var(--text-muted)',
+          }}>
+            <span style={{ fontSize: '13px' }}>👁</span>
+            <span>Stats are based on the scores visible to you — score the remaining films this month to update them.</span>
+          </div>
+        )}
+
         {/* Tab content */}
         <div style={{ animation: 'fadeUp 0.3s ease both' }}>
           {activeTab === 'Overview' && (
             <OverviewTab
-              movies={movies}
+              movies={viewMovies}
               ratings={allRatings}
               users={users}
               loading={loading}
@@ -5059,7 +5093,7 @@ export default function Stats() {
           )}
           {activeTab === 'Me' && (
             <MeTab
-              movies={movies}
+              movies={viewMovies}
               ratings={myRatings}
               allRatings={allRatings}
               guesses={myGuesses}
@@ -5071,7 +5105,7 @@ export default function Stats() {
           )}
           {activeTab === 'Members' && (
             <MembersTab
-              movies={movies}
+              movies={viewMovies}
               ratings={allRatings}
               users={users}
               loading={loading}
@@ -5085,7 +5119,7 @@ export default function Stats() {
           )}
           {activeTab === 'Club' && (
             <ClubTab
-              movies={movies}
+              movies={viewMovies}
               ratings={allRatings}
               users={users}
               loading={loading}
@@ -5097,7 +5131,7 @@ export default function Stats() {
           )}
           {activeTab === 'Head to Head' && (
             <HeadToHeadTab
-              movies={movies}
+              movies={viewMovies}
               ratings={allRatings}
               users={users}
               loading={loading}
