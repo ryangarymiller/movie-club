@@ -161,16 +161,19 @@ function EmptyState({ children }) {
 }
 
 // ── Watchlist ────────────────────────────────────────────────────────────────
+const WATCHLIST_PREVIEW = 3 // films shown collapsed; the rest reveal on "Show all"
+
 function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   const [items, setItems] = useState(null) // null = loading
-  const [open, setOpen] = useState(false)  // collapsed by default — it can get long
+  const [expanded, setExpanded] = useState(false) // false = preview (first few)
 
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('watchlist')
       .select('id, tmdb_id, title, poster_url, year_released')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+      // Ascending so the list keeps its curated order with new adds at the bottom.
+      .order('created_at', { ascending: true })
     setItems(data ?? [])
   }, [userId])
 
@@ -182,7 +185,8 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
       .insert({ user_id: userId, ...film })
       .select('id, tmdb_id, title, poster_url, year_released')
       .single()
-    if (!error && data) setItems(prev => [data, ...(prev ?? [])])
+    // Append — newly added films land at the bottom (matches the ascending order).
+    if (!error && data) setItems(prev => [...(prev ?? []), data])
   }
 
   async function remove(id) {
@@ -191,66 +195,79 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   }
 
   const existingIds = new Set((items ?? []).map(i => i.tmdb_id))
-  const count = items?.length ?? 0
+  const list = items ?? []
+  const count = list.length
+  const hasMore = count > WATCHLIST_PREVIEW
+  // Collapsed shows the first few; expanded shows all. The add box stays visible
+  // either way, so you can add a film without expanding the whole list.
+  const visible = expanded ? list : list.slice(0, WATCHLIST_PREVIEW)
 
   return (
     <div style={{ marginBottom: '1.75rem' }}>
-      {/* Collapsible header */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
-          background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
-        }}
-      >
-        <span style={{ color: 'var(--accent)', fontSize: '12px', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}>▸</span>
+      {/* Header — a static label + count (no full collapse, so the add box and
+          the preview are always reachable). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <span style={LABEL}>My Watchlist</span>
         {items !== null && <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--text-faint)' }}>· {count}</span>}
-      </button>
-      {!open ? null : (
-      <div style={{ marginTop: '12px' }}>
+      </div>
+
       <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', color: 'var(--text-dim)', margin: '0 0 12px' }}>
         Films you want to watch — private to you.
       </p>
       <FilmSearchAdd onAdd={add} existingIds={existingIds} placeholder="Search to add a film…" />
+
       {items === null ? (
         <EmptyState>Loading…</EmptyState>
-      ) : items.length === 0 ? (
+      ) : count === 0 ? (
         <EmptyState>Nothing saved yet. Search above to add films.</EmptyState>
       ) : (
-        <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--fg-rgb), 0.06)' }}>
-          {items.map((it, i) => {
-            const queued = queueTmdbIds?.has(it.tmdb_id)
-            return (
-              <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px', background: 'rgba(var(--fg-rgb), 0.02)', borderBottom: i < items.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none' }}>
-                <Poster path={it.poster_url} title={it.title} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13.5px', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</p>
-                  {it.year_released && <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)', margin: '2px 0 0' }}>{it.year_released}</p>}
+        <>
+          <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--fg-rgb), 0.06)' }}>
+            {visible.map((it, i) => {
+              const queued = queueTmdbIds?.has(it.tmdb_id)
+              return (
+                <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px', background: 'rgba(var(--fg-rgb), 0.02)', borderBottom: i < visible.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none' }}>
+                  <Poster path={it.poster_url} title={it.title} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13.5px', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</p>
+                    {it.year_released && <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)', margin: '2px 0 0' }}>{it.year_released}</p>}
+                  </div>
+                  {/* Add to draft queue (or show it's already queued) */}
+                  <button
+                    onClick={() => !queued && onAddToQueue?.({ tmdb_id: it.tmdb_id, title: it.title, poster_url: it.poster_url, year_released: it.year_released })}
+                    disabled={queued}
+                    title={queued ? 'Already in your draft queue' : 'Add to draft queue'}
+                    style={{
+                      flexShrink: 0, padding: '5px 10px', borderRadius: '999px',
+                      border: `1px solid ${queued ? 'rgba(var(--fg-rgb),0.12)' : 'var(--accent)'}`,
+                      background: queued ? 'transparent' : 'rgba(var(--accent-rgb),0.1)',
+                      color: queued ? 'var(--text-faint)' : 'var(--accent)',
+                      fontFamily: "'DM Mono',monospace", fontSize: '10px', letterSpacing: '0.04em',
+                      cursor: queued ? 'default' : 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {queued ? '✓ Queued' : '+ Queue'}
+                  </button>
+                  <IconBtn onClick={() => remove(it.id)} title="Remove from watchlist">✕</IconBtn>
                 </div>
-                {/* Add to draft queue (or show it's already queued) */}
-                <button
-                  onClick={() => !queued && onAddToQueue?.({ tmdb_id: it.tmdb_id, title: it.title, poster_url: it.poster_url, year_released: it.year_released })}
-                  disabled={queued}
-                  title={queued ? 'Already in your draft queue' : 'Add to draft queue'}
-                  style={{
-                    flexShrink: 0, padding: '5px 10px', borderRadius: '999px',
-                    border: `1px solid ${queued ? 'rgba(var(--fg-rgb),0.12)' : 'var(--accent)'}`,
-                    background: queued ? 'transparent' : 'rgba(var(--accent-rgb),0.1)',
-                    color: queued ? 'var(--text-faint)' : 'var(--accent)',
-                    fontFamily: "'DM Mono',monospace", fontSize: '10px', letterSpacing: '0.04em',
-                    cursor: queued ? 'default' : 'pointer', whiteSpace: 'nowrap',
-                  }}
-                >
-                  {queued ? '✓ Queued' : '+ Queue'}
-                </button>
-                <IconBtn onClick={() => remove(it.id)} title="Remove from watchlist">✕</IconBtn>
-              </div>
-            )
-          })}
-        </div>
-      )}
-      </div>
+              )
+            })}
+          </div>
+          {hasMore && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                width: '100%', marginTop: '8px', padding: '8px', background: 'none',
+                border: 'none', cursor: 'pointer', fontFamily: "'DM Mono',monospace",
+                fontSize: '11px', letterSpacing: '0.04em', color: 'var(--accent)',
+              }}
+            >
+              {expanded ? 'Show less' : `Show all ${count}`}
+              <span style={{ fontSize: '10px', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>▾</span>
+            </button>
+          )}
+        </>
       )}
     </div>
   )
