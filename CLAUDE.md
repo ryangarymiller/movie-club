@@ -457,7 +457,7 @@ Member overlay contains: profile card, awards badge grid (collapsible), "Films [
 
 ### Smart Linking (global)
 
-Films open the film overlay and member names/avatars open the **member overlay** throughout the app — Home, Stats, Awards, Films, the film overlay. (Direct `/profile/:id` navigation is preserved as a deep-link fallback.) Home "all caught up" box links to that month's scores (Films History); Home stats link to the relevant film or Films page. Home includes a "Club Members" browse strip and a collapsible Recent Activity section.
+Films open the film overlay and member names/avatars open the **member overlay** throughout the app — Home, Stats, Awards, Films, the film overlay. (Direct `/profile/:id` navigation is preserved as a deep-link fallback.) Home "all caught up" box links to that month's scores (Films History); Home stats link to the relevant film or Films page. Home includes a "Club Members" browse strip and a collapsible Recent Activity section. The This-Month **poster row** shows each film's **club average** as a badge prefixed with a 👥 glyph (with a "👥 = club average" legend) — visible per the rolling model (only once you've scored that film); the **"Your scores"** list below it shows your own submitted scores in the accent colour. The two are labelled distinctly so a club average is never mistaken for your own score.
 
 ### Modal Safety
 

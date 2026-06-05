@@ -80,9 +80,10 @@ function PosterCard({ movie, pending, pickerName, clubAvg = null }) {
         )}
         <div className="absolute bottom-1.5 right-1.5">
           {score ? (
-            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
+            // Club average (👥), distinct from "your score" in the list below.
+            <span className="font-bold px-1.5 py-0.5 rounded-full text-white inline-flex items-center gap-0.5"
               style={{ background: 'var(--accent)', fontFamily: "'DM Mono', monospace", fontSize: '10px' }}>
-              {Number(score).toFixed(2)}
+              <span style={{ fontSize: '8px' }}>👥</span>{Number(score).toFixed(2)}
             </span>
           ) : (
             <span className="px-1.5 py-0.5 rounded-full bg-black/60 text-white/40 border border-white/10"
@@ -477,9 +478,18 @@ export default function Home() {
                   )
                 })}
               </div>
+              {/* Legend: posters carry the CLUB average (visible once you've scored). */}
+              {activeMovies.some(m => (activeClubAvgs[m.id] ?? m.historical_avg_score) != null) && (
+                <p style={{ display: 'flex', alignItems: 'center', gap: '5px', fontFamily: "'DM Mono',monospace", fontSize: '10px', color: 'var(--text-faint)', margin: '-14px 2px 0' }}>
+                  <span style={{ fontSize: '9px' }}>👥</span> = club average
+                </p>
+              )}
               {/* Show submitted scores when all films are scored */}
               {pendingFilms.length === 0 && activeMovies.length > 0 && (
                 <div className="mt-4 rounded-xl px-3 py-1" style={{ background: 'var(--surface)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-faint)', margin: '8px 0 2px' }}>
+                    Your scores
+                  </p>
                   {activeMovies.map((m, i) => {
                     const r = ratingsMap[m.id]
                     return (
