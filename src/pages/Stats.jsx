@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { FilmDetailOverlay } from './Films'
+import Avatar from '../components/Avatar'
 import { userColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt } from '../lib/colors'
 import {
   ResponsiveContainer,
@@ -1547,27 +1548,10 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
         ) : (
           <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
             {stats.memberAvgs.map(u => {
-              const ring = userColor(u) || 'var(--accent)'
               return (
               <GlassCard key={u.id} onClick={() => onMember?.(u.id)} style={{ flexShrink: 0, padding: '14px 16px', textAlign: 'center', minWidth: '90px' }}>
                 {/* Avatar */}
-                <div style={{
-                  width: '40px', height: '40px',
-                  borderRadius: '50%',
-                  border: `2px solid ${ring}`,
-                  background: 'rgba(var(--fg-rgb), 0.05)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 8px',
-                }}>
-                  <span style={{
-                    fontFamily: "'Bebas Neue',sans-serif",
-                    color: ring,
-                    fontSize: '14px',
-                    letterSpacing: '0.04em',
-                  }}>
-                    {initials(u.name)}
-                  </span>
-                </div>
+                <Avatar user={u} size={40} style={{ margin: '0 auto 8px' }} />
                 <p style={{
                   fontFamily: "'DM Sans',sans-serif",
                   color: 'var(--text-muted)', fontSize: '11px',
@@ -2487,24 +2471,8 @@ function MembersTab({ movies, ratings, users, loading, monthsById = {}, onMember
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onMember?.(u.id) } }}
               style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0, cursor: 'pointer' }}
             >
-            {/* Initials avatar */}
-            <div style={{
-              flexShrink: 0,
-              width: '44px', height: '44px',
-              borderRadius: '50%',
-              border: `2px solid ${u.color}`,
-              background: 'rgba(var(--fg-rgb), 0.04)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <span style={{
-                fontFamily: "'Bebas Neue',sans-serif",
-                color: u.color,
-                fontSize: '15px',
-                letterSpacing: '0.04em',
-              }}>
-                {initials(u.name)}
-              </span>
-            </div>
+            {/* Member avatar */}
+            <Avatar user={u} size={44} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{
                 fontFamily: "'DM Sans',sans-serif",
@@ -4132,6 +4100,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
           <GlassCard style={{ padding: '4px 0' }}>
             {stats.pickerRankings.map((p, i) => {
               const col = p._color || 'var(--accent)'
+              const pUser = users.find(x => x.id === p.id) || p
               return (
               <div
                 key={p.id}
@@ -4147,15 +4116,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                 <span style={{ flexShrink: 0, width: '20px', textAlign: 'center', fontFamily: "'Bebas Neue',sans-serif", color: i === 0 ? col : 'var(--text-faint)', fontSize: '1.3rem' }}>
                   {i + 1}
                 </span>
-                <div style={{
-                  flexShrink: 0, width: '32px', height: '32px', borderRadius: '50%',
-                  border: `1.5px solid ${col}`, background: 'rgba(var(--fg-rgb), 0.04)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: col, fontSize: '12px', letterSpacing: '0.04em' }}>
-                    {initials(p.name)}
-                  </span>
-                </div>
+                <Avatar user={pUser} size={32} />
                 <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {p.name} <span style={{ color: 'var(--text-faint)', fontFamily: "'DM Mono',monospace", fontSize: '10px' }}>· {p.count} pick{p.count !== 1 ? 's' : ''}</span>
                 </p>
@@ -4297,18 +4258,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
             onClick={() => onMember?.(stats.mostActiveUser.id)}
             style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', cursor: 'pointer' }}
           >
-            <div style={{
-              flexShrink: 0,
-              width: '44px', height: '44px',
-              borderRadius: '50%',
-              border: `2px solid ${userColor(stats.mostActiveUser) || 'var(--accent)'}`,
-              background: 'rgba(var(--fg-rgb), 0.04)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: userColor(stats.mostActiveUser) || 'var(--accent)', fontSize: '15px', letterSpacing: '0.04em' }}>
-                {initials(stats.mostActiveUser.name)}
-              </span>
-            </div>
+            <Avatar user={stats.mostActiveUser} size={44} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, color: 'var(--text-strong)', fontSize: '15px', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {stats.mostActiveUser.name}
@@ -4337,7 +4287,6 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         <GlassCard style={{ padding: '4px 0' }}>
           {stats.activeUsers.map((u, i) => {
             const streak = stats.streaks[u.id] || 0
-            const col = userColor(u) || 'var(--accent)'
             return (
               <div
                 key={u.id}
@@ -4350,18 +4299,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
                   padding: '11px 16px', cursor: 'pointer',
                   borderBottom: i < stats.activeUsers.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.04)' : 'none',
                 }}>
-                <div style={{
-                  flexShrink: 0,
-                  width: '32px', height: '32px',
-                  borderRadius: '50%',
-                  border: `1.5px solid ${col}`,
-                  background: 'rgba(var(--fg-rgb), 0.04)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <span style={{ fontFamily: "'Bebas Neue',sans-serif", color: col, fontSize: '12px', letterSpacing: '0.04em' }}>
-                    {initials(u.name)}
-                  </span>
-                </div>
+                <Avatar user={u} size={32} />
                 <p style={{ flex: 1, minWidth: 0, fontFamily: "'DM Sans',sans-serif", color: 'var(--text)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {u.name}
                 </p>
@@ -4963,7 +4901,7 @@ export default function Stats() {
           .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
         supabase
           .from('users')
-          .select('id, name, email, role, joined_at, is_active, user_color')
+          .select('id, name, email, role, joined_at, is_active, user_color, avatar_id')
           .eq('is_active', true),
         supabase
           .from('ratings')

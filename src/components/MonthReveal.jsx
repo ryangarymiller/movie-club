@@ -1,17 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { userColor, memberColor } from '../lib/colors'
+import Avatar from './Avatar'
 
 // ── small shared helpers (kept local so the component is self-contained) ──
-function initials(name = '') {
-  return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-}
-const AVATAR_COLORS = ['#e11d48', '#db2777', '#9333ea', '#7c3aed', '#4f46e5', '#2563eb', '#0891b2', '#0d9488', '#16a34a', '#ca8a04']
-function avatarColor(name = '') {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
-}
 function fmtScore(s) { return s != null ? Number(s).toFixed(2) : '—' }
 function scoreColor(s) {
   if (s == null) return 'var(--text-faint)'
@@ -38,19 +30,6 @@ function Label({ children }) {
   )
 }
 
-function Avatar({ name, size = 30, color }) {
-  return (
-    <div style={{
-      flexShrink: 0, width: size, height: size, borderRadius: '50%',
-      background: color || avatarColor(name), display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: size * 0.36, fontWeight: 600, color: '#fff' }}>
-        {initials(name)}
-      </span>
-    </div>
-  )
-}
-
 export default function MonthReveal({ monthId, users = [], currentUserId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -61,7 +40,8 @@ export default function MonthReveal({ monthId, users = [], currentUserId }) {
 
   const nameById = {}
   const colorById = {}
-  for (const u of users) { nameById[u.id] = u.name; colorById[u.id] = userColor(u) || memberColor(u.name) }
+  const userById = {}
+  for (const u of users) { nameById[u.id] = u.name; colorById[u.id] = userColor(u) || memberColor(u.name); userById[u.id] = u }
 
   const load = useCallback(async () => {
     if (!monthId) return
@@ -180,7 +160,7 @@ export default function MonthReveal({ monthId, users = [], currentUserId }) {
 
             {/* Picker + justification */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '7px', margin: '12px 0 0' }}>
-              <Avatar name={pickerName} size={22} color={colorById[f.picked_by_user_id]} />
+              <Avatar user={userById[f.picked_by_user_id] ?? { name: pickerName }} size={22} />
               <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', color: 'var(--text)' }}>
                 Picked by <strong style={{ color: 'var(--text-strong)' }}>{pickerName}</strong>
               </span>

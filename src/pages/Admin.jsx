@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { writeAwardsToDb } from '../lib/awards'
 import { ScoreChangeRequestsAdminPanel } from '../components/ScoreChangeRequest'
 import { PickChangeRequestsAdminPanel } from '../components/PickChangeRequest'
+import Avatar from '../components/Avatar'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -833,7 +834,7 @@ async function triggerAwardsWrite() {
     ] = await Promise.all([
       supabase.from('movies').select('*').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-      supabase.from('users').select('id, name, email, role, joined_at, is_active'),
+      supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color, avatar_id'),
       supabase.from('months').select('id, season_id, month_year, status').order('month_year'),
       supabase.from('seasons').select('*').order('start_date'),
       supabase.from('picker_guesses').select('movie_id, guessing_user_id, guessed_user_id'),
@@ -1830,12 +1831,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
           transition: 'opacity 0.2s',
         }}>
           <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* Avatar placeholder */}
-            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(185,28,28,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ color: 'var(--text-strong)', fontSize: '13px', fontWeight: 600 }}>
-                {user.name?.split(' ').map(w => w[0]).slice(0, 2).join('') ?? '?'}
-              </span>
-            </div>
+            <Avatar user={user} size={36} ring={false} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '14px', margin: 0 }}>{user.name}</p>

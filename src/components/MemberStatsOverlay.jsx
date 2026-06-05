@@ -6,6 +6,7 @@ import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useBackClose } from '../lib/useBackClose'
 import { userColor } from '../lib/colors'
+import Avatar from './Avatar'
 import { MeTab, firstLast, isZackPreApril } from '../pages/Stats'
 import { FilmDetailOverlay } from '../pages/Films'
 
@@ -49,7 +50,7 @@ export default function MemberStatsOverlay() {
       const [{ data: movies }, { data: ratings }, { data: users }, { data: months }, { data: guesses }] = await Promise.all([
         supabase.from('movies_safe').select('id, month_id, title, tmdb_id, poster_url, year_released, director, tmdb_cast, tmdb_writers, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
-        supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color').eq('is_active', true),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color, avatar_id').eq('is_active', true),
         supabase.from('months').select('id, month_year'),
         supabase.from('picker_guesses').select('movie_id, guessed_user_id').eq('guessing_user_id', memberId),
       ])
@@ -121,16 +122,26 @@ export default function MemberStatsOverlay() {
         padding: '1.25rem 1rem', background: 'rgba(var(--bg-rgb, 10,10,12), 0.85)',
         backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(var(--fg-rgb),0.06)',
       }}>
-        <div style={{ minWidth: 0 }}>
-          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--hairline)', margin: '0 0 3px' }}>
-            Member stats
-          </p>
-          <h1
-            onClick={() => { if (member) { close(); openMember(member.id) } }}
-            style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.9rem', letterSpacing: '0.03em', color: 'var(--accent)', margin: 0, lineHeight: 1, cursor: member ? 'pointer' : 'default', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {member ? `${fname}'s Stats` : 'Member Stats'}
-          </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+          {member && (
+            <Avatar
+              user={member}
+              size={44}
+              onClick={() => { close(); openMember(member.id) }}
+              title={`${fname}'s profile`}
+            />
+          )}
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--hairline)', margin: '0 0 3px' }}>
+              Member stats
+            </p>
+            <h1
+              onClick={() => { if (member) { close(); openMember(member.id) } }}
+              style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.9rem', letterSpacing: '0.03em', color: 'var(--accent)', margin: 0, lineHeight: 1, cursor: member ? 'pointer' : 'default', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {member ? `${fname}'s Stats` : 'Member Stats'}
+            </h1>
+          </div>
         </div>
         <button
           onClick={close}

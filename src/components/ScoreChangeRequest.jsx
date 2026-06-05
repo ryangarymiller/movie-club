@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import Avatar from './Avatar'
 
 const MONO = "'DM Mono', monospace"
 const SANS = "'DM Sans', sans-serif"
@@ -11,17 +12,6 @@ const RED = '#f87171'
 
 const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 
-// --- shared helpers (inlined for consistency) ---
-function initials(name = '') {
-  return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-}
-const AVATAR_COLORS = ['#e11d48', '#db2777', '#9333ea', '#7c3aed', '#4f46e5', '#2563eb', '#0891b2', '#0d9488', '#16a34a', '#ca8a04']
-function avatarColor(name = '') {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
-}
-
 function fmtScore(v) {
   const n = Number(v)
   return Number.isFinite(n) ? n.toFixed(2) : '—'
@@ -31,34 +21,6 @@ function Label({ children, style }) {
   return (
     <span style={{ fontFamily: MONO, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-dim)', ...style }}>
       {children}
-    </span>
-  )
-}
-
-function Avatar({ name, size = 28 }) {
-  const color = avatarColor(name || '')
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: size,
-        height: size,
-        flexShrink: 0,
-        borderRadius: '50%',
-        background: 'rgba(var(--fg-rgb),0.05)',
-        border: `2px solid ${color}`,
-        color,
-        fontFamily: MONO,
-        fontSize: Math.round(size * 0.36),
-        fontWeight: 600,
-        letterSpacing: '0.02em',
-        lineHeight: 1,
-      }}
-    >
-      {initials(name) || '?'}
     </span>
   )
 }
@@ -462,7 +424,7 @@ export function ScoreChangeRequestsAdminPanel() {
           created_at,
           rating_id,
           user_id,
-          users:user_id ( name, email ),
+          users:user_id ( name, email, user_color, avatar_id ),
           ratings:rating_id ( score, movie_id, movies:movie_id ( title ) )
         `)
         .eq('status', 'pending')
@@ -611,7 +573,7 @@ export function ScoreChangeRequestsAdminPanel() {
               >
                 {/* Header: member + film */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                  <Avatar name={name} size={30} />
+                  <Avatar user={{ ...(req.users || {}), name }} size={30} />
                   <div style={{ minWidth: 0, lineHeight: 1.25 }}>
                     <div style={{ fontFamily: SANS, fontSize: '14px', fontWeight: 600, color: 'var(--text-strong)' }}>
                       {name}

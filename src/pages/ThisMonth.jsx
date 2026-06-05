@@ -1423,7 +1423,7 @@ function PicksTab({ profile, onOpenFilm }) {
       // hidden until reveal. Join user info for the picker label/color.
       const { data: picksData } = await supabase
         .from('upcoming_picks')
-        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, submitted_at, users(name, email, user_color)')
+        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, submitted_at, users(name, email, user_color, avatar_id)')
         .eq('month_target', month.month_year)
         .order('submitted_at', { ascending: true })
       // Test account must be invisible in all UI — filter by email.
@@ -1750,7 +1750,7 @@ export default function ThisMonth() {
       supabase.from('ratings')
         .select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
         .eq('user_id', profile.id),
-      supabase.from('users').select('id, name, email'),
+      supabase.from('users').select('id, name, email, user_color, avatar_id'),
     ])
 
     setActiveMonth(month)

@@ -486,7 +486,7 @@ export default function Profile({ overlayUserId = null } = {}) {
     setViewedUserLoading(true)
     supabase
       .from('users')
-      .select('id, name, email, user_color, joined_at, role, is_op, is_active')
+      .select('id, name, email, user_color, avatar_id, joined_at, role, is_op, is_active')
       .eq('id', userId)
       .single()
       .then(({ data }) => {

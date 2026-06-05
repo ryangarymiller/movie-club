@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import ScoreModal from '../components/ScoreModal'
 import ReadjustmentBanner from '../components/ReadjustmentBanner'
+import Avatar from '../components/Avatar'
 import { FilmDetailOverlay } from './Films'
-import { MEMBER_COLORS, memberColor, userColor } from '../lib/colors'
+import { MEMBER_COLORS, userColor } from '../lib/colors'
 import { useCollapseScroll } from '../lib/useCollapseScroll'
 
 if (!document.getElementById('mc-fonts')) {
@@ -176,18 +177,14 @@ function StatCard({ label, value, sub, onClick }) {
   )
 }
 
-function ActivityRow({ item, onFilmPress, isLast }) {
-  const color = item.memberColor ?? MEMBER_COLORS[item.memberName] ?? 'var(--accent)'
+function ActivityRow({ item, user, onFilmPress, isLast }) {
+  // Prefer the full user object (carries avatar_id) so the avatar image shows;
+  // fall back to a minimal object built from the activity item (name + color)
+  // so the row still renders colored initials if no match was found.
+  const avatarUser = user ?? { name: item.memberName, user_color: item.memberColor }
   return (
     <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: isLast ? 'none' : '1px solid rgba(var(--fg-rgb),0.08)' }}>
-      <div
-        className="shrink-0 flex items-center justify-center rounded-full"
-        style={{ width: '32px', height: '32px', background: 'rgba(var(--fg-rgb),0.03)', border: `1.5px solid ${color}` }}
-      >
-        <span style={{ fontSize: '11px', fontWeight: 600, color, fontFamily: "'DM Mono',monospace" }}>
-          {initials(item.memberName)}
-        </span>
-      </div>
+      <Avatar user={avatarUser} size={32} />
       <p className="flex-1 min-w-0" style={{ color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.35, margin: 0 }}>
         <span style={{ color: 'var(--text)', fontWeight: 500 }}>{item.memberName}</span>
         {' '}{item.verb}{' '}
@@ -252,7 +249,7 @@ export default function Home() {
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scoring_deadline'),
       supabase.from('ratings').select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at').eq('user_id', profile.id),
-      supabase.from('users').select('id, name, email, is_active, user_color'),
+      supabase.from('users').select('id, name, email, is_active, user_color, avatar_id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
       supabase.from('reviews').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
       supabase.from('comments').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
@@ -362,6 +359,7 @@ export default function Home() {
   }
 
   const firstName = profile?.name?.split(' ')[0] ?? 'there'
+  const usersById = Object.fromEntries(users.map(u => [u.id, u]))
   const ratingsMap = Object.fromEntries(myRatings.map(r => [r.movie_id, r]))
   const scoredIds = new Set(myRatings.filter(r => r.score).map(r => r.movie_id))
   const pendingFilms = activeMovies.filter(m => !scoredIds.has(m.id))
@@ -574,7 +572,7 @@ export default function Home() {
             <>
               <div className="rounded-xl px-3" style={{ background: 'var(--surface)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
                 {(activityExpanded ? activity : activity.slice(0, ACTIVITY_COLLAPSED_COUNT)).map((item, i, arr) => (
-                  <ActivityRow key={item.key} item={item} onFilmPress={setSelectedMovie} isLast={i === arr.length - 1} />
+                  <ActivityRow key={item.key} item={item} user={usersById[item.userId]} onFilmPress={setSelectedMovie} isLast={i === arr.length - 1} />
                 ))}
               </div>
               {activity.length > ACTIVITY_COLLAPSED_COUNT && (
@@ -602,30 +600,17 @@ export default function Home() {
           ) : (
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
               {users.map(u => {
-                const color = u.user_color || memberColor(u.name) || 'var(--accent)'
                 const nameParts = (u.name ?? '').split(' ')
                 const displayName = nameParts.length >= 2
                   ? `${nameParts[0]} ${nameParts[nameParts.length - 1][0]}.`
                   : nameParts[0] ?? ''
-                const initStr = nameParts.map(p => p[0]).join('').slice(0, 2).toUpperCase()
                 return (
                   <button
                     key={u.id}
                     onClick={() => openMember(u.id)}
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                   >
-                    <div
-                      style={{
-                        width: '48px', height: '48px', borderRadius: '50%',
-                        border: `2.5px solid ${color}`,
-                        background: 'rgba(var(--fg-rgb),0.04)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <span style={{ fontSize: '13px', fontWeight: 700, color, fontFamily: "'DM Mono',monospace" }}>
-                        {initStr}
-                      </span>
-                    </div>
+                    <Avatar user={u} size={48} />
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', maxWidth: '64px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {displayName}
                     </span>

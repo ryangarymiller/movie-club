@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import Avatar from './Avatar'
 
 const MONO = "'DM Mono', monospace"
 const SANS = "'DM Sans', sans-serif"
@@ -9,45 +10,6 @@ const GREEN = '#86efac'
 const RED = '#f87171'
 
 const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
-
-// --- shared helpers (inlined for consistency) ---
-function initials(name = '') {
-  return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-}
-const AVATAR_COLORS = ['#e11d48', '#db2777', '#9333ea', '#7c3aed', '#4f46e5', '#2563eb', '#0891b2', '#0d9488', '#16a34a', '#ca8a04']
-function avatarColor(name = '') {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
-}
-
-function Avatar({ name, size = 28 }) {
-  const color = avatarColor(name || '')
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: size,
-        height: size,
-        flexShrink: 0,
-        borderRadius: '50%',
-        background: 'rgba(var(--fg-rgb),0.05)',
-        border: `2px solid ${color}`,
-        color,
-        fontFamily: MONO,
-        fontSize: Math.round(size * 0.36),
-        fontWeight: 600,
-        letterSpacing: '0.02em',
-        lineHeight: 1,
-      }}
-    >
-      {initials(name) || '?'}
-    </span>
-  )
-}
 
 function Label({ children }) {
   return (
@@ -223,7 +185,7 @@ export default function GuessThePicker({ movieId, currentUserId, users = [], pic
         {/* Revealed picker */}
         {pickerName ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-            <Avatar name={pickerName} size={32} />
+            <Avatar user={userMap.get(pickedByUserId) ?? { name: pickerName }} size={32} />
             <div style={{ lineHeight: 1.2 }}>
               <div style={{ fontFamily: MONO, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-faint)', marginBottom: '3px' }}>
                 Picked by
@@ -292,7 +254,7 @@ export default function GuessThePicker({ movieId, currentUserId, users = [], pic
                     padding: '8px 10px',
                   }}
                 >
-                  <Avatar name={nameOf(g.guessing_user_id)} size={26} />
+                  <Avatar user={userMap.get(g.guessing_user_id) ?? { name: nameOf(g.guessing_user_id) }} size={26} />
                   <span style={{ fontFamily: SANS, fontSize: '13px', fontWeight: 600, color: 'var(--text-strong)' }}>
                     {nameOf(g.guessing_user_id)}{isMe ? ' (you)' : ''}
                   </span>
@@ -388,7 +350,7 @@ export default function GuessThePicker({ movieId, currentUserId, users = [], pic
                 padding: '9px 11px',
               }}
             >
-              <Avatar name={savedName} size={26} />
+              <Avatar user={userMap.get(myGuess) ?? { name: savedName }} size={26} />
               <span style={{ fontFamily: SANS, fontSize: '13px', color: 'var(--text)', lineHeight: 1.3 }}>
                 Your guess: <strong style={{ color: 'var(--text-strong)' }}>{savedName}</strong>
               </span>

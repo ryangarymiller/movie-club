@@ -12,6 +12,7 @@ import { PickChangeRequestButton } from '../components/PickChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
 import FilmScoreBars from '../components/FilmScoreBars'
 import FilmTags from '../components/FilmTags'
+import Avatar from '../components/Avatar'
 import { canSeeScores } from '../lib/visibility'
 import { useBackClose } from '../lib/useBackClose'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
@@ -77,17 +78,6 @@ function scoreColor(score) {
   if (score >= 7) return '#86efac'
   if (score <= 4) return '#f87171'
   return 'var(--accent-light, #fca5a5)'
-}
-
-// Deterministic colour for member avatars from initials
-const AVATAR_COLORS = [
-  '#e11d48','#db2777','#9333ea','#7c3aed','#4f46e5',
-  '#2563eb','#0891b2','#0d9488','#16a34a','#ca8a04',
-]
-function avatarColor(name = '') {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
 // ─── tiny components ──────────────────────────────────────────────────────────
@@ -435,25 +425,9 @@ function MemberScoreRow({ rating, user, onNameClick }) {
       padding: '10px 0',
       borderBottom: '1px solid rgba(var(--fg-rgb), 0.04)',
     }}>
-      {/* Avatar — the member's chosen user_color (falls back to the deterministic
-          name colour only when they haven't set one), matching the score bars. */}
-      <div
-        onClick={handleClick}
-        style={{
-          flexShrink: 0,
-          width: '32px',
-          height: '32px',
-          borderRadius: '50%',
-          background: userColor(user) || avatarColor(name),
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: clickable ? 'pointer' : 'default',
-        }}>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
-          {initials(name)}
-        </span>
-      </div>
+      {/* Avatar — the member's chosen avatar image inside their user-color ring,
+          falling back to colored initials when no avatar is set. */}
+      <Avatar user={user} size={32} ring={false} onClick={handleClick} />
 
       {/* Name */}
       <span
@@ -1026,7 +1000,7 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
         .eq('movie_id', movieId),
       supabase
         .from('users')
-        .select('id, name, email, role, joined_at, user_color'),
+        .select('id, name, email, role, joined_at, user_color, avatar_id'),
       supabase
         .from('score_predictions')
         .select('id, predicting_user_id, target_user_id, predicted_score')
@@ -1147,7 +1121,7 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
       ] = await Promise.all([
         supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-        supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color'),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color, avatar_id'),
         supabase.from('months').select('id, season_id, month_year, status'),
         supabase.from('seasons').select('id, name, start_date, end_date'),
       ])
@@ -1743,23 +1717,12 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
             {m.picker_revealed ? (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                 {pickerName && (
-                  <div
+                  <Avatar
+                    user={userById[pickerUserId] ?? { name: pickerName }}
+                    size={36}
+                    ring={false}
                     onClick={pickerUserId ? () => goToProfile(pickerUserId) : undefined}
-                    style={{
-                      flexShrink: 0,
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
-                      background: avatarColor(pickerName),
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: pickerUserId ? 'pointer' : 'default',
-                    }}>
-                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 600, color: 'var(--text-strong)' }}>
-                      {initials(pickerName)}
-                    </span>
-                  </div>
+                  />
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p
@@ -2716,7 +2679,7 @@ export default function Films() {
         ),
         supabase.from('months').select('id, month_year, season_id, status').order('month_year', { ascending: true }),
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: true }),
-        supabase.from('users').select('id, name, email, user_color'),
+        supabase.from('users').select('id, name, email, user_color, avatar_id'),
         supabase.from('ratings').select('movie_id, user_id, score'),
       ])
 

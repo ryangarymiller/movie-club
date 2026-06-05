@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { memberColor, userColor } from '../lib/colors'
-
-// --- Shared helpers ---
-function initials(name = '') {
-  return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-}
+import Avatar from './Avatar'
 
 const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 const EDIT_WINDOW_MS = 15 * 60 * 1000
@@ -42,16 +37,6 @@ function timeAgo(iso) {
 // Derive the @mention handle (FirstLast) from a member name
 function mentionHandle(name = '') {
   return name.split(/\s+/).filter(Boolean).join('')
-}
-
-// Avatar background: member color if known, else a deterministic hash fallback.
-const AVATAR_FALLBACK = ['#e11d48', '#db2777', '#9333ea', '#7c3aed', '#4f46e5', '#2563eb', '#0891b2', '#0d9488', '#16a34a', '#ca8a04']
-function avatarColor(name = '') {
-  const mc = memberColor(name)
-  if (mc) return mc
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
-  return AVATAR_FALLBACK[Math.abs(h) % AVATAR_FALLBACK.length]
 }
 
 export default function CommentThread({ movieId, currentUserId, isAdmin, users = [], canParticipate, focusId = null }) {
@@ -701,17 +686,7 @@ function PostCard({
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Header row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <div
-            aria-hidden="true"
-            style={{
-              flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%',
-              background: userColor(author) || avatarColor(name), display: 'flex', alignItems: 'center',
-              justifyContent: 'center', color: '#fff', fontFamily: BODY_FONT,
-              fontWeight: 700, fontSize: '10px', letterSpacing: '0.02em',
-            }}
-          >
-            {initials(name)}
-          </div>
+          <Avatar user={author || { name }} size={26} ring={false} />
           <span style={{
             color: 'var(--text-strong)', fontWeight: 600,
             fontSize: isReviewRoot ? '14px' : '13px',
@@ -1081,16 +1056,7 @@ function Composer({
                   fontFamily: BODY_FONT, fontSize: '13px', color: 'var(--text)',
                 }}
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    flexShrink: 0, width: '22px', height: '22px', borderRadius: '50%',
-                    background: userColor(m) || avatarColor(m.name), display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '9px',
-                  }}
-                >
-                  {initials(m.name)}
-                </span>
+                <Avatar user={m} size={22} ring={false} />
                 <span style={{ color: 'var(--accent-light)', fontWeight: 600 }}>@{m.handle}</span>
                 <span style={{ color: 'var(--text-faint)', fontSize: '11px', marginLeft: 'auto' }}>
                   {m.name}
