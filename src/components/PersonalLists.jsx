@@ -166,6 +166,7 @@ const WATCHLIST_PREVIEW = 3 // films shown collapsed; the rest reveal on "Show a
 function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   const [items, setItems] = useState(null) // null = loading
   const [expanded, setExpanded] = useState(false) // false = preview (first few)
+  const [sortDesc, setSortDesc] = useState(false) // false = least recent (curated order) first
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -198,17 +199,36 @@ function WatchlistSection({ userId, queueTmdbIds, onAddToQueue }) {
   const list = items ?? []
   const count = list.length
   const hasMore = count > WATCHLIST_PREVIEW
+  // Rows load created_at-ascending (curated order), so reversing gives most-recent
+  // first — no re-query needed.
+  const ordered = sortDesc ? [...list].reverse() : list
   // Collapsed shows the first few; expanded shows all. The add box stays visible
   // either way, so you can add a film without expanding the whole list.
-  const visible = expanded ? list : list.slice(0, WATCHLIST_PREVIEW)
+  const visible = expanded ? ordered : ordered.slice(0, WATCHLIST_PREVIEW)
 
   return (
     <div style={{ marginBottom: '1.75rem' }}>
-      {/* Header — a static label + count (no full collapse, so the add box and
-          the preview are always reachable). */}
+      {/* Header — label + count on the left, a date-added sort toggle on the right
+          (no full collapse, so the add box and the preview are always reachable). */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <span style={LABEL}>My Watchlist</span>
         {items !== null && <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '11px', color: 'var(--text-faint)' }}>· {count}</span>}
+        {count > 1 && (
+          <button
+            onClick={() => setSortDesc(s => !s)}
+            title="Sort by date added"
+            style={{
+              marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px',
+              padding: '4px 9px', borderRadius: '999px', cursor: 'pointer',
+              background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)',
+              color: 'var(--text-dim)', fontFamily: "'DM Mono',monospace",
+              fontSize: '10px', letterSpacing: '0.04em', whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: '11px' }}>⇅</span>
+            {sortDesc ? 'Most recent' : 'Least recent'}
+          </button>
+        )}
       </div>
 
       <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '11.5px', color: 'var(--text-dim)', margin: '0 0 12px' }}>
