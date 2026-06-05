@@ -53,8 +53,10 @@ function Skeleton({ className = '' }) {
   return <div className={`animate-pulse bg-white/5 rounded ${className}`} />
 }
 
-function PosterCard({ movie, pending, pickerName }) {
-  const score = movie.historical_avg_score
+function PosterCard({ movie, pending, pickerName, clubAvg = null }) {
+  // Rolling club average (visible only once the viewer has scored, RLS-gated) takes
+  // precedence; otherwise the authoritative historical average for revealed films.
+  const score = clubAvg ?? movie.historical_avg_score
   const borderColor = pickerName ? MEMBER_COLORS[pickerName] : undefined
   return (
     <div
@@ -212,6 +214,7 @@ export default function Home() {
   const { openMember } = useMemberOverlay()
   const [loading, setLoading] = useState(true)
   const [activeMovies, setActiveMovies] = useState([])
+  const [activeClubAvgs, setActiveClubAvgs] = useState({}) // movie_id → rolling club avg (RLS-gated)
   const [activeMonthYear, setActiveMonthYear] = useState(null)
   const [allMovies, setAllMovies] = useState([])
   const [myRatings, setMyRatings] = useState([])
@@ -273,6 +276,21 @@ export default function Home() {
     setPickPrompt(nextPick)
     const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
     setActiveMovies(active)
+
+    // Rolling club average per active film — computed from the RLS-gated ratings
+    // the viewer may see (so a film's average shows only once they've scored it).
+    const activeIds = active.map(m => m.id)
+    const avgs = {}
+    if (activeIds.length) {
+      const { data: activeR } = await supabase.from('ratings').select('movie_id, score').in('movie_id', activeIds)
+      const acc = {}
+      for (const r of (activeR ?? [])) {
+        if (r.score == null) continue
+        ;(acc[r.movie_id] ??= []).push(Number(r.score))
+      }
+      for (const [mid, arr] of Object.entries(acc)) avgs[mid] = arr.reduce((s, v) => s + v, 0) / arr.length
+    }
+    setActiveClubAvgs(avgs)
     setActiveMonthYear(activeMonth?.month_year ?? null)
     setAllMovies(movies ?? [])
     setMyRatings(ratings ?? [])
@@ -454,7 +472,7 @@ export default function Home() {
                     : undefined
                   return (
                     <div key={m.id} onClick={() => setSelectedMovie(m)} style={{ cursor: 'pointer' }}>
-                      <PosterCard movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} />
+                      <PosterCard movie={m} pending={!scoredIds.has(m.id)} pickerName={pickerName} clubAvg={activeClubAvgs[m.id] ?? null} />
                     </div>
                   )
                 })}

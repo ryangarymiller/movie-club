@@ -273,7 +273,7 @@ function GuessThePicker({ movie, profile, allUsers }) {
 
 // ─── Film Card ───────────────────────────────────────────────────────────────
 
-function FilmCard({ movie, rating, onScorePress, onOpen, pickerName, profile, allUsers }) {
+function FilmCard({ movie, rating, clubAvg = null, onScorePress, onOpen, pickerName, profile, allUsers }) {
   const status = scoreStatus(rating)
   const pickerColor = pickerName ? MEMBER_COLORS[pickerName] : undefined
 
@@ -380,8 +380,8 @@ function FilmCard({ movie, rating, onScorePress, onOpen, pickerName, profile, al
         </button>
       </div>
 
-      {/* Deadline + picker meta row */}
-      {(movie.scoring_deadline || pickerName) && (() => {
+      {/* Deadline + picker + club-avg meta row */}
+      {(movie.scoring_deadline || pickerName || clubAvg != null) && (() => {
         const cd = countdownLabel(movie.scoring_deadline)
         return (
           <div style={{
@@ -390,6 +390,16 @@ function FilmCard({ movie, rating, onScorePress, onOpen, pickerName, profile, al
             // names + deadlines are too long to share one line, which looked uneven).
             display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px',
           }}>
+            {clubAvg != null && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                fontFamily: "'DM Mono',monospace", fontSize: '10px', letterSpacing: '0.04em',
+                color: 'var(--text-dim)',
+              }}>
+                <span style={{ opacity: 0.6, fontSize: '9px' }}>★</span>
+                Club avg {clubAvg.toFixed(2)}
+              </span>
+            )}
             {movie.scoring_deadline && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -428,7 +438,7 @@ function FilmCard({ movie, rating, onScorePress, onOpen, pickerName, profile, al
 
 // ─── Films Tab ───────────────────────────────────────────────────────────────
 
-function FilmsTab({ movies, ratingsMap, loading, onScorePress, onOpen, users, profile, activeMonth }) {
+function FilmsTab({ movies, ratingsMap, clubAvgs = {}, loading, onScorePress, onOpen, users, profile, activeMonth }) {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -469,16 +479,18 @@ function FilmsTab({ movies, ratingsMap, loading, onScorePress, onOpen, users, pr
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {movies.map(m => {
-        // The active "Now Showing" month is the in-progress one — pickers stay a
-        // surprise here and are only unveiled in the Reveal section once the month
-        // rolls over (even if a film's picker_revealed flag is already set, e.g.
-        // imported historical months that currently sit in the active slot).
-        const pickerName = undefined
+        // Pickers stay hidden on the active month until it's actually revealed —
+        // picker_revealed flips only at month-end OR once every member has scored
+        // every film (DB triggers), so this gate is now the source of truth.
+        const pickerName = m.picker_revealed
+          ? (users.find(u => u.id === m.picked_by_user_id)?.name ?? undefined)
+          : undefined
         return (
           <FilmCard
             key={m.id}
             movie={m}
             rating={ratingsMap[m.id] ?? null}
+            clubAvg={clubAvgs[m.id] ?? null}
             onScorePress={onScorePress}
             onOpen={onOpen}
             pickerName={pickerName}
@@ -1706,6 +1718,7 @@ export default function ThisMonth() {
   const [loading, setLoading] = useState(true)
   const [movies, setMovies] = useState([])
   const [ratingsMap, setRatingsMap] = useState({}) // movie_id → rating row
+  const [clubAvgs, setClubAvgs] = useState({}) // movie_id → club avg (RLS-gated; null when the viewer can't see it)
   const [activeMonth, setActiveMonth] = useState(null)
   const [revealMonth, setRevealMonth] = useState(null) // latest fully-revealed month
   const [users, setUsers] = useState([])
@@ -1754,8 +1767,27 @@ export default function ThisMonth() {
         return String(a.id).localeCompare(String(b.id))
       })
       setMovies(ordered)
+
+      // Club average per film, computed from the RLS-gated ratings the viewer may
+      // see (all scorers for a film they've scored / revealed films; nothing
+      // otherwise) — so a film shows its average only once the viewer can see it.
+      const ids = ordered.map(m => m.id)
+      const avgs = {}
+      if (ids.length) {
+        const { data: allR } = await supabase.from('ratings').select('movie_id, score').in('movie_id', ids)
+        const acc = {}
+        for (const r of (allR ?? [])) {
+          if (r.score == null) continue
+          ;(acc[r.movie_id] ??= []).push(Number(r.score))
+        }
+        for (const [mid, arr] of Object.entries(acc)) {
+          avgs[mid] = arr.reduce((s, v) => s + v, 0) / arr.length
+        }
+      }
+      setClubAvgs(avgs)
     } else {
       setMovies([])
+      setClubAvgs({})
     }
 
     const map = {}
@@ -1856,6 +1888,7 @@ export default function ThisMonth() {
             <FilmsTab
               movies={movies}
               ratingsMap={ratingsMap}
+              clubAvgs={clubAvgs}
               loading={loading}
               onScorePress={openModal}
               onOpen={setSelectedMovie}

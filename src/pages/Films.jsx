@@ -12,6 +12,7 @@ import { PickChangeRequestButton } from '../components/PickChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
 import FilmScoreBars from '../components/FilmScoreBars'
 import FilmTags from '../components/FilmTags'
+import { canSeeScores } from '../lib/visibility'
 import { useBackClose } from '../lib/useBackClose'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 import { memberColor, userColor, MEMBER_COLORS } from '../lib/colors'
@@ -45,13 +46,14 @@ function initials(name = '') {
 }
 
 // The group average to DISPLAY for a film on the Films page (All Films / By Season).
-// Imported historical months carry an authoritative `historical_avg_score`. Real
-// (non-imported) revealed months — like May 2026 — leave it NULL, so fall back to the
-// average computed from the film's actual ratings (`_avgScore`, already test-filtered
-// and loaded in the page query). Never surface an average before the scores reveal.
+// Rolling visibility: `_avgScore` is computed from the ratings the client actually
+// received, which the `ratings` RLS already gates — so it is non-null only when the
+// viewer may see scores (the film is revealed, OR they've scored it themselves).
+// The authoritative imported `historical_avg_score` is used only once revealed, so
+// it never leaks an active-month average to someone who hasn't scored.
 function displayAvg(movie) {
-  if (movie.historical_avg_score != null) return Number(movie.historical_avg_score)
-  if (movie.scores_revealed && movie._avgScore != null) return Number(movie._avgScore)
+  if (movie.scores_revealed && movie.historical_avg_score != null) return Number(movie.historical_avg_score)
+  if (movie._avgScore != null) return Number(movie._avgScore)
   return null
 }
 
@@ -1222,7 +1224,6 @@ export function FilmDetailOverlay({ movie, onClose }) {
   // ── Scores section logic ──
   const myUserId = profile?.id
   const myRating = ratings.find(r => r.user_id === myUserId)
-  const myHasSubmitted = myRating != null
   // A rating row can exist with ONLY a pre-watch excitement value and score=NULL.
   // The backfill CTA must gate on the FINAL SCORE, not on row existence, so an
   // excitement-only row never traps the viewer out of submitting their score.
@@ -1233,36 +1234,27 @@ export function FilmDetailOverlay({ movie, onClose }) {
   const userById = {}
   users.forEach(u => { userById[u.id] = u })
 
-  // Which ratings to display
-  let visibleRatings = []
-  let scoresMessage = null
-
-  if (m.scores_revealed) {
-    // All scores visible
-    visibleRatings = ratings
-  } else if (myHasSubmitted) {
-    // Rolling: only show scores of members who have also submitted
-    visibleRatings = ratings // all submitted ratings (only submitters have rows)
-  } else {
-    // Fix 3: even before scores_revealed, always show the current user's own score row
-    scoresMessage = 'Scores revealed after the scoring deadline'
-    if (myRating) {
-      visibleRatings = [myRating]
-    }
-  }
+  // Rolling visibility: the viewer sees the club average + others' scores once the
+  // film is revealed OR they've submitted their own final score (RLS enforces the
+  // same — `ratings` only returns rows the viewer may see). Otherwise they see only
+  // their own row, with a hint to score it.
+  const canSee = canSeeScores(m, myRating)
+  const visibleRatings = canSee ? ratings : (myRating ? [myRating] : [])
+  const scoresMessage = canSee ? null : 'Score this film to reveal the club average and everyone’s scores.'
 
   // Compute group average from visibleRatings that have a score
   const scoredRatings = visibleRatings.filter(r => r.score != null)
   const computedAvg = scoredRatings.length
     ? scoredRatings.reduce((s, r) => s + Number(r.score), 0) / scoredRatings.length
     : null
-  // For revealed historical films, prefer the authoritative imported average (from the
-  // Movie Club Google Sheet, stored in historical_avg_score) — the individual rows are an
-  // incomplete backfill. Only used post-reveal so it never leaks before the deadline; live
-  // films (no historical avg) fall back to the computed average of visible scores.
-  const groupAvg = (m.scores_revealed && m.historical_avg_score != null)
-    ? Number(m.historical_avg_score)
-    : computedAvg
+  // Authoritative imported average only once revealed (never leaks pre-reveal);
+  // otherwise the computed average of the visible scores, or null when the viewer
+  // can't see scores yet.
+  const groupAvg = !canSee
+    ? null
+    : (m.scores_revealed && m.historical_avg_score != null)
+      ? Number(m.historical_avg_score)
+      : computedAvg
 
   // Recommend count — "X/Y would recommend" out of the members who were in the
   // club that month (pre-Zack 4, post-Zack 5, test excluded), not out of however
@@ -2411,10 +2403,12 @@ function BySeasonTab({ movies, seasons, loading, onSelect, userById, hideScores 
 function HistoryFilmCard({ movie, userById, onSelect, hideScores = false }) {
   const [hovered, setHovered] = useState(false)
 
-  // historical_avg_score is the authoritative complete average for historical films;
-  // individual ratings are an incomplete backfill, so prefer it. Fall back to the
-  // computed average only for films with no historical avg (live/current films).
-  const computedScore = movie.historical_avg_score ?? movie._avgScore
+  // Authoritative imported average only once revealed (so it never leaks an
+  // active-month average pre-reveal); otherwise the rolling, RLS-gated computed
+  // average (non-null only when the viewer may see it).
+  const computedScore = (movie.scores_revealed && movie.historical_avg_score != null)
+    ? Number(movie.historical_avg_score)
+    : movie._avgScore
   const scored = computedScore != null && !hideScores
 
   const pickerName = movie.picker_revealed && movie.picked_by_user_id
@@ -2564,9 +2558,10 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
       const byMonth = {}
       for (const m of (moviesData ?? [])) {
         const scores = ratingsLookup[m.id] ?? []
-        // Only surface a computed average once the film's scores are revealed —
-        // an active-month film mid-scoring must not show a partial average.
-        const avgScore = (m.scores_revealed && scores.length > 0)
+        // Rolling visibility: `scores` is RLS-gated, so it only has data when the
+        // viewer may see it (film revealed, or they've scored it). Compute the
+        // average from whatever is visible; null = the viewer can't see it yet.
+        const avgScore = scores.length > 0
           ? scores.reduce((s, v) => s + v, 0) / scores.length
           : null
         const enriched = { ...m, _avgScore: avgScore }
