@@ -126,7 +126,7 @@ icon"*). Object packs never have this problem.
 | 13. Terminator (`terminator`) | T-800 endoskeleton skull · thumbs up from a hand |
 | 14. Back to the Future (`back-to-the-future`) | the DeLorean · Marty's red puffer vest |
 | 15. Kubrick (`kubrick`) | HAL 9000 red eye · the black monolith · the Overlook hotel carpet pattern · a bowler hat · a bone (from 2001) |
-| 16. Tarantino (`tarantino`) | a glowing briefcase · a "Royale with Cheese" burger wrapper · a yellow tracksuit · a severed ear |
+| 16. Tarantino (`tarantino`) | a "Royale with Cheese" burger wrapper · a yellow tracksuit · a severed ear |
 | 17. Standalone Classics (`classics`) | "Rosebud" sled · upright piano (Casablanca) · shower head (Psycho) · shark fin (Jaws) · kid on a bike silhouette (E.T.) · a red coat (Schindler's List) · a bar of soap (Fight Club) · a cardboard box (Se7en) · a moth (Silence of the Lambs) · a sharp suit (Goodfellas) · a captive-bolt cattle gun and a coin (No Country) |
 | 18. Movie Club Picks (`club-picks`) | one per film — see below; **generate per film, ongoing** |
 | 19. Avatar / Pandora (`pandora`) | Neytiri (blue Na'vi, yellow eyes) · Jake Sully's Na'vi avatar (blue) · mountain banshee / ikran (flying creature) |
