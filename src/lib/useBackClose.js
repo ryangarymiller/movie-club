@@ -71,6 +71,18 @@ function unregister(close) {
   if (stack.length === 0) scheduleConsume()
 }
 
+// Call right BEFORE navigating the router away from inside an open popup. Drops the
+// back-guard + popup stack WITHOUT a history.back() — the caller's navigation should
+// REPLACE the guard history entry. Without this, closing the popup (which does a
+// history.back to consume its guard) reverts the navigation, so "Open" appeared to
+// do nothing. Pair with navigate(to, { replace: true }).
+export function releaseGuardForNavigation() {
+  stack.length = 0
+  consumeScheduled = false
+  guardLive = false
+  teardown()
+}
+
 // useBackClose(open, onClose). Pass open=true for components mounted only while
 // open (modals); pass a real boolean for always-mounted overlays toggled via a
 // prop. onClose may change identity freely — the latest is always used.

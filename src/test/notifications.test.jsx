@@ -227,7 +227,9 @@ describe('NotificationBell', () => {
     // The expanded row's "Open" button is what navigates.
     const openBtn = screen.getAllByRole('button', { name: /open/i })[0]
     await act(async () => { fireEvent.click(openBtn) })
-    expect(navigateSpy).toHaveBeenCalledWith('/films')
+    // Navigates with replace:true — the bulletin releases its back-guard and
+    // replaces that history entry, so closing it can't revert the navigation.
+    expect(navigateSpy).toHaveBeenCalledWith('/films', { replace: true })
   })
 
   it('shows the empty state when there are no notifications', async () => {

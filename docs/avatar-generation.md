@@ -120,7 +120,7 @@ icon"*). Object packs never have this problem.
 | 7. Jurassic Park (`jurassic-park`) | T-Rex · velociraptor · mosquito in amber fossil · safari jeep |
 | 8. Lord of the Rings (`lotr`) | Gandalf the Grey · Gandalf the White · Frodo · the One Ring · Gollum · the Eye of Sauron |
 | 9. Harry Potter (`harry-potter`) | Harry Potter · Dumbledore · the Sorting Hat · the Golden Snitch · Hedwig the owl |
-| 10. Marvel (`marvel`) | Iron Man helmet · Captain America shield · Spider-Man mask · Thanos gauntlet · Thor's hammer (Mjölnir) |
+| 10. Marvel (`marvel`) | Iron Man helmet · Captain America shield · Spider-Man mask · Thanos gauntlet · Thor's hammer (Mjölnir) · the Incredible Hulk (green) |
 | 11. DC (`dc`) | Batman cowl · Superman logo · Wonder Woman tiara |
 | 12. Alien (`alien`) | xenomorph · facehugger · Ripley |
 | 13. Terminator (`terminator`) | T-800 endoskeleton skull · thumbs up from a hand · glowing red robot eye |

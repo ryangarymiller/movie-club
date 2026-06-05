@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../context/NotificationsContext'
-import { useBackClose } from '../lib/useBackClose'
+import { useBackClose, releaseGuardForNavigation } from '../lib/useBackClose'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // In-app notification center.
@@ -423,7 +423,13 @@ export default function NotificationBell({ className = '', style }) {
   function activate(n) {
     markRead(n.id)
     setOpen(false)
-    if (n.link) navigate(n.link)
+    if (n.link) {
+      // Release the back-guard and REPLACE the guard history entry with the
+      // destination. Otherwise closing the bulletin does a history.back() that
+      // reverts this navigation, so "Open" looked like it did nothing.
+      releaseGuardForNavigation()
+      navigate(n.link, { replace: true })
+    }
   }
 
   const badge = unreadCount > 0 && (
