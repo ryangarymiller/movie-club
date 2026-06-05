@@ -97,12 +97,12 @@ icon"*). Object packs never have this problem.
 |---|---|
 | 1. Movie Objects (`movie-objects`) | clapperboard · film reel · popcorn box · VHS tape · director's chair · Oscar statuette · movie ticket · film projector · 35mm camera · director's megaphone |
 | 2. Movie Archetypes (`archetypes`) | film-noir detective · cowboy · astronaut · femme fatale · monster · superhero · villain · samurai · spy · explorer |
-| 3. Star Wars (`star-wars`) | Darth Vader · Yoda · R2-D2 · C-3PO · Stormtrooper · Luke Skywalker · Princess Leia · Han Solo · Chewbacca · The Mandalorian |
+| 3. Star Wars (`star-wars`) | Darth Vader · Yoda · R2-D2 · C-3PO · Stormtrooper · Luke Skywalker · Princess Leia · Han Solo · Chewbacca · Boba Fett |
 | 4. Indiana Jones (`indiana-jones`) | Indiana Jones with hat · Indiana Jones with whip · the Ark of the Covenant · the golden idol · the brown fedora hat |
 | 5. The Godfather (`godfather`) | Don Corleone · a horse · a single red rose |
 | 6. James Bond (`james-bond`) | secret-agent silhouette holding a pistol · silver Aston Martin · martini glass with olive |
 | 7. Jurassic Park (`jurassic-park`) | T-Rex · velociraptor · mosquito in amber fossil · safari jeep |
-| 8. Lord of the Rings (`lotr`) | Gandalf · Frodo · the One Ring · Gollum · the Eye of Sauron |
+| 8. Lord of the Rings (`lotr`) | Gandalf the Grey · Gandalf the White · Frodo · the One Ring · Gollum · the Eye of Sauron |
 | 9. Harry Potter (`harry-potter`) | Harry Potter · Dumbledore · the Sorting Hat · the Golden Snitch · Hedwig the owl |
 | 10. Marvel (`marvel`) | Iron Man helmet · Captain America shield · Spider-Man mask · Thanos gauntlet |
 | 11. DC (`dc`) | Batman cowl · Superman logo · Wonder Woman tiara |
