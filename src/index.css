@@ -29,10 +29,10 @@
   --surface-3: #0e0f16;
   --text-strong: #ffffff;
   --text: #e3e6ea;
-  --text-muted: #b5bbc5;
-  --text-dim: #8f96a1;
-  --text-faint: #707782;
-  --hairline: #3f4855;
+  --text-muted: #bcc2cc;
+  --text-dim: #a4abb6;
+  --text-faint: #8c939e;
+  --hairline: #4e5765;
   color-scheme: dark;
 }
 
@@ -92,10 +92,10 @@
   --surface-3: #33353b;
   --text-strong: #ffffff;
   --text: #eceef1;
-  --text-muted: #ccd0d6;
-  --text-dim: #abb0ba;
-  --text-faint: #969ba6;
-  --hairline: #646975;
+  --text-muted: #d2d5db;
+  --text-dim: #bbbfc8;
+  --text-faint: #a8adb7;
+  --hairline: #79808c;
   color-scheme: dark;
 }
 
