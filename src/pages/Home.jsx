@@ -217,6 +217,7 @@ export default function Home() {
   const [myRatings, setMyRatings] = useState([])
   const [users, setUsers] = useState([])
   const [activity, setActivity] = useState([])
+  const [pickPrompt, setPickPrompt] = useState(null) // {reminder} when the viewer hasn't picked next month
 
   // Score modal state
   const [modalMovie, setModalMovie] = useState(null)
@@ -240,6 +241,7 @@ export default function Home() {
       { data: recentRatings },
       { data: recentReviews },
       { data: recentComments },
+      { data: upcoming },
     ] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scoring_deadline'),
@@ -248,7 +250,27 @@ export default function Home() {
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
       supabase.from('reviews').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
       supabase.from('comments').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
+      supabase.from('months').select('id, month_year, active_date, auto_activate').eq('status', 'upcoming').order('month_year', { ascending: true }).limit(1).maybeSingle(),
     ])
+
+    // Pick reminder: does the viewer still need to pick for the upcoming month?
+    let nextPick = null
+    if (upcoming) {
+      const { data: myPick } = await supabase.from('upcoming_picks')
+        .select('id').eq('user_id', profile.id).eq('month_target', upcoming.month_year).maybeSingle()
+      if (!myPick) {
+        const label = monthName(upcoming.month_year)
+        let reminder
+        if (upcoming.auto_activate && upcoming.active_date) {
+          const when = new Date(`${upcoming.active_date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          reminder = `Pick before ${when}, when ${label} starts.`
+        } else {
+          reminder = `Make sure you pick before ${label} starts.`
+        }
+        nextPick = { reminder }
+      }
+    }
+    setPickPrompt(nextPick)
     const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
     setActiveMovies(active)
     setActiveMonthYear(activeMonth?.month_year ?? null)
@@ -349,6 +371,20 @@ export default function Home() {
           <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
             Your Turn
           </p>
+          {!loading && pickPrompt && (
+            <div
+              onClick={() => navigate('/this-month')}
+              className="flex items-center gap-3 p-4 rounded-xl mb-3 transition-colors"
+              style={{ cursor: 'pointer', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.28)' }}
+            >
+              <span style={{ fontSize: '20px' }}>⏰</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium">Pick your next movie</p>
+                <p className="text-gray-500 text-xs">{pickPrompt.reminder}</p>
+              </div>
+              <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>Pick now →</span>
+            </div>
+          )}
           {loading ? (
             <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
           ) : pendingFilms.length === 0 ? (

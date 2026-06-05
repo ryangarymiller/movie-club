@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
@@ -530,6 +531,10 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
   // draft queue (Phase 7) — quick-pick source
   const [queue, setQueue] = useState([])
   const [queueSourceId, setQueueSourceId] = useState(null) // draft_queue row a selection came from
+  // Show only the top few queued picks by default — the queue is rank-ordered, so
+  // the highest-priority ideas are what matter; the rest hide behind "show more".
+  const [queueExpanded, setQueueExpanded] = useState(false)
+  const QUEUE_PREVIEW = 3
 
   const debounceRef = useRef(null)
 
@@ -1076,7 +1081,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
             overflow: 'hidden',
             background: 'rgba(var(--accent-rgb, 99,102,241),0.04)',
           }}>
-            {queue.map((item, i) => (
+            {(queueExpanded ? queue : queue.slice(0, QUEUE_PREVIEW)).map((item, i, shown) => (
               <button
                 key={item.id}
                 onClick={() => selectFromQueue(item)}
@@ -1085,7 +1090,7 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
                   display: 'flex', alignItems: 'center', gap: '12px',
                   padding: '10px 12px',
                   background: 'transparent', border: 'none',
-                  borderBottom: i < queue.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
+                  borderBottom: i < shown.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
                   cursor: 'pointer', textAlign: 'left',
                 }}
               >
@@ -1132,6 +1137,20 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
                 <span style={{ flexShrink: 0, color: 'var(--text-dim)', fontSize: '15px' }}>→</span>
               </button>
             ))}
+            {queue.length > QUEUE_PREVIEW && (
+              <button
+                onClick={() => setQueueExpanded(v => !v)}
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '9px 12px',
+                  background: 'transparent', border: 'none',
+                  borderTop: '1px solid rgba(var(--fg-rgb), 0.05)',
+                  color: 'var(--accent)', cursor: 'pointer', textAlign: 'center',
+                  fontFamily: "'DM Mono',monospace", fontSize: '11px', letterSpacing: '0.06em',
+                }}
+              >
+                {queueExpanded ? 'Show less ▲' : `Show ${queue.length - QUEUE_PREVIEW} more ▾`}
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '14px 0 4px' }}>
             <div style={{ flex: 1, height: '1px', background: 'rgba(var(--fg-rgb), 0.08)' }} />
@@ -1258,7 +1277,10 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
 function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
   // Android/browser Back closes the pick modal instead of navigating away.
   useBackClose(true, onClose)
-  return (
+  // Portal to <body> so the fixed backdrop is positioned against the VIEWPORT, not
+  // the ThisMonth content container — which keeps a lingering `transform` from its
+  // `fadeUp ... both` animation and would otherwise anchor the modal down-page.
+  return createPortal((
     <div
       className="mc-modal-backdrop"
       style={{ background: 'rgba(0,0,0,0.75)' }}
@@ -1310,7 +1332,7 @@ function PickModal({ profile, nextMonth, onClose, onPickSaved }) {
         )}
       </div>
     </div>
-  )
+  ), document.body)
 }
 
 // ─── Picks Tab ────────────────────────────────────────────────────────────────
@@ -1368,7 +1390,7 @@ function PicksTab({ profile, onOpenFilm }) {
     const [{ data: active }, { data: upcoming }] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active')
         .order('month_year', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('months').select('id, month_year').eq('status', 'upcoming')
+      supabase.from('months').select('id, month_year, active_date, auto_activate').eq('status', 'upcoming')
         .order('month_year', { ascending: true }).limit(1).maybeSingle(),
     ])
 
@@ -1402,6 +1424,19 @@ function PicksTab({ profile, onOpenFilm }) {
   const activeMonthLabel = activeMonth ? formatMonthLabel(activeMonth.month_year) : ''
   const loading = monthLoading || picksLoading
 
+  // Pick deadline reminder. If the next month has a scheduled auto-activation date,
+  // show it; otherwise (manual trigger / unscheduled) just nudge to pick before it
+  // starts — there's no hard date yet.
+  const pickReminder = (() => {
+    if (!nextMonth) return null
+    if (nextMonth.auto_activate && nextMonth.active_date) {
+      const d = new Date(`${nextMonth.active_date}T12:00:00`)
+      const when = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      return `Pick before ${when}, when ${nextMonthLabel} starts.`
+    }
+    return `Make sure you pick before ${nextMonthLabel} starts.`
+  })()
+
   // The viewer's own pick is always visible (RLS guarantees it's readable). Other
   // members' upcoming picks are intentionally never displayed in this view (they're
   // secret until the end-of-month reveal) — so the admin "read all" RLS policy can't
@@ -1428,6 +1463,19 @@ function PicksTab({ profile, onOpenFilm }) {
           <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
         </button>
       ))}
+
+      {/* Pick deadline reminder (shown until the viewer has picked) */}
+      {!loading && nextMonth && !myPick && pickReminder && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '9px 12px', marginBottom: '10px', borderRadius: '10px',
+          background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)',
+          fontFamily: "'DM Sans',sans-serif", fontSize: '12.5px', color: 'var(--text-muted)',
+        }}>
+          <span style={{ fontSize: '13px' }}>⏰</span>
+          <span>{pickReminder}</span>
+        </div>
+      )}
 
       {/* CTA button — only shown when the viewer has not yet picked for this month */}
       {!loading && nextMonth && !myPick && (
