@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -13,17 +13,19 @@ import { ReadjustmentProvider } from './context/ReadjustmentContext'
 import { ThemeProvider } from './context/ThemeContext'
 import AppLayout from './components/layout/AppLayout'
 import ScrollRestorer from './components/ScrollRestorer'
+// Auth-flow pages stay eager (tiny + needed instantly, no flash). The main app
+// routes are lazy-loaded so they split out of the initial bundle.
 import Login from './pages/Login'
-import Guest from './pages/Guest'
 import AuthCallback from './pages/AuthCallback'
 import NotApproved from './pages/NotApproved'
-import Home from './pages/Home'
-import ThisMonth from './pages/ThisMonth'
-import Films from './pages/Films'
-import Stats from './pages/Stats'
-import Awards from './pages/Awards'
-import Profile from './pages/Profile'
-import Admin from './pages/Admin'
+const Guest = lazy(() => import('./pages/Guest'))
+const Home = lazy(() => import('./pages/Home'))
+const ThisMonth = lazy(() => import('./pages/ThisMonth'))
+const Films = lazy(() => import('./pages/Films'))
+const Stats = lazy(() => import('./pages/Stats'))
+const Awards = lazy(() => import('./pages/Awards'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Admin = lazy(() => import('./pages/Admin'))
 import GuidedTour from './components/GuidedTour'
 import { TourProvider } from './context/TourContext'
 
@@ -82,6 +84,17 @@ function RequireAuth({ children }) {
   )
 }
 
+// Fallback shown while a lazily-loaded route chunk is fetched.
+function RouteFallback() {
+  return (
+    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="animate-pulse" style={{ fontFamily: "'DM Mono',monospace", fontSize: '12px', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
+        Loading…
+      </div>
+    </div>
+  )
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -128,7 +141,9 @@ function MemberOverlayHost() {
         >
           ✕
         </button>
-        <Profile overlayUserId={memberId} key={memberId} />
+        <Suspense fallback={<RouteFallback />}>
+          <Profile overlayUserId={memberId} key={memberId} />
+        </Suspense>
       </div>
     </div>
   )
@@ -193,7 +208,9 @@ export default function App() {
                   <PersonOverlayProvider>
                     <TourProvider>
                       <ScrollRestorer />
-                      <AppRoutes />
+                      <Suspense fallback={<RouteFallback />}>
+                        <AppRoutes />
+                      </Suspense>
                       <MemberOverlayHost />
                       <MemberStatsOverlay />
                       <PersonOverlay />
