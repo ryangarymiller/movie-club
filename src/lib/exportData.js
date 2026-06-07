@@ -247,23 +247,47 @@ export async function gatherUserData(supabase, profile) {
   }
 }
 
-// ─── CSV (scores table — the most tabular slice) ─────────────────────────────────
+// ─── CSV (the full export, as labeled sections) ──────────────────────────────────
+// A spreadsheet can't hold the nested shape in one flat table, so the CSV is built
+// as a sequence of labeled blocks (one per category) — matching what the JSON
+// holds, so the "download everything" promise is true for both formats.
 
 function csvCell(value) {
   if (value == null) return ''
-  const s = String(value)
+  const s = typeof value === 'boolean' ? (value ? 'yes' : 'no') : String(value)
   // Quote if the value contains a comma, quote, or newline; double interior quotes.
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-// Turn the gathered `scores` array into a CSV string.
-export function buildScoresCsv(scores) {
-  const headers = ['film', 'score', 'pre_watch_excitement', 'recommend_outside_club', 'submitted_at']
-  const lines = [headers.join(',')]
-  for (const row of scores ?? []) {
-    lines.push(headers.map(h => csvCell(row[h])).join(','))
+// One labeled CSV block: a TITLE line, a header row, then the rows (or "(none)").
+function csvSection(title, headers, rows) {
+  const out = [title.toUpperCase(), headers.join(',')]
+  if (!rows || rows.length === 0) {
+    out.push('(none)')
+  } else {
+    for (const row of rows) out.push(headers.map(h => csvCell(row[h])).join(','))
   }
-  return lines.join('\r\n')
+  return out.join('\r\n')
+}
+
+// Build the FULL export as a single multi-section CSV (profile + every category).
+export function buildFullCsv(data) {
+  const profileRows = Object.entries(data.profile ?? {}).map(([field, value]) => ({ field, value }))
+  const sections = [
+    csvSection('Profile', ['field', 'value'], profileRows),
+    csvSection('Scores', ['film', 'score', 'pre_watch_excitement', 'recommend_outside_club', 'submitted_at'], data.scores),
+    csvSection('Reviews', ['film', 'body', 'created_at', 'updated_at'], data.reviews),
+    csvSection('Comments', ['film', 'body', 'review_id', 'parent_comment_id', 'created_at', 'updated_at'], data.comments),
+    csvSection('Picks', ['film', 'year_released', 'month', 'justification'], data.picks),
+    csvSection('Upcoming picks', ['title', 'tmdb_id', 'month_target', 'justification', 'submitted_at'], data.upcomingPicks),
+    csvSection('Draft queue', ['title', 'tmdb_id', 'year_released', 'position', 'created_at'], data.draftQueue),
+    csvSection('Watchlist', ['title', 'tmdb_id', 'year_released', 'created_at'], data.watchlist),
+    csvSection('Guesses', ['film', 'guessed_user_id'], data.guesses),
+    csvSection('Predictions', ['film', 'target_user_id', 'predicted_score'], data.predictions),
+    csvSection('Awards', ['award_key', 'scope', 'period_ref', 'film', 'won_as_picker', 'metric'], data.awards),
+  ]
+  const header = ['Movie Club — personal data export', `Exported at,${csvCell(data.exportedAt)}`].join('\r\n')
+  return [header, '', sections.join('\r\n\r\n'), ''].join('\r\n')
 }
 
 // ─── File naming + download ──────────────────────────────────────────────────────

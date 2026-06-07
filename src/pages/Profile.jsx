@@ -11,7 +11,7 @@ import Avatar from '../components/Avatar'
 import AvatarPicker from '../components/AvatarPicker'
 import { avatarLabel } from '../lib/avatars'
 import { deliberateSignOut } from '../lib/authLog'
-import { gatherUserData, buildScoresCsv, exportFilename, downloadBlob } from '../lib/exportData'
+import { gatherUserData, buildFullCsv, exportFilename, downloadBlob } from '../lib/exportData'
 import { FilmDetailOverlay } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
@@ -486,7 +486,7 @@ export default function Profile({ overlayUserId = null } = {}) {
     try {
       const data = await gatherUserData(supabase, profile)
       if (format === 'csv') {
-        const csv = buildScoresCsv(data.scores)
+        const csv = buildFullCsv(data)
         downloadBlob(exportFilename(profile.name, 'csv'), csv, 'text/csv;charset=utf-8')
       } else {
         const json = JSON.stringify(data, null, 2)
@@ -1517,8 +1517,8 @@ export default function Profile({ overlayUserId = null } = {}) {
           <div style={{ ...CARD, padding: '16px' }}>
             <p style={{ margin: '0 0 14px', fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
               Download everything the club holds about you — your scores, reviews, comments, picks,
-              watchlist, draft queue, guesses, predictions and awards — as a single file. This is
-              your data only.
+              watchlist, draft queue, guesses, predictions and awards. JSON keeps the full structure;
+              CSV lays it out in labeled sections for a spreadsheet. This is your data only.
             </p>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
@@ -1554,7 +1554,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                 onClick={() => handleExport('csv')}
                 disabled={!!exportBusy}
                 aria-busy={exportBusy === 'csv'}
-                aria-label="Export my scores as CSV"
+                aria-label="Export all my data as CSV"
                 style={{
                   flex: '1 1 160px',
                   padding: '11px 16px',
@@ -1571,7 +1571,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                   transition: 'opacity 0.15s',
                 }}
               >
-                {exportBusy === 'csv' ? 'Preparing…' : 'Scores as CSV'}
+                {exportBusy === 'csv' ? 'Preparing…' : 'Export as CSV'}
               </button>
             </div>
 
