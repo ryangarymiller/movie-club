@@ -511,7 +511,22 @@ export const AVATAR_PACKS = [
   }
 ]
 
-export const avatarSrc = (id) => (id ? `/avatars/${id}.webp` : null)
+// Admin-uploaded avatars (Phase 7 Admin Assets) are stored in the public Supabase
+// Storage bucket `avatars` and referenced as ids prefixed "storage:<path>". The
+// static library keeps its "<pack>/<slug>" ids served from /public/avatars.
+const STORAGE_PREFIX = 'storage:'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+
+export const isStorageAvatar = (id) => typeof id === 'string' && id.startsWith(STORAGE_PREFIX)
+export const storageAvatarId = (path) => `${STORAGE_PREFIX}${path}`
+
+export const avatarSrc = (id) => {
+  if (!id) return null
+  if (isStorageAvatar(id)) {
+    return `${SUPABASE_URL}/storage/v1/object/public/avatars/${id.slice(STORAGE_PREFIX.length)}`
+  }
+  return `/avatars/${id}.webp`
+}
 
 export const AVATAR_IDS = new Set(AVATAR_PACKS.flatMap(p => p.icons.map(i => i.id)))
 export const avatarLabel = (id) => AVATAR_PACKS.flatMap(p => p.icons).find(i => i.id === id)?.label ?? null

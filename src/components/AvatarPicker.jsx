@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { AVATAR_PACKS, avatarSrc } from '../lib/avatars'
+import { AVATAR_PACKS, avatarSrc, storageAvatarId } from '../lib/avatars'
+import { supabase } from '../lib/supabase'
 
 // Avatar library picker. Grouped by pack, scrollable; selecting a tile calls
 // onSelect(id); the "No avatar" tile calls onSelect(null) to fall back to initials.
@@ -10,6 +11,25 @@ export default function AvatarPicker({ currentId, color, onSelect, busy }) {
   const [picked, setPicked] = useState(currentId ?? null)
   useEffect(() => { setPicked(currentId ?? null) }, [currentId])
   const choose = (id) => { setPicked(id); onSelect(id) }
+
+  // Admin-uploaded avatars (Phase 7 Admin Assets) — merged in as extra packs
+  // after the static library. Ids are "storage:<path>".
+  const [customPacks, setCustomPacks] = useState([])
+  useEffect(() => {
+    let alive = true
+    supabase.from('custom_avatars').select('pack, slug, label, storage_path').order('pack').order('label')
+      .then(({ data }) => {
+        if (!alive || !data?.length) return
+        const groups = new Map()
+        for (const a of data) {
+          if (!groups.has(a.pack)) groups.set(a.pack, [])
+          groups.get(a.pack).push({ id: storageAvatarId(a.storage_path), label: a.label })
+        }
+        setCustomPacks([...groups.entries()].map(([slug, icons]) => ({ slug: `custom-${slug}`, name: slug, icons })))
+      })
+    return () => { alive = false }
+  }, [])
+  const packs = [...AVATAR_PACKS, ...customPacks]
 
   const tile = (selected, child, key, label, onClick) => (
     <button
@@ -52,7 +72,7 @@ export default function AvatarPicker({ currentId, color, onSelect, busy }) {
           )}
         </div>
 
-        {AVATAR_PACKS.map(pack => (
+        {packs.map(pack => (
           <div key={pack.slug} style={{ marginTop: '14px' }}>
             <p style={packLabel}>{pack.name}</p>
             <div style={grid}>

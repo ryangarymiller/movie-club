@@ -6,6 +6,7 @@ import { writeAwardsToDb } from '../lib/awards'
 import { ScoreChangeRequestsAdminPanel } from '../components/ScoreChangeRequest'
 import { PickChangeRequestsAdminPanel } from '../components/PickChangeRequest'
 import Avatar from '../components/Avatar'
+import { AVATAR_PACKS, avatarSrc, storageAvatarId } from '../lib/avatars'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -2404,7 +2405,162 @@ function ScoresTab({ movies, users, ratings, months, preselectFilmId, onConsumeP
 // ─────────────────────────────────────────────
 // ROOT — Admin page
 // ─────────────────────────────────────────────
-const TABS = ['Dashboard', 'Films', 'Members', 'Scores']
+// Slugify a label/pack into a filesystem-safe id segment.
+function slugify(s) {
+  return String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+// Admin Assets — upload & manage custom avatars (additive to the static library).
+// Images go to the public `avatars` Storage bucket; custom_avatars records the
+// pack/slug/label. Members pick them like any other avatar (id "storage:<path>").
+function AssetsTab({ setError, setSuccess }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [pack, setPack] = useState('')
+  const [label, setLabel] = useState('')
+  const fileRef = useRef(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('custom_avatars').select('*').order('pack').order('label')
+    setRows(data ?? [])
+    setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  function pickFile(f) {
+    if (!f) return
+    setFile(f)
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(URL.createObjectURL(f))
+    if (!label) setLabel(f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '))
+  }
+
+  async function upload() {
+    if (busy) return
+    const packSlug = slugify(pack)
+    const slug = slugify(label)
+    if (!file) { setError('Choose an image to upload.'); return }
+    if (!packSlug) { setError('Enter a pack name.'); return }
+    if (!slug) { setError('Enter a label.'); return }
+    setBusy(true); setError(null)
+    try {
+      const ext = (file.name.split('.').pop() || 'webp').toLowerCase()
+      const path = `${packSlug}/${slug}.${ext}`
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type || 'image/webp' })
+      if (upErr) { setError(`Upload failed: ${upErr.message}`); setBusy(false); return }
+      const { error: rowErr } = await supabase.from('custom_avatars')
+        .upsert({ pack: packSlug, slug, label: label.trim(), storage_path: path }, { onConflict: 'pack,slug' })
+      if (rowErr) { setError(`Saved the image but could not record it: ${rowErr.message}`); setBusy(false); return }
+      setSuccess(`Avatar "${label.trim()}" added to ${packSlug}.`)
+      setFile(null); if (preview) URL.revokeObjectURL(preview); setPreview(null); setLabel('')
+      if (fileRef.current) fileRef.current.value = ''
+      await load()
+    } catch (e) {
+      setError(`Upload failed: ${e.message ?? 'unknown error'}`)
+    }
+    setBusy(false)
+  }
+
+  async function remove(row) {
+    if (deletingId) return
+    if (!window.confirm(`Delete "${row.label}"? Anyone using it will fall back to their initials.`)) return
+    setDeletingId(row.id); setError(null)
+    await supabase.storage.from('avatars').remove([row.storage_path])
+    const { error } = await supabase.from('custom_avatars').delete().eq('id', row.id)
+    setDeletingId(null)
+    if (error) { setError(`Could not delete: ${error.message}`); return }
+    setSuccess(`Deleted "${row.label}".`)
+    await load()
+  }
+
+  const grouped = useMemo(() => {
+    const g = new Map()
+    for (const r of rows) { if (!g.has(r.pack)) g.set(r.pack, []); g.get(r.pack).push(r) }
+    return [...g.entries()]
+  }, [rows])
+
+  const card = { background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }
+  const input = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: '9px', fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-strong)', background: 'rgba(var(--fg-rgb),0.05)', border: '1px solid rgba(var(--fg-rgb),0.12)', outline: 'none' }
+
+  return (
+    <div>
+      {/* Upload */}
+      <div style={card}>
+        <Label>Add a Custom Avatar</Label>
+        <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '6px 0 14px', lineHeight: 1.5 }}>
+          Uploads sit alongside the built-in library. Square, transparent PNG/WebP works best (≤2&nbsp;MB). Members can choose it immediately.
+        </p>
+        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div style={{
+            width: '72px', height: '72px', borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+            border: '1px solid rgba(var(--fg-rgb),0.14)', background: 'rgba(var(--fg-rgb),0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {preview
+              ? <img src={preview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-faint)' }}>preview</span>}
+          </div>
+          <div style={{ flex: 1, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <input ref={fileRef} type="file" accept="image/png,image/webp,image/jpeg" onChange={e => pickFile(e.target.files?.[0])}
+              style={{ ...input, padding: '7px 9px' }} />
+            <input list="avatar-packs" value={pack} onChange={e => setPack(e.target.value)} placeholder="Pack (e.g. terminator, or a new name)" style={input} />
+            <datalist id="avatar-packs">
+              {AVATAR_PACKS.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
+              {grouped.map(([p]) => <option key={p} value={p} />)}
+            </datalist>
+            <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Label (e.g. Thumbs Up)" style={input} />
+            <button onClick={upload} disabled={busy} style={{
+              alignSelf: 'flex-start', padding: '9px 16px', borderRadius: '9px', border: 'none',
+              background: 'var(--accent)', color: 'var(--text-strong)', fontFamily: "'DM Sans',sans-serif",
+              fontSize: '13px', fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
+            }}>{busy ? 'Uploading…' : 'Upload avatar'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Existing custom avatars */}
+      <div style={card}>
+        <Label>Custom Avatars</Label>
+        {loading ? (
+          <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '10px' }}>Loading…</p>
+        ) : grouped.length === 0 ? (
+          <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '10px' }}>No custom avatars yet.</p>
+        ) : (
+          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {grouped.map(([p, list]) => (
+              <div key={p}>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-faint)', margin: '0 0 8px' }}>{p}</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                  {list.map(r => (
+                    <div key={r.id} style={{ width: '64px', textAlign: 'center' }}>
+                      <div style={{ position: 'relative', width: '56px', height: '56px', margin: '0 auto' }}>
+                        <img src={avatarSrc(storageAvatarId(r.storage_path))} alt={r.label}
+                          style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(var(--fg-rgb),0.12)' }} />
+                        <button onClick={() => remove(r)} disabled={deletingId === r.id} aria-label={`Delete ${r.label}`} style={{
+                          position: 'absolute', top: '-4px', right: '-4px', width: '20px', height: '20px', borderRadius: '50%',
+                          border: '1px solid rgba(248,113,113,0.5)', background: '#450a0a', color: '#f87171',
+                          fontSize: '12px', lineHeight: 1, cursor: deletingId === r.id ? 'default' : 'pointer', padding: 0,
+                        }}>×</button>
+                      </div>
+                      <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '10px', color: 'var(--text-dim)', margin: '5px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const TABS = ['Dashboard', 'Films', 'Members', 'Scores', 'Assets']
 
 export default function Admin() {
   const { profile, isAdmin } = useAuth()
@@ -2585,6 +2741,9 @@ export default function Admin() {
                 setError={setError}
                 setSuccess={setSuccess}
               />
+            )}
+            {activeTab === 'Assets' && (
+              <AssetsTab setError={setError} setSuccess={setSuccess} />
             )}
           </>
         )}
