@@ -620,10 +620,12 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 0) >= (movieAvgScore[b.id] ?? 0) ? a : b)
     : null
 
-  // 2. Flop of the Season — lowest avg (min 2 scores)
-  const flopOfSeason = twoPlus.length
+  // 2. Flop of the Season — lowest avg (min 2 scores; null if same film as Film of
+  // the Season — don't crown one film both best and worst).
+  const _flopSeason = twoPlus.length
     ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 10) <= (movieAvgScore[b.id] ?? 10) ? a : b)
     : null
+  const flopOfSeason = _flopSeason && _flopSeason.id !== filmOfSeason?.id ? _flopSeason : null
 
   // 3–10: Per-user/per-picker computations
   // Build per-picker data (picker_revealed=true)
@@ -907,10 +909,11 @@ export function computeAnnualAwards(movies, allRatings, users, year, guesses = [
     ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 0) >= (movieAvgScore[b.id] ?? 0) ? a : b)
     : null
 
-  // 3. Worst Film of Year — lowest avg (min 2 scores)
-  const worstFilmOfYear = twoPlus.length
+  // 3. Worst Film of Year — lowest avg (min 2 scores; null if same as Film of Year)
+  const _worstYear = twoPlus.length
     ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 10) <= (movieAvgScore[b.id] ?? 10) ? a : b)
     : null
+  const worstFilmOfYear = _worstYear && _worstYear.id !== filmOfYear?.id ? _worstYear : null
 
   // 4. Picker of the Year — from picker_revealed movies
   const pickerMovies = {}
@@ -1133,10 +1136,12 @@ export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
     ? scoredMovies.reduce((a, b) => movieAvgScore[a.id] >= movieAvgScore[b.id] ? a : b)
     : null
 
-  // 2. Flop of the Month — lowest avg score
-  const flopOfMonth = scoredMovies.length
+  // 2. Flop of the Month — lowest avg score (null if it'd be the same film as the
+  // Pick — a single-film or all-equal month shouldn't crown one film both).
+  const _flopMonth = scoredMovies.length
     ? scoredMovies.reduce((a, b) => movieAvgScore[a.id] <= movieAvgScore[b.id] ? a : b)
     : null
+  const flopOfMonth = _flopMonth && _flopMonth.id !== pickOfMonth?.id ? _flopMonth : null
 
   // 3–9: Per-user computations
   // Build user map
@@ -1310,10 +1315,11 @@ export function computeAllTimeAwards(movies, allRatings, users, guesses = [], mo
     ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 0) >= (movieAvgScore[b.id] ?? 0) ? a : b)
     : null
 
-  // 2. Worst Film — lowest avg (min 2 scores)
-  const worstFilm = twoPlus.length
+  // 2. Worst Film — lowest avg (min 2 scores; null if same as Greatest Film)
+  const _worstEver = twoPlus.length
     ? twoPlus.reduce((a, b) => (movieAvgScore[a.id] ?? 10) <= (movieAvgScore[b.id] ?? 10) ? a : b)
     : null
+  const worstFilm = _worstEver && _worstEver.id !== greatestFilm?.id ? _worstEver : null
 
   // 3. Most Divisive Film — highest stddev (min 3 scores)
   const threePlus = revealedMovies.filter(m => scoresByMovie[m.id].length >= 3)
