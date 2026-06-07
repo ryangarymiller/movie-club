@@ -1,5 +1,4 @@
-// AUTO-GENERATED from public/avatars/ — the chosen avatar id is stored in users.avatar_id.
-// Regenerate when avatar files change. Falls back to colored initials when avatar_id is null.
+// AUTO-GENERATED from public/avatars/ — chosen avatar id stored in users.avatar_id.
 
 export const AVATAR_PACKS = [
   {
@@ -427,6 +426,16 @@ export const AVATAR_PACKS = [
     ]
   },
   {
+    "slug": "pandora",
+    "name": "Avatar / Pandora",
+    "icons": [
+      {
+        "id": "pandora/neytiri",
+        "label": "Neytiri"
+      }
+    ]
+  },
+  {
     "slug": "club-picks",
     "name": "Movie Club Picks",
     "icons": [
@@ -497,16 +506,6 @@ export const AVATAR_PACKS = [
       {
         "id": "club-picks/where-the-wild-things-are",
         "label": "Where The Wild Things Are"
-      }
-    ]
-  },
-  {
-    "slug": "pandora",
-    "name": "Avatar / Pandora",
-    "icons": [
-      {
-        "id": "pandora/neytiri",
-        "label": "Neytiri"
       }
     ]
   }
