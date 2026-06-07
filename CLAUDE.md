@@ -208,7 +208,7 @@ During the **active** month, score visibility is **rolling per viewer**: you see
 **`notify_scores_revealed`** skips its per-film notification when the film's month is already `revealed` (an end-of-month bulk reveal) so revealing N films at once doesn't blast N emails/pushes — the month-level notification covers it.
 
 ### RLS enforcement
-- `movies.picked_by_user_id` and `pick_justification` excluded from non-admin queries until `picker_revealed = true` (via `movies_safe`)
+- `movies.picked_by_user_id` and `pick_justification` excluded from non-admin queries until `picker_revealed = true` (via `movies_safe`). **Enforced server-side, not just by convention:** base `movies` has its table-level SELECT revoked from `anon`/`authenticated` and re-granted column-level on every column EXCEPT those two — so a member can't read an unrevealed picker by querying the base table directly; `movies_safe` (definer view) is the only path (masks until reveal, exposes to admins via its CASE). Self-pick checks use the `auth_user_picked(movie_id)` / `auth_user_picked_movie_ids()` SECURITY DEFINER RPCs; the `score_predictions` picker policy uses `is_movie_picker()` instead of inline-reading the column. (Hardened after the audit found the mask was previously advisory-only.)
 - Individual scores gated on `scores_revealed` per film OR the rolling "you've scored it" check (`auth_user_has_scored`)
 - A user always sees their own score regardless of reveal status
 - Admins always see everything; realtime subscriptions push reveal updates to all clients
