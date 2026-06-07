@@ -963,12 +963,10 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
   useEffect(() => {
     if (!movie || !profile) { setIsPicker(false); return }
     let cancelled = false
+    // SECURITY DEFINER RPC — picked_by_user_id is no longer client-readable on base
+    // movies (picker anonymity), so the self-pick check goes through this helper.
     supabase
-      .from('movies')
-      .select('id')
-      .eq('id', movie.id)
-      .eq('picked_by_user_id', profile.id)
-      .maybeSingle()
+      .rpc('auth_user_picked', { p_movie_id: movie.id })
       .then(({ data }) => { if (!cancelled) setIsPicker(!!data) })
     return () => { cancelled = true }
   }, [movie, profile])

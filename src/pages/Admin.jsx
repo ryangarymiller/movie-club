@@ -152,21 +152,28 @@ function UpcomingPicksPanel({ months }) {
       // Past months (revealed): pickers are public — read from the materialized films.
       const revealedIds = months.filter(m => m.status === 'revealed').map(m => m.id)
 
-      const [{ data: up }, { data: hist }] = await Promise.all([
+      const [{ data: up }, { data: hist }, { data: usersData }] = await Promise.all([
         secretMonths.length
           ? supabase.from('upcoming_picks')
               .select('id, user_id, title, month_target, metadata, users(name, email)')
               .in('month_target', secretMonths).order('month_target', { ascending: true })
           : Promise.resolve({ data: [] }),
+        // Read picker via movies_safe (exposes picked_by_user_id to admins; these are
+        // revealed films, so it's public anyway). picked_by_user_id is no longer
+        // client-readable on base movies — names resolved client-side below.
         revealedIds.length
-          ? supabase.from('movies')
-              .select('id, title, month_id, picked_by_user_id, picker:picked_by_user_id(name, email)')
+          ? supabase.from('movies_safe')
+              .select('id, title, month_id, picked_by_user_id')
               .in('month_id', revealedIds)
           : Promise.resolve({ data: [] }),
+        supabase.from('users').select('id, name, email'),
       ])
       if (!alive) return
+      const userById = Object.fromEntries((usersData ?? []).map(u => [u.id, u]))
       setPicks((up ?? []).filter(p => p.users?.email !== TEST_USER_EMAIL))
-      setHistorical((hist ?? []).filter(m => m.picked_by_user_id && m.picker?.email !== TEST_USER_EMAIL))
+      setHistorical((hist ?? [])
+        .map(m => ({ ...m, picker: userById[m.picked_by_user_id] ?? null }))
+        .filter(m => m.picked_by_user_id && m.picker?.email !== TEST_USER_EMAIL))
       setLoading(false)
     })()
     return () => { alive = false }
@@ -1053,7 +1060,9 @@ async function triggerAwardsWrite() {
       { data: seasons },
       { data: guesses },
     ] = await Promise.all([
-      supabase.from('movies').select('*').order('id'),
+      // movies_safe (not base movies) — picked_by_user_id is admin-exposed there and
+      // no longer granted on base movies. Awards attribute films to their pickers.
+      supabase.from('movies_safe').select('*').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
       supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color, avatar_id'),
       supabase.from('months').select('id, season_id, month_year, status').order('month_year'),
@@ -2679,7 +2688,10 @@ export default function Admin() {
       { data: monthsData, error: monthsErr },
       { data: seasonsData },
     ] = await Promise.all([
-      supabase.from('movies').select('*, picked_by:users!picked_by_user_id(name)').order('id'),
+      // movies_safe exposes picked_by_user_id/pick_justification to admins (its CASE);
+      // base movies no longer grants those columns. The picker name is attached
+      // client-side from the users load below (PostgREST can't embed through the view).
+      supabase.from('movies_safe').select('*').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
       supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, admin_mode_enabled').order('joined_at'),
       supabase.from('months').select('id, season_id, month_year, status, active_date, auto_activate').order('month_year'),
@@ -2690,7 +2702,9 @@ export default function Admin() {
       setError('Failed to load data. Check console for details.')
       console.error({ moviesErr, ratingsErr, usersErr, monthsErr })
     } else {
-      setMovies(moviesData ?? [])
+      // Attach the picker object (the old PostgREST embed) from the users load.
+      const adminUserById = Object.fromEntries((usersData ?? []).map(u => [u.id, u]))
+      setMovies((moviesData ?? []).map(m => ({ ...m, picked_by: m.picked_by_user_id ? (adminUserById[m.picked_by_user_id] ?? null) : null })))
       setRatings(ratingsData ?? [])
       setUsers(usersData ?? [])
       setMonths(monthsData ?? [])

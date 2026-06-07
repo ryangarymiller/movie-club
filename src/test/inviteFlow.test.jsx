@@ -41,6 +41,7 @@ function setupMocks({ insertError = null } = {}) {
   supabase.from.mockImplementation((table) => {
     switch (table) {
       case 'movies':
+      case 'movies_safe':
         return {
           select: vi.fn().mockReturnValue({
             order: vi.fn(() => Promise.resolve({ data: [], error: null })),

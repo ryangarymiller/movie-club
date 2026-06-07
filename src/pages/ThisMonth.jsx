@@ -1374,10 +1374,17 @@ function PicksTab({ profile, onOpenFilm }) {
     let alive = true
     ;(async () => {
       try {
+        // picked_by_user_id isn't client-readable on base movies (picker anonymity);
+        // get my own picked ids via the SECURITY DEFINER helper, then read details
+        // from movies_safe (which returns the rows; the masked picker col isn't needed).
+        const { data: pickedRaw } = await supabase.rpc('auth_user_picked_movie_ids')
+        const myIds = (pickedRaw ?? []).map(x => (typeof x === 'string' ? x : Object.values(x)[0]))
+        if (!alive) return
+        if (!myIds.length) { setMyOpenPicks([]); return }
         const { data: mine } = await supabase
-          .from('movies')
+          .from('movies_safe')
           .select('id, title, poster_url, scores_revealed')
-          .eq('picked_by_user_id', profile.id)
+          .in('id', myIds)
           .eq('month_id', activeMonth.id)
           .eq('scores_revealed', false)
         if (!alive) return
