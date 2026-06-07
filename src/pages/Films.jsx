@@ -939,7 +939,7 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, isPic
   )
 }
 
-export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
+export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored = null }) {
   const { profile, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [visible, setVisible] = useState(false)
@@ -1914,6 +1914,7 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
           onClose={() => setShowScoreModal(false)}
           onSaved={() => {
             setShowScoreModal(false)
+            onScored?.() // refresh the parent list so the "To score" filter + badges update
             if (movie) {
               fetchDetails(movie.id, movie).then(() => {
                 setTimeout(() => {
@@ -2741,8 +2742,7 @@ export default function Films() {
     setGenreFilter(urlGenre)
   }, [urlTab, urlGenre])
 
-  useEffect(() => {
-    async function load() {
+  const loadMovies = useCallback(async () => {
       const [
         { data: moviesData },
         { data: monthsData },
@@ -2828,9 +2828,20 @@ export default function Films() {
       setSeasons(seasonsData ?? [])
       setUserById(userLookup)
       setLoading(false)
-    }
-    load()
   }, [profile?.id])
+
+  useEffect(() => { loadMovies() }, [loadMovies])
+
+  // Live-refresh the list when any rating changes (e.g. you submit a score in the
+  // overlay) so the "To score" filter + score badges reflect it without a reload.
+  useEffect(() => {
+    if (!profile) return
+    const channel = supabase
+      .channel('films-ratings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => loadMovies())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [profile, loadMovies])
 
   // A discussion post (comment/review id) to scroll to + highlight after opening,
   // carried from a notification deep-link.
@@ -3003,7 +3014,7 @@ export default function Films() {
       )}
 
       {/* Film detail overlay */}
-      <FilmDetailOverlay movie={selectedMovie} onClose={handleClose} focusPostId={focusPostId} />
+      <FilmDetailOverlay movie={selectedMovie} onClose={handleClose} focusPostId={focusPostId} onScored={loadMovies} />
 
       <style>{`
         @media (min-width: 480px) { .films-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; } }

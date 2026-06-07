@@ -404,9 +404,9 @@ export default function Home() {
   const milestoneBanner = (() => {
     if (!milestoneCounts) return null
     const candidates = [
-      { ...roundMilestone(milestoneCounts.scores, { step: 25 }), noun: 'scores submitted', glyph: '💯' },
+      { ...roundMilestone(milestoneCounts.scores, { step: 25 }), noun: 'scores', glyph: '💯' },
       { ...roundMilestone(milestoneCounts.filmsWatched, { step: 10 }), noun: 'films watched', glyph: '🎬' },
-      { ...roundMilestone(milestoneCounts.reviews + milestoneCounts.comments, { step: 25 }), noun: 'posts in the discussion', glyph: '💬' },
+      { ...roundMilestone(milestoneCounts.reviews + milestoneCounts.comments, { step: 25 }), noun: 'discussion posts', glyph: '💬' },
     ].filter(c => c.kind)
     const reached = candidates.filter(c => c.kind === 'reached').sort((a, b) => b.value - a.value)[0]
     if (reached) return reached
@@ -625,13 +625,12 @@ export default function Home() {
                   <span style={{ fontSize: '22px', lineHeight: 1 }} aria-hidden="true">{milestoneBanner.glyph}</span>
                   <div className="flex-1 min-w-0">
                     <p style={{ color: 'var(--text)', fontSize: '14px', fontWeight: 600, margin: 0, lineHeight: 1.25 }}>
-                      {milestoneBanner.value} {milestoneBanner.noun}
-                      {milestoneBanner.kind === 'approaching' ? ' coming up' : ''}
+                      {milestoneBanner.kind === 'approaching'
+                        ? `${milestoneBanner.remaining} away from ${milestoneBanner.value} ${milestoneBanner.noun}`
+                        : `${milestoneBanner.value} ${milestoneBanner.noun} 🎉`}
                     </p>
                     <p style={{ color: 'var(--text-muted)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>
-                      {milestoneBanner.kind === 'reached'
-                        ? 'Milestone reached'
-                        : `${milestoneBanner.remaining} to go`}
+                      {milestoneBanner.kind === 'reached' ? 'Milestone reached' : 'Milestone coming up'}
                     </p>
                   </div>
                 </div>
