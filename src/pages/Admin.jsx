@@ -592,12 +592,22 @@ function SeasonReadjustRow({ season, open, busy, lengthDays, onSet, onAuto }) {
   )
 }
 
-// AI month recaps — admin generates a narrative recap + Best Review per month
-// via the server-side `ai-recap` Edge Function (Anthropic key never leaves the
-// server). Shown in the month's Reveal section. Offered for active/revealed months.
+// Session-level guard: once an auto-gen has been attempted for a month we don't
+// retry it on every dashboard mount (a successful one creates a month_recaps row
+// and falls out of "due" anyway; this stops a persistently-failing month from
+// re-hammering the AI on each visit). Module scope so it survives remounts.
+const autoRecapAttempted = new Set()
+
+// AI month recaps — generates a narrative recap + Best Review per month via the
+// server-side `ai-recap` Edge Function (Anthropic key never leaves the server).
+// Shown in the month's Reveal section. Auto-generates for any REVEALED month that
+// has no recap yet (this panel is admin-only and re-renders right after an
+// activation reveals the prior month, so it fires promptly); admins can also
+// generate/regenerate manually.
 function AiRecapPanel({ months, movies, setError, setSuccess }) {
   const [recaps, setRecaps] = useState({}) // month_id -> generated_at
   const [busyId, setBusyId] = useState(null)
+  const [autoBusy, setAutoBusy] = useState(false)
 
   const monthsWithFilms = useMemo(() => {
     const filmMonthIds = new Set(movies.map(m => m.month_id))
@@ -613,6 +623,31 @@ function AiRecapPanel({ months, movies, setError, setSuccess }) {
     setRecaps(map)
   }, [])
   useEffect(() => { loadRecaps() }, [loadRecaps])
+
+  // Auto-generate recaps for revealed months that don't have one yet. Quiet on
+  // failure (left for manual retry); the attempted-set + the created row prevent
+  // re-runs. Bounded to one attempt per month per session.
+  useEffect(() => {
+    const due = monthsWithFilms.filter(mo => mo.status === 'revealed' && !recaps[mo.id] && !autoRecapAttempted.has(mo.id))
+    if (due.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      setAutoBusy(true)
+      for (const mo of due) {
+        if (cancelled) break
+        autoRecapAttempted.add(mo.id)
+        try {
+          const { data, error } = await supabase.functions.invoke('ai-recap', { body: { month_id: mo.id } })
+          if (!cancelled && !error && !data?.error) {
+            setSuccess(`AI recap auto-generated for ${mo.month_year}.`)
+            await loadRecaps()
+          }
+        } catch { /* leave for manual retry */ }
+      }
+      if (!cancelled) setAutoBusy(false)
+    })()
+    return () => { cancelled = true }
+  }, [monthsWithFilms, recaps, loadRecaps, setSuccess])
 
   async function generate(mo) {
     if (busyId) return
@@ -635,7 +670,8 @@ function AiRecapPanel({ months, movies, setError, setSuccess }) {
     <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
       <Label>AI Month Recaps</Label>
       <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '6px 0 0', lineHeight: 1.5 }}>
-        Generates a narrative recap + picks the Best Review (shown in the month's Reveal section). Uses the server-side AI — safe to regenerate.
+        Auto-generates when a month reveals; picks the Best Review too (shown in the month's Reveal section). Server-side AI — safe to regenerate.
+        {autoBusy && <span style={{ color: 'var(--accent)' }}> · auto-generating…</span>}
       </p>
       {monthsWithFilms.length === 0 ? (
         <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '10px' }}>No active or revealed months yet.</p>
