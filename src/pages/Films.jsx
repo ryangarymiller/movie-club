@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
+import { usePersonOverlay } from '../context/PersonOverlayContext'
 import ScoreModal from '../components/ScoreModal'
 import CommentThread from '../components/CommentThread'
 import GuessThePicker from '../components/GuessThePicker'
@@ -61,6 +62,16 @@ function displayAvg(movie) {
 function isVault(movie) {
   const avg = displayAvg(movie)
   return avg != null && avg >= 8.5
+}
+
+// Shared style for a tappable cast/crew name (director, writer) that opens the
+// person overlay — looks like inline text, but reads as a link.
+const personNameBtnStyle = {
+  background: 'none', border: 'none', padding: 0, margin: 0,
+  font: 'inherit', fontSize: '12.5px', fontFamily: "'DM Sans',sans-serif",
+  color: 'var(--text)', cursor: 'pointer', textAlign: 'left',
+  textDecorationLine: 'underline', textDecorationColor: 'rgba(var(--accent-rgb), 0.45)',
+  textUnderlineOffset: '2px',
 }
 
 function formatRuntime(mins) {
@@ -1165,6 +1176,7 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
   useBackClose(!!movie, handleClose)
 
   const { openMember } = useMemberOverlay()
+  const { openPerson } = usePersonOverlay()
   // Open a member's profile overlay ON TOP of this film (the member overlay sits
   // at a higher z-index). Keeping the film mounted underneath means Back closes
   // the profile and reveals the film again — instead of navigating the page away.
@@ -1624,13 +1636,34 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
                         {m.director && (
                           <div style={{ display: 'flex', gap: '8px', fontSize: '12.5px' }}>
                             <span style={{ flexShrink: 0, width: '64px', color: 'var(--text-faint)', fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', paddingTop: '1px' }}>Director</span>
-                            <span style={{ color: 'var(--text)' }}>{m.director}</span>
+                            <button
+                              type="button"
+                              onClick={() => openPerson({ name: m.director })}
+                              aria-label={`View ${m.director}`}
+                              style={personNameBtnStyle}
+                            >
+                              {m.director}
+                            </button>
                           </div>
                         )}
                         {Array.isArray(m.tmdb_writers) && m.tmdb_writers.length > 0 && (
                           <div style={{ display: 'flex', gap: '8px', fontSize: '12.5px' }}>
                             <span style={{ flexShrink: 0, width: '64px', color: 'var(--text-faint)', fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', paddingTop: '1px' }}>Writers</span>
-                            <span style={{ color: 'var(--text)' }}>{m.tmdb_writers.join(', ')}</span>
+                            <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 2px' }}>
+                              {m.tmdb_writers.map((w, i) => (
+                                <span key={`${w}-${i}`}>
+                                  <button
+                                    type="button"
+                                    onClick={() => openPerson({ name: w })}
+                                    aria-label={`View ${w}`}
+                                    style={personNameBtnStyle}
+                                  >
+                                    {w}
+                                  </button>
+                                  {i < m.tmdb_writers.length - 1 ? <span style={{ color: 'var(--text-faint)' }}>, </span> : null}
+                                </span>
+                              ))}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1638,15 +1671,23 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
                     {Array.isArray(m.tmdb_cast) && m.tmdb_cast.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         {m.tmdb_cast.map((name, i) => (
-                          <span key={`${name}-${i}`} style={{
-                            fontFamily: "'DM Sans',sans-serif", fontSize: '12px',
-                            padding: '4px 9px', borderRadius: '999px',
-                            background: 'rgba(var(--fg-rgb), 0.05)',
-                            border: '1px solid rgba(var(--fg-rgb), 0.08)',
-                            color: 'var(--text)',
-                          }}>
+                          <button
+                            type="button"
+                            key={`${name}-${i}`}
+                            onClick={() => openPerson({ name })}
+                            aria-label={`View ${name}`}
+                            style={{
+                              fontFamily: "'DM Sans',sans-serif", fontSize: '12px',
+                              padding: '4px 9px', borderRadius: '999px',
+                              background: 'rgba(var(--fg-rgb), 0.05)',
+                              border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                              color: 'var(--text)', cursor: 'pointer',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb), 0.05)' }}
+                          >
                             {name}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     )}

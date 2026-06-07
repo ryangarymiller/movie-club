@@ -9,6 +9,7 @@ import Avatar from '../components/Avatar'
 import { FilmDetailOverlay } from './Films'
 import { MEMBER_COLORS, userColor } from '../lib/colors'
 import { useCollapseScroll } from '../lib/useCollapseScroll'
+import { clubAge, roundMilestone, memberAnniversaries, inDaysLabel } from '../lib/milestones'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -220,6 +221,11 @@ export default function Home() {
   const [users, setUsers] = useState([])
   const [activity, setActivity] = useState([])
   const [pickPrompt, setPickPrompt] = useState(null) // {reminder} when the viewer hasn't picked next month
+  // Milestone totals (test account excluded). null until loaded.
+  const [milestoneCounts, setMilestoneCounts] = useState(null)
+  // "Now" snapshot for live age/countdowns — refreshed on each load() so it stays
+  // current without calling the impure Date.now() during render.
+  const [now, setNow] = useState(() => Date.now())
 
   // Score modal state
   const [modalMovie, setModalMovie] = useState(null)
@@ -236,6 +242,7 @@ export default function Home() {
 
   const load = useCallback(async () => {
     if (!profile) return
+    setNow(Date.now()) // refresh the live-clock snapshot used by milestone countdowns
     const [
       { data: activeMonth },
       { data: movies },
@@ -247,7 +254,7 @@ export default function Home() {
       { data: upcoming },
     ] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
-      supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scoring_deadline'),
+      supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scores_revealed, scoring_deadline'),
       supabase.from('ratings').select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at').eq('user_id', profile.id),
       supabase.from('users').select('id, name, email, is_active, user_color, avatar_id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
@@ -297,6 +304,30 @@ export default function Home() {
     // Test account must be invisible in all UI — filter by email. Also exclude inactive members.
     const visibleUsers = (usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com' && u.is_active !== false)
     setUsers(visibleUsers)
+
+    // ── Milestone totals (counts only — test account excluded) ──────────────────
+    // The test account's score/review/comment activity must not be counted. We
+    // exclude it by user_id; head-only count queries avoid pulling any rows.
+    // Scores are scoped to REVEALED films' ids so the total is identical for every
+    // viewer (ratings SELECT RLS is rolling/per-viewer for the active month, which
+    // would otherwise make the count viewer-dependent — a club milestone shouldn't be).
+    const testUserId = (usersData ?? []).find(u => u.email === 'i.am.ryan.the.miller@gmail.com')?.id ?? null
+    const filterTest = q => (testUserId ? q.neq('user_id', testUserId) : q)
+    const revealedIds = (movies ?? []).filter(m => m.scores_revealed).map(m => m.id)
+    const scoresQ = revealedIds.length
+      ? filterTest(supabase.from('ratings').select('id', { count: 'exact', head: true }).not('score', 'is', null).in('movie_id', revealedIds))
+      : null
+    const [scoresCount, reviewsCount, commentsCount] = await Promise.all([
+      scoresQ ?? Promise.resolve({ count: 0 }),
+      filterTest(supabase.from('reviews').select('id', { count: 'exact', head: true })),
+      filterTest(supabase.from('comments').select('id', { count: 'exact', head: true })),
+    ])
+    setMilestoneCounts({
+      filmsWatched: revealedIds.length,
+      scores: scoresCount.count ?? 0,
+      reviews: reviewsCount.count ?? 0,
+      comments: commentsCount.count ?? 0,
+    })
 
     // Build the Recent Activity feed: merge ratings, reviews, comments into one list.
     const userMap = Object.fromEntries(visibleUsers.map(u => [u.id, u.name]))
@@ -364,6 +395,25 @@ export default function Home() {
   const scoredIds = new Set(myRatings.filter(r => r.score).map(r => r.movie_id))
   const pendingFilms = activeMovies.filter(m => !scoredIds.has(m.id))
   const topFilm = [...allMovies].filter(m => m.historical_avg_score).sort((a, b) => b.historical_avg_score - a.historical_avg_score)[0]
+
+  // ── Milestones / Anniversaries (live `now` snapshot keeps age + countdowns current) ──
+  const age = clubAge(now)
+  // The single most relevant active milestone banner: prefer a "just reached" round
+  // number, otherwise the closest "approaching" one (fewest remaining). Films use a
+  // step of 10, scores a step of 25 (scores accrue far faster than films).
+  const milestoneBanner = (() => {
+    if (!milestoneCounts) return null
+    const candidates = [
+      { ...roundMilestone(milestoneCounts.scores, { step: 25 }), noun: 'scores submitted', glyph: '💯' },
+      { ...roundMilestone(milestoneCounts.filmsWatched, { step: 10 }), noun: 'films watched', glyph: '🎬' },
+      { ...roundMilestone(milestoneCounts.reviews + milestoneCounts.comments, { step: 25 }), noun: 'posts in the discussion', glyph: '💬' },
+    ].filter(c => c.kind)
+    const reached = candidates.filter(c => c.kind === 'reached').sort((a, b) => b.value - a.value)[0]
+    if (reached) return reached
+    return candidates.filter(c => c.kind === 'approaching').sort((a, b) => a.remaining - b.remaining)[0] ?? null
+  })()
+  const anniversaries = memberAnniversaries(users, now, 7)
+  const showMilestones = !loading && milestoneCounts != null
 
   return (
     <div style={{ background: 'linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 60%,var(--bg-3) 100%)', fontFamily: "'DM Sans',sans-serif", minHeight: '100vh', paddingBottom: '5rem', width: '100%', boxSizing: 'border-box' }}>
@@ -553,6 +603,108 @@ export default function Home() {
                 onClick={() => navigate('/films')}
               />
               <StatCard label="Days" value={daysSince(FOUNDING)} sub="of club" />
+            </div>
+          )}
+        </section>
+
+        {/* Milestones / Anniversaries */}
+        <section className="mt-8" style={{ animation: 'fadeUp 0.5s 0.35s ease both' }} aria-label="Milestones and anniversaries">
+          <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
+            Milestones
+          </p>
+          {loading ? (
+            <div className="grid grid-cols-3 gap-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+          ) : !showMilestones ? null : (
+            <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid rgba(var(--fg-rgb),0.08)' }}>
+              {/* Active round-number milestone banner */}
+              {milestoneBanner && (
+                <div
+                  className="flex items-center gap-3 p-3 rounded-xl mb-4"
+                  style={{ background: 'rgba(var(--accent-rgb),0.10)', border: '1px solid rgba(var(--accent-rgb),0.28)' }}
+                >
+                  <span style={{ fontSize: '22px', lineHeight: 1 }} aria-hidden="true">{milestoneBanner.glyph}</span>
+                  <div className="flex-1 min-w-0">
+                    <p style={{ color: 'var(--text)', fontSize: '14px', fontWeight: 600, margin: 0, lineHeight: 1.25 }}>
+                      {milestoneBanner.value} {milestoneBanner.noun}
+                      {milestoneBanner.kind === 'approaching' ? ' coming up' : ''}
+                    </p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>
+                      {milestoneBanner.kind === 'reached'
+                        ? 'Milestone reached'
+                        : `${milestoneBanner.remaining} to go`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Member join anniversaries (next ~7 days) */}
+              {anniversaries.length > 0 && (
+                <div className="mb-4">
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-faint)', margin: '0 0 6px' }}>
+                    Join anniversaries
+                  </p>
+                  <div className="space-y-1.5">
+                    {anniversaries.map(({ user: u, months, days }) => (
+                      <button
+                        key={u.id}
+                        onClick={() => openMember(u.id)}
+                        className="flex items-center gap-3 w-full text-left"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+                      >
+                        <Avatar user={u} size={32} />
+                        <p style={{ flex: 1, minWidth: 0, color: 'var(--text-muted)', fontSize: '13px', margin: 0, lineHeight: 1.3 }}>
+                          <span style={{ color: userColor(u), fontWeight: 600 }}>{(u.name ?? '').split(' ')[0]}</span>
+                          {' '}joined{' '}
+                          <span style={{ color: 'var(--text)', fontWeight: 500 }}>{months === 1 ? '1 month' : `${months} months`}</span>
+                          {' '}ago{' '}
+                          <span style={{ color: 'var(--accent)', fontFamily: "'DM Mono',monospace", fontSize: '11px' }}>· {inDaysLabel(days)}</span>
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Milestone stat tiles */}
+              <div className="grid grid-cols-3 gap-2">
+                <StatCard
+                  label="Club Age"
+                  value={age.months}
+                  sub={age.months === 1 ? 'month old' : 'months old'}
+                />
+                <StatCard
+                  label="Next Versary"
+                  value={age.nextVersary.days === 0 ? '🎂' : `${age.nextVersary.days}d`}
+                  sub={age.nextVersary.days === 0 ? 'today!' : `to ${age.nextVersary.ordinal}-mo mark`}
+                />
+                <StatCard
+                  label="1-Year"
+                  value={age.oneYear.reached ? '🎉' : `${age.oneYear.days}d`}
+                  sub={age.oneYear.reached ? 'anniversary!' : 'until Jan 5'}
+                />
+                {milestoneCounts.filmsWatched > 0 && (
+                  <StatCard
+                    label="Films Watched"
+                    value={milestoneCounts.filmsWatched}
+                    sub="all-time"
+                    onClick={() => navigate('/films')}
+                  />
+                )}
+                {milestoneCounts.scores > 0 && (
+                  <StatCard
+                    label="Scores Cast"
+                    value={milestoneCounts.scores}
+                    sub="all-time"
+                  />
+                )}
+                {(milestoneCounts.reviews + milestoneCounts.comments) > 0 && (
+                  <StatCard
+                    label="Discussion"
+                    value={milestoneCounts.reviews + milestoneCounts.comments}
+                    sub="posts"
+                  />
+                )}
+              </div>
             </div>
           )}
         </section>

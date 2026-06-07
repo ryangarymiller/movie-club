@@ -11,6 +11,7 @@ import Avatar from '../components/Avatar'
 import AvatarPicker from '../components/AvatarPicker'
 import { avatarLabel } from '../lib/avatars'
 import { deliberateSignOut } from '../lib/authLog'
+import { gatherUserData, buildScoresCsv, exportFilename, downloadBlob } from '../lib/exportData'
 import { FilmDetailOverlay } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
@@ -471,6 +472,33 @@ export default function Profile({ overlayUserId = null } = {}) {
       setPushBusy(false)
     }
   }, [enablePush, disablePush])
+
+  // ── Export my data (own profile only) ────────────────────────────────────────
+  // `busy` is the format currently being gathered ('json' | 'csv' | null) so each
+  // button shows its own loading state; `exportError` surfaces a query failure.
+  const [exportBusy, setExportBusy] = useState(null)
+  const [exportError, setExportError] = useState('')
+
+  const handleExport = useCallback(async (format) => {
+    if (!profile?.id || exportBusy) return
+    setExportError('')
+    setExportBusy(format)
+    try {
+      const data = await gatherUserData(supabase, profile)
+      if (format === 'csv') {
+        const csv = buildScoresCsv(data.scores)
+        downloadBlob(exportFilename(profile.name, 'csv'), csv, 'text/csv;charset=utf-8')
+      } else {
+        const json = JSON.stringify(data, null, 2)
+        downloadBlob(exportFilename(profile.name, 'json'), json, 'application/json')
+      }
+    } catch (err) {
+      setExportError(err?.message || 'Couldn’t build your export. Please try again.')
+    } finally {
+      setExportBusy(null)
+    }
+  }, [profile, exportBusy])
+
   const isOverlayMode = !!overlayUserId
 
   // If viewing another member's profile, load their data
@@ -1479,6 +1507,79 @@ export default function Profile({ overlayUserId = null } = {}) {
                 isLast
               />
             </div>
+          </div>
+        </section>}
+
+        {/* ── Section 4c: Your Data (export — own profile only) ── */}
+        {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.28s ease both' }}>
+          <span style={SECTION_LABEL}>Your Data</span>
+
+          <div style={{ ...CARD, padding: '16px' }}>
+            <p style={{ margin: '0 0 14px', fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Download everything the club holds about you — your scores, reviews, comments, picks,
+              watchlist, draft queue, guesses, predictions and awards — as a single file. This is
+              your data only.
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+              {/* Primary: full JSON export */}
+              <button
+                type="button"
+                onClick={() => handleExport('json')}
+                disabled={!!exportBusy}
+                aria-busy={exportBusy === 'json'}
+                aria-label="Export all my data as JSON"
+                style={{
+                  flex: '1 1 160px',
+                  padding: '11px 16px',
+                  borderRadius: '12px',
+                  background: 'var(--accent)',
+                  border: '1px solid var(--accent)',
+                  color: '#fff',
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  letterSpacing: '0.01em',
+                  cursor: exportBusy ? 'not-allowed' : 'pointer',
+                  opacity: exportBusy && exportBusy !== 'json' ? 0.55 : 1,
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                {exportBusy === 'json' ? 'Preparing…' : 'Export as JSON'}
+              </button>
+
+              {/* Secondary: scores-only CSV */}
+              <button
+                type="button"
+                onClick={() => handleExport('csv')}
+                disabled={!!exportBusy}
+                aria-busy={exportBusy === 'csv'}
+                aria-label="Export my scores as CSV"
+                style={{
+                  flex: '1 1 160px',
+                  padding: '11px 16px',
+                  borderRadius: '12px',
+                  background: 'rgba(var(--accent-rgb), 0.10)',
+                  border: '1px solid rgba(var(--accent-rgb), 0.28)',
+                  color: 'var(--accent)',
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  letterSpacing: '0.01em',
+                  cursor: exportBusy ? 'not-allowed' : 'pointer',
+                  opacity: exportBusy && exportBusy !== 'csv' ? 0.55 : 1,
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                {exportBusy === 'csv' ? 'Preparing…' : 'Scores as CSV'}
+              </button>
+            </div>
+
+            {exportError && (
+              <p role="alert" style={{ margin: '12px 0 0', fontSize: '12px', color: '#f87171', lineHeight: 1.4 }}>
+                {exportError}
+              </p>
+            )}
           </div>
         </section>}
 

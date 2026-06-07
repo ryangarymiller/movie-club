@@ -6,6 +6,8 @@ import { useTheme } from './context/ThemeContext'
 import { MemberOverlayProvider, useMemberOverlay } from './context/MemberOverlayContext'
 import { MemberStatsOverlayProvider } from './context/MemberStatsOverlayContext'
 import MemberStatsOverlay from './components/MemberStatsOverlay'
+import { PersonOverlayProvider } from './context/PersonOverlayContext'
+import PersonOverlay from './components/PersonOverlay'
 import { NotificationsProvider } from './context/NotificationsContext'
 import { ReadjustmentProvider } from './context/ReadjustmentContext'
 import { ThemeProvider } from './context/ThemeContext'
@@ -161,10 +163,13 @@ export default function App() {
             <ReadjustmentProvider>
               <MemberOverlayProvider>
                 <MemberStatsOverlayProvider>
-                  <ScrollRestorer />
-                  <AppRoutes />
-                  <MemberOverlayHost />
-                  <MemberStatsOverlay />
+                  <PersonOverlayProvider>
+                    <ScrollRestorer />
+                    <AppRoutes />
+                    <MemberOverlayHost />
+                    <MemberStatsOverlay />
+                    <PersonOverlay />
+                  </PersonOverlayProvider>
                 </MemberStatsOverlayProvider>
               </MemberOverlayProvider>
             </ReadjustmentProvider>
