@@ -350,6 +350,16 @@ notification_preferences — user_id (pk), muted_types (text[]), channel_push (b
 push_subscriptions — id, user_id, endpoint, p256dh, auth, created_at
                  (stores Web Push subscription objects; expired subs pruned by the send-push Edge Function)
 awards         — id, user_id, award_key, scope (monthly|seasonal|annual|alltime), period_ref
+month_recaps   — month_id (pk), recap_md, best_review_id, best_review_blurb, model, generated_at
+                 (AI monthly recap + Best Review; written ONLY by the ai-recap Edge Function /
+                  service role; members read, admins may delete to regenerate)
+custom_avatars — id, pack, slug, label, storage_path, created_at; unique(pack,slug)
+                 (admin-uploaded avatars in the public `avatars` Storage bucket; members read,
+                  admins manage; referenced as avatar_id "storage:<path>", resolved by avatarSrc())
+movies.veto_resubmit_required (bool) — set by trg_notify_veto_threshold at 3/5 vetoes on an
+                 unscored film; cleared by resubmit_vetoed_pick(); exposed in movies_safe
+guest_films / guest_scores / guest_reviews — anon-safe SECURITY DEFINER views (Guest Mode):
+                 revealed-only, "First L." abbreviated (abbrev_name()), test excluded; anon SELECT only
 auth_events    — id, user_id (nullable), event, user_initiated (bool), detail (jsonb), user_agent, created_at
                  (admins read; open insert so signed-out events still log;
                   used by src/lib/authLog.js — logAuthEvent() fire-and-forget,
@@ -374,6 +384,13 @@ Extensions / infra: pg_net (HTTP from DB triggers); supabase_vault secrets: rese
      app_base_url, vapid_private_key, vapid_subject
 Edge Function: 'send-push' (Deno, npm:web-push) — sends Web Push to a user's subscriptions
      with VAPID; prunes expired (404/410) subscriptions
+Edge Function: 'streaming-fallback' (Deno) — Claude web-search fallback for US streaming providers
+Edge Function: 'ai-recap' (Deno, claude-sonnet-4-6, verify_jwt) — admin-gated; generates a month's
+     AI recap + Best Review into month_recaps. ANTHROPIC_API_KEY server-side only.
+RPC: public.resubmit_vetoed_pick(...) SECURITY DEFINER — picker swaps a vetoed pick (guards:
+     caller=picker/admin, veto_resubmit_required, zero scores); clears flag + veto votes. anon EXECUTE revoked.
+Function: public.abbrev_name(text) — "First L." abbreviation used by the guest_* views (search_path pinned)
+Storage: public bucket 'avatars' (admin-write RLS) backs custom_avatars
 ```
 
 ---
@@ -434,7 +451,7 @@ Overview · Me · Members · Club · Head to Head
 - **Stats UI consistency + caching (this session):** the `InfoButton` "?" popovers now **dismiss on outside click / Escape / scroll / resize** with a single-open coordinator (matching the Awards page — previously they only toggled on a second click). The Stats **sub-tabs grow to fill the bar** (`flex: 1 0 auto`, like Awards/Admin) instead of clustering left. The **Score-Over-Time TMDB community line is cached**: `movies.tmdb_vote_average` is loaded in the Stats query and seeds `ClubTrendChart`'s vote map so the line + legend paint on first render, then a live TMDB pull merges fresh values on top without blanking (no late pop-in). The connection-web edge popover renders its two titles + ↔ as a flex row so the arrow stays vertically centered when a title wraps.
 - **Per-member Score Spread box plot:** each member's row shows the IQR box + whiskers + a strong **median line** AND their **mean** as a ringed dot on the centre line (distinct shape + colour from the median), with a legend (median / mean / box / whiskers) and a `mean` value in the tooltip. *(Note: the club's medians all land on exactly 7.0 — verified as real, not a bug: 7.00 is the runaway modal score and everyone has an odd score count, so the middle value is a true 7. The mean is what actually separates members.)*
 - **Connection Web · 6 Degrees:** Films linked by a shared **actor, writer, or director**, rendered as a custom radial SVG node-link graph. **Single-tap a film node** to select it (lights its connections + shows who bridges them, labelled `dir.` / `wr.` / raw actor name); **tap the selected node again** to open its film overlay. **Tap a connecting line** to isolate that single connection (only that line + its two endpoint films light up; a fat invisible hit-path makes thin lines tappable). No focus box on nodes/lines; the viewBox is horizontally padded so edge labels (e.g. "Kingdom of Heaven") aren't clipped. Backed by `movies.tmdb_cast` (full TMDB billed cast — ~20–40 names per film, incl. minor roles, not just the headliners) + `movies.tmdb_writers` (Writing-department crew, backfilled from `/movie/{id}/credits`) + `director` — e.g. Charlie Kaufman bridges Adaptation, Being John Malkovich, and Eternal Sunshine. The graph uses the **entire** cast array (no top-N cap), so deep-billed shared actors form connections too.
-- **Cast & Crew dropdown (film overlay):** every film overlay has a collapsible "Cast & Crew" section listing the director, writers, and the full TMDB billed cast as chips (the same names that power the Connection Web). **Future feature (not built):** make each cast/crew name a tappable link that opens a **person popup** (actor / director / screenwriter / producer) showing their filmography within the club + a TMDB bio — turning the cast list and Connection Web bridges into navigable people pages.
+- **Cast & Crew dropdown (film overlay):** every film overlay has a collapsible "Cast & Crew" section listing the director, writers, and the full TMDB billed cast as chips (the same names that power the Connection Web). **Person pages (Phase 7 — implemented):** each director / writer / cast chip is now tappable → `PersonOverlay` (`src/components/PersonOverlay.jsx` + `PersonOverlayContext`) showing that person's in-club filmography (with click-through to each film) + a TMDB bio (searched by name via `/search/person` → `/person/{id}`, cached). Wired globally in `App.jsx` alongside the member overlays.
 - **Genre charts (personalized vs club-wide):** A genre breakdown of "films I scored" is identical for everyone (all members score every film), so the genre pie is split by scope: the **Club tab** shows the club-wide **Favourite Genres donut** (every film picked for the club — existence-based); the **Me / member pages** show two *personal* charts instead — **"Picks by Genre"** (donut of the genres of films THAT person picked = their curation) and **"Avg Score by Genre"** (bars of their average score per genre = their taste). The old per-member club-wide pie + the Club tab's genre bar list were removed in favour of this.
 - **Genre Blindspot Grid:** Per-member **curation** coverage — for each member × genre, how many films they've **PICKED** in that genre (a zero cell = a genre they've never picked from = their blindspot as a curator; rendered in a **neutral** tint, not red). Switched from "rated" to "picked" (everyone rates every film, so that carried little signal). Genre column labels are rotated vertical so the full name fits each narrow column. Columns are derived **live** from each film's `genre` field (auto-backfilled from TMDB), so newly-picked films with new genres **auto-populate** new columns; the display cap is set above TMDB's fixed 19-genre ceiling (the grid scrolls horizontally) so no genre is silently dropped.
 - **Per-film score breakdown:** every film overlay has a collapsible "Score breakdown" dropdown rendering that film's per-member score bar chart with glowing μ (mean) + ±1 σ reference lines and a data-fitted x-domain (`src/components/FilmScoreBars.jsx`) — the same chart shape used for the expandable film stats on Stats Overview.
@@ -543,9 +560,35 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
 
 ---
 
-## Guest Mode
+## Guest Mode (Phase 7 — implemented)
 
 Public read-only, no login required. Shows post-reveal data only (poster wall, film pages, scores, reviews). Member names shown as "First L." only. Hides: individual profiles, watchlists, draft queues, predictions, guesses.
+
+**Security model (the repo is public, anon is untrusted):** we do NOT open table-level RLS to anon. Instead `/guest` (`src/pages/Guest.jsx`, route outside `<RequireAuth>`) reads a tiny **controlled surface** — three SECURITY DEFINER views that bake in every safety filter: `guest_films` (scores_revealed only; picker label gated on `picker_revealed`; club avg), `guest_scores` (per-member abbreviated name + score), `guest_reviews` (abbreviated author + body). All exclude the test account and abbreviate names via `public.abbrev_name()`. `anon` is granted SELECT on these views ONLY; the base tables stay RLS-locked (verified: anon gets `[]` from movies/users/ratings). A "Browse as guest" link sits on Login. The definer views flag as a Supabase advisor ERROR by design (same accepted pattern as `movies_safe`).
+
+---
+
+## Architecture: AI Recaps & Best Review (Phase 6 — implemented)
+
+The two AI-dependent award-catalog pieces, server-side only. The `ai-recap` Edge Function (`supabase/functions/ai-recap`, Deno, model `claude-sonnet-4-6`) is **admin-gated** (caller JWT must resolve to an admin), gathers a month's films/scores/reviews with the service role (test account excluded), asks Claude for a short narrative recap + the single best-written review, validates the returned review id, and upserts `public.month_recaps` (recap_md, best_review_id, best_review_blurb, model, generated_at). `ANTHROPIC_API_KEY` + service key live ONLY in the function. `MonthReveal` renders the recap (safe **bold**/paragraph renderer, no raw HTML) + a highlighted "Best Review of the Month". Admin dashboard "AI Month Recaps" panel generates/regenerates per active/revealed month. Admin-triggered only (no auto-gen on reveal; pg_cron still deferred).
+
+---
+
+## Architecture: Veto Resubmission (Phase 7 — implemented)
+
+`VetoControl` (film overlay, pre-reveal) lets members vote to veto a pick. `movies.veto_resubmit_required` (exposed in `movies_safe`) is flipped by `trg_notify_veto_threshold` when veto votes reach **3 of 5** while the film is still unscored — which also notifies the picker. The picker then sees `VetoResubmit.jsx` (picker-only, keyed on `isPicker && veto_resubmit_required && no scores`): a TMDB-search "choose a replacement" flow that calls `resubmit_vetoed_pick()` (SECURITY DEFINER; re-guards caller=picker/admin + flagged + zero scores), swaps the movie row wholesale with fresh metadata, clears the flag, and resets the veto tally. Threshold is hardcoded to 3 (trigger + UI).
+
+---
+
+## Score Back-Calculation (Phase 1 — implemented in Admin)
+
+The Admin "Films with Missing Scores" matrix surfaces a "Back-calculate" CTA on any film missing **exactly one** expected member's score when `historical_avg_score` is set: `missing = historical_avg * expected_count - sum(known scores)`, offered only when the result is a valid 0.01–10.00, written as a real rating attributed to the missing member (updates an excitement-only row in place if present). `expectedMembersList()` sits beside `expectedMemberCount()`.
+
+---
+
+## Custom Avatars / Admin Assets (Phase 7 — implemented, additive)
+
+The static avatar library (`public/avatars/*` + auto-generated `src/lib/avatars.js`) is the polished base set and is left untouched. **Additive** on top: a public `avatars` Storage bucket (admin-write RLS, 2 MB, image mimes) + `public.custom_avatars` (pack/slug/label/storage_path; members read, admins manage). The Admin **Assets** tab uploads images (file + preview, pack datalist, label → slugified path) and lists/deletes them. `avatarSrc()` resolves `storage:<path>` ids to the bucket's public URL so rendering stays synchronous (no DB lookup); `AvatarPicker` merges `custom_avatars` in as extra packs after the static library. The 3 still-missing static icons can now be added here instead of via code.
 
 ---
 
@@ -566,7 +609,7 @@ At a season's end an **admin opens a readjustment window** (Admin → Dashboard 
 > `src/lib/awards.js`; ⏳ = catalogued but not yet implemented (needs AI, the Auteur vote,
 > guess-the-picker data, or multi-period trends — Phase 6).
 
-**Monthly:** Pick of the Month ✅, Flop of the Month ✅, The Contrarian ✅, The Oracle ✅, Hype Machine ✅, The Letdown ✅, The Surprise ✅, Most Divisive ✅, Most Unanimous ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅, Best Review (AI-assisted) ⏳
+**Monthly:** Pick of the Month ✅, Flop of the Month ✅, The Contrarian ✅, The Oracle ✅, Hype Machine ✅, The Letdown ✅, The Surprise ✅, Most Divisive ✅, Most Unanimous ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅, Best Review (AI-assisted) ✅ (via the `ai-recap` Edge Function → `month_recaps.best_review_id`; shown in MonthReveal)
 
 **Season:** Film of the Season ✅, Flop of the Season ✅, Picker of the Season ✅, Auteur Award 🎩 ✅, Ice Cold ✅, Most Divisive Film ✅, Most Unanimous Film ✅, Harshest Critic ✅, Most Generous ✅, The Contrarian ✅, The Oracle ✅, Most Consistent Picker ✅, Easy Crowd ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅
 
