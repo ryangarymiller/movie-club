@@ -1,9 +1,15 @@
+import { useState, useEffect } from 'react'
 import { AVATAR_PACKS, avatarSrc } from '../lib/avatars'
 
 // Avatar library picker. Grouped by pack, scrollable; selecting a tile calls
 // onSelect(id); the "No avatar" tile calls onSelect(null) to fall back to initials.
 export default function AvatarPicker({ currentId, color, onSelect, busy }) {
   const ring = color || 'var(--accent)'
+  // Optimistic selection so the tile highlights INSTANTLY on tap, rather than
+  // waiting for the DB save + profile refetch round-trip to update currentId.
+  const [picked, setPicked] = useState(currentId ?? null)
+  useEffect(() => { setPicked(currentId ?? null) }, [currentId])
+  const choose = (id) => { setPicked(id); onSelect(id) }
 
   const tile = (selected, child, key, label, onClick) => (
     <button
@@ -38,11 +44,11 @@ export default function AvatarPicker({ currentId, color, onSelect, busy }) {
         <p style={packLabel}>No avatar</p>
         <div style={grid}>
           {tile(
-            !currentId,
+            !picked,
             <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '9px', color: 'var(--text-dim)', textAlign: 'center', lineHeight: 1.1 }}>
               initials
             </span>,
-            '__none__', 'No avatar (use initials)', () => onSelect(null),
+            '__none__', 'No avatar (use initials)', () => choose(null),
           )}
         </div>
 
@@ -51,10 +57,10 @@ export default function AvatarPicker({ currentId, color, onSelect, busy }) {
             <p style={packLabel}>{pack.name}</p>
             <div style={grid}>
               {pack.icons.map(ic => tile(
-                ic.id === currentId,
+                ic.id === picked,
                 <img src={avatarSrc(ic.id)} alt={ic.label} loading="lazy"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} />,
-                ic.id, ic.label, () => onSelect(ic.id),
+                ic.id, ic.label, () => choose(ic.id),
               ))}
             </div>
           </div>
