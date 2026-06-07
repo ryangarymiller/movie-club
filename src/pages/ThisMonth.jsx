@@ -1744,7 +1744,8 @@ export default function ThisMonth() {
     await autoActivateDueMonths()
 
     const [{ data: month }, { data: revealed }, { data: ratings }, { data: usersData }] = await Promise.all([
-      supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
+      supabase.from('months').select('id, month_year').eq('status', 'active')
+        .order('month_year', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('months').select('id, month_year').eq('status', 'revealed')
         .order('month_year', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('ratings')

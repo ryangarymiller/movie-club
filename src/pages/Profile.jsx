@@ -41,6 +41,8 @@ const NOTIF_TYPES = [
   { key: 'reply',           glyph: '💬',  label: 'Replies to me', desc: 'Someone replies to your review or comment' },
   { key: 'mention',         glyph: '@',   label: '@mentions', desc: 'You’re tagged in a review or comment' },
   { key: 'score_change',    glyph: '✏️',  label: 'My score-change decisions', desc: 'Admin approves or denies your request' },
+  { key: 'pick_change',     glyph: '🎬',  label: 'My pick-change decisions', desc: 'Admin approves or denies a pick swap' },
+  { key: 'veto',            glyph: '🚫',  label: 'My pick vetoed', desc: 'The club votes to veto your pick' },
 ]
 
 // ─── Style helpers ──────────────────────────────────────────────────────────────

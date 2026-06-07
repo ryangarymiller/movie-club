@@ -46,6 +46,8 @@ const TYPE_META = {
   reply:           { glyph: '💬', fallback: 'New reply' },
   mention:         { glyph: '@',  fallback: 'You were mentioned' },
   score_change:    { glyph: '✏️', fallback: 'Score change' },
+  pick_change:     { glyph: '🎬', fallback: 'Pick change' },
+  veto:            { glyph: '🚫', fallback: 'Your pick was vetoed' },
 }
 const DEFAULT_META = { glyph: '🔔', fallback: 'Notification' }
 

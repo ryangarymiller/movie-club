@@ -76,13 +76,19 @@ export default function GuidedTour() {
   async function finish() {
     if (busy) return
     setBusy(true)
-    if (needsOnboarding && profile) {
-      await supabase.from('users').update({ has_completed_onboarding: true }).eq('id', profile.id)
-      await fetchProfile(profile.id)
+    try {
+      if (needsOnboarding && profile) {
+        await supabase.from('users').update({ has_completed_onboarding: true }).eq('id', profile.id)
+        await fetchProfile(profile.id)
+      }
+    } catch {
+      // A failed write shouldn't wedge the member in the tour — close it anyway;
+      // it'll simply re-prompt next session if the flag never landed.
+    } finally {
+      setBusy(false)
+      setStep(0)
+      closeTour()
     }
-    setBusy(false)
-    setStep(0)
-    closeTour()
   }
 
   const isLast = step === STEPS.length - 1

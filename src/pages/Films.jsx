@@ -977,7 +977,9 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
   // (only an active-month pick is locked; an upcoming pick is edited directly).
   useEffect(() => {
     let cancelled = false
-    supabase.from('months').select('id').eq('status', 'active').maybeSingle()
+    // limit(1) (not bare maybeSingle) so a transient double-active month — should
+    // the single-active invariant ever be violated — degrades instead of throwing.
+    supabase.from('months').select('id').eq('status', 'active').order('month_year', { ascending: false }).limit(1).maybeSingle()
       .then(({ data }) => { if (!cancelled) setActiveMonthId(data?.id ?? null) })
     return () => { cancelled = true }
   }, [movie])
@@ -1245,23 +1247,11 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
       : computedAvg
 
   // Recommend count — "X/Y would recommend" out of the members who were in the
-  // club that month (pre-Zack 4, post-Zack 5, test excluded), not out of however
-  // many filled the recommend field. The denominator is the expected member count
-  // for the film's calendar month, derived from each member's joined_at.
-  // `users` is already test-filtered in fetchDetails.
+  // "X/Y would recommend" counts only members who SUBMITTED a yes/no — not the full
+  // member count (per spec; matches how Stats computes it). `users` is test-filtered.
   const recommendYes = ratings.filter(r => r.recommend_outside_club === true).length
   const hasRecommendData = ratings.some(r => r.recommend_outside_club != null)
-  const filmMonthEnd = (() => {
-    if (!m._monthYear) return null
-    const [y, mo] = m._monthYear.split('-').map(Number)
-    // Day 0 of the next month == last day of the target month
-    const lastDay = new Date(y, mo, 0).getDate()
-    return `${m._monthYear}-${String(lastDay).padStart(2, '0')}`
-  })()
-  const expectedMemberCount = filmMonthEnd
-    ? users.filter(u => u.joined_at != null && u.joined_at <= filmMonthEnd).length
-    : users.length
-  const recommendTotal = expectedMemberCount
+  const recommendTotal = ratings.filter(r => r.recommend_outside_club != null).length
 
   // Month label
   const monthLabel = m._monthLabel ?? null
@@ -1810,8 +1800,8 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
             </>
           )}
 
-          {/* ── VETO (current pick, before scores are in) ── */}
-          {profile && !m.scores_revealed && !m.picker_revealed && (
+          {/* ── VETO (current pick, before any scores are in) ── */}
+          {profile && !m.scores_revealed && !m.picker_revealed && scoredRatings.length === 0 && (
             <>
               <Divider />
               <SectionLabel>Veto</SectionLabel>
