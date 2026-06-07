@@ -1950,7 +1950,6 @@ function filmStddev(movie) {
 export const SORT_OPTIONS = [
   { key: 'recent', label: 'Most Recent' },
   { key: 'oldest', label: 'Least Recent' },
-  { key: 'toscore', label: 'To Score First' },
   { key: 'high', label: 'Highest Rated' },
   { key: 'low', label: 'Lowest Rated' },
   { key: 'divisive', label: 'Most Divisive' },
@@ -1962,15 +1961,6 @@ export const SORT_OPTIONS = [
 export function sortMovies(movies, sort) {
   const list = [...movies]
   return list.sort((a, b) => {
-    if (sort === 'toscore') {
-      // Films the viewer hasn't scored yet float to the top (their "still to do"
-      // list); within each group fall back to most-recent (months desc, id desc).
-      const ua = a._myScored ? 1 : 0
-      const ub = b._myScored ? 1 : 0
-      if (ua !== ub) return ua - ub
-      if ((b._monthOrder ?? 0) !== (a._monthOrder ?? 0)) return (b._monthOrder ?? 0) - (a._monthOrder ?? 0)
-      return -idCompareAsc(a, b)
-    }
     if (sort === 'high') return (displayAvg(b) ?? -1) - (displayAvg(a) ?? -1)
     if (sort === 'low') return (displayAvg(a) ?? 999) - (displayAvg(b) ?? 999)
     if (sort === 'divisive' || sort === 'unanimous') {
@@ -2014,6 +2004,11 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
   const [filterMaxScore, setFilterMaxScore] = useState('')
   const [filterGenre, setFilterGenre] = useState(initialGenre || 'all')
   const [filterMember, setFilterMember] = useState('all')
+  const [filterToScore, setFilterToScore] = useState(false)
+
+  // Whether the viewer still has any film they haven't personally scored — gates
+  // the "To score" filter toggle (no point showing it once you've scored them all).
+  const hasUnscored = movies.some(m => !m._myScored)
 
   // Apply an incoming genre filter (e.g. from clicking a genre tag in the overlay).
   useEffect(() => {
@@ -2055,6 +2050,10 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
 
   // Apply filters first
   let filtered = [...movies]
+  // "To score": only films the signed-in viewer hasn't personally scored yet.
+  if (filterToScore) {
+    filtered = filtered.filter(m => !m._myScored)
+  }
   if (filterSeason !== 'all') {
     filtered = filtered.filter(m => m._seasonId === filterSeason)
   }
@@ -2124,7 +2123,7 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
       : 'var(--surface-3)',
   }
 
-  const anyFilterActive = filterSeason !== 'all' || filterGenre !== 'all' || filterMember !== 'all' || filterMinScore !== '' || filterMaxScore !== ''
+  const anyFilterActive = filterToScore || filterSeason !== 'all' || filterGenre !== 'all' || filterMember !== 'all' || filterMinScore !== '' || filterMaxScore !== ''
 
   return (
     <div>
@@ -2140,6 +2139,23 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
         </div>
         {/* Filter row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* "To score" toggle — only films the viewer hasn't scored yet */}
+          {hasUnscored && (
+            <button
+              onClick={() => setFilterToScore(v => !v)}
+              aria-pressed={filterToScore}
+              style={{
+                ...selectStyle,
+                cursor: 'pointer',
+                border: filterToScore ? '1px solid var(--accent)' : selectStyle.border,
+                color: filterToScore ? 'var(--accent)' : selectStyle.color,
+                background: filterToScore ? 'rgba(var(--accent-rgb), 0.12)' : selectStyle.background,
+                fontWeight: filterToScore ? 600 : 400,
+              }}
+            >
+              To score
+            </button>
+          )}
           {/* Season dropdown */}
           {seasonOptions.length > 0 && (
             <select
@@ -2206,7 +2222,7 @@ function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenr
           {/* Clear filters if any active */}
           {anyFilterActive && (
             <button
-              onClick={() => { setFilterSeason('all'); setFilterGenre('all'); setFilterMember('all'); setFilterMinScore(''); setFilterMaxScore('') }}
+              onClick={() => { setFilterToScore(false); setFilterSeason('all'); setFilterGenre('all'); setFilterMember('all'); setFilterMinScore(''); setFilterMaxScore('') }}
               style={{
                 fontFamily: "'DM Mono', monospace",
                 fontSize: '9px',
