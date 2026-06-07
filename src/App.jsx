@@ -14,6 +14,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import AppLayout from './components/layout/AppLayout'
 import ScrollRestorer from './components/ScrollRestorer'
 import Login from './pages/Login'
+import Guest from './pages/Guest'
 import AuthCallback from './pages/AuthCallback'
 import NotApproved from './pages/NotApproved'
 import Home from './pages/Home'
@@ -83,6 +84,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/guest" element={<Guest />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/not-approved" element={<NotApproved />} />
 

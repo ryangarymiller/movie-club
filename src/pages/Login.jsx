@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
@@ -46,6 +47,19 @@ export default function Login() {
           </svg>
           {loading ? 'Signing in…' : 'Sign in with Google'}
         </button>
+
+        <div className="mt-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-gray-800" />
+          <span className="text-gray-600 text-xs">or</span>
+          <div className="h-px flex-1 bg-gray-800" />
+        </div>
+
+        <Link
+          to="/guest"
+          className="mt-5 w-full flex items-center justify-center gap-2 border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-white font-medium py-3 px-4 rounded-xl transition-colors"
+        >
+          Browse as guest
+        </Link>
 
         <p className="text-center text-gray-600 text-xs mt-6">
           Don't have access? Ask Ryan Miller for an invite.
