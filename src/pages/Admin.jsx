@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -591,6 +591,87 @@ function SeasonReadjustRow({ season, open, busy, lengthDays, onSet, onAuto }) {
   )
 }
 
+// AI month recaps — admin generates a narrative recap + Best Review per month
+// via the server-side `ai-recap` Edge Function (Anthropic key never leaves the
+// server). Shown in the month's Reveal section. Offered for active/revealed months.
+function AiRecapPanel({ months, movies, setError, setSuccess }) {
+  const [recaps, setRecaps] = useState({}) // month_id -> generated_at
+  const [busyId, setBusyId] = useState(null)
+
+  const monthsWithFilms = useMemo(() => {
+    const filmMonthIds = new Set(movies.map(m => m.month_id))
+    return months
+      .filter(mo => filmMonthIds.has(mo.id) && (mo.status === 'revealed' || mo.status === 'active'))
+      .sort((a, b) => String(b.month_year).localeCompare(String(a.month_year)))
+  }, [months, movies])
+
+  const loadRecaps = useCallback(async () => {
+    const { data } = await supabase.from('month_recaps').select('month_id, generated_at')
+    const map = {}
+    for (const r of data ?? []) map[r.month_id] = r.generated_at
+    setRecaps(map)
+  }, [])
+  useEffect(() => { loadRecaps() }, [loadRecaps])
+
+  async function generate(mo) {
+    if (busyId) return
+    setBusyId(mo.id); setError(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-recap', { body: { month_id: mo.id } })
+      if (error || data?.error) {
+        setError(`Recap failed for ${mo.month_year}: ${data?.error || error?.message || 'unknown error'}`)
+      } else {
+        setSuccess(`AI recap generated for ${mo.month_year}${data?.best_review_id ? ' (with a Best Review)' : ''}.`)
+        await loadRecaps()
+      }
+    } catch (e) {
+      setError(`Recap failed: ${e.message ?? 'unknown error'}`)
+    }
+    setBusyId(null)
+  }
+
+  return (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <Label>AI Month Recaps</Label>
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '6px 0 0', lineHeight: 1.5 }}>
+        Generates a narrative recap + picks the Best Review (shown in the month's Reveal section). Uses the server-side AI — safe to regenerate.
+      </p>
+      {monthsWithFilms.length === 0 ? (
+        <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '10px' }}>No active or revealed months yet.</p>
+      ) : (
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {monthsWithFilms.map(mo => {
+            const has = recaps[mo.id]
+            const isBusy = busyId === mo.id
+            return (
+              <div key={mo.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'rgba(var(--fg-rgb), 0.02)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: 'var(--text-strong)', fontSize: '13px', margin: 0 }}>{mo.month_year}</p>
+                  <p style={{ color: has ? '#4ade80' : 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>
+                    {has ? `recap saved ${new Date(has).toLocaleDateString()}` : 'no recap yet'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => generate(mo)}
+                  disabled={!!busyId}
+                  style={{
+                    flexShrink: 0, padding: '7px 12px', borderRadius: '7px',
+                    border: '1px solid var(--accent)', background: 'rgba(var(--accent-rgb), 0.12)', color: 'var(--accent)',
+                    fontFamily: "'DM Sans',sans-serif", fontSize: '12px', fontWeight: 600,
+                    cursor: busyId ? 'default' : 'pointer', opacity: busyId && !isBusy ? 0.5 : 1,
+                  }}
+                >
+                  {isBusy ? 'Generating…' : has ? 'Regenerate' : 'Generate'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfillFilm, onRefresh, setError, setSuccess }) {
   const totalFilms = movies.length
   const totalRatings = ratings.length
@@ -862,6 +943,9 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
           </div>
         )}
       </div>
+
+      {/* AI month recaps + Best Review (server-side Anthropic call) */}
+      <AiRecapPanel months={months} movies={movies} setError={setError} setSuccess={setSuccess} />
 
       {/* Pending score-change requests (member → admin approval) */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
