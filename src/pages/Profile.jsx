@@ -11,7 +11,7 @@ import Avatar from '../components/Avatar'
 import AvatarPicker from '../components/AvatarPicker'
 import { avatarLabel } from '../lib/avatars'
 import { deliberateSignOut } from '../lib/authLog'
-import { gatherUserData, buildFullCsv, exportFilename, downloadBlob } from '../lib/exportData'
+import { gatherUserData, buildFullCsv, buildPdfBlob, exportFilename, downloadBlob } from '../lib/exportData'
 import { FilmDetailOverlay, SORT_OPTIONS } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
@@ -543,6 +543,9 @@ export default function Profile({ overlayUserId = null } = {}) {
       if (format === 'csv') {
         const csv = buildFullCsv(data)
         downloadBlob(exportFilename(profile.name, 'csv'), csv, 'text/csv;charset=utf-8')
+      } else if (format === 'pdf') {
+        const blob = await buildPdfBlob(data)
+        downloadBlob(exportFilename(profile.name, 'pdf'), blob, 'application/pdf')
       } else {
         const json = JSON.stringify(data, null, 2)
         downloadBlob(exportFilename(profile.name, 'json'), json, 'application/json')
@@ -1688,6 +1691,32 @@ export default function Profile({ overlayUserId = null } = {}) {
                 }}
               >
                 {exportBusy === 'csv' ? 'Preparing…' : 'Export as CSV'}
+              </button>
+
+              {/* Secondary: formatted PDF report (jsPDF is lazy-loaded on click) */}
+              <button
+                type="button"
+                onClick={() => handleExport('pdf')}
+                disabled={!!exportBusy}
+                aria-busy={exportBusy === 'pdf'}
+                aria-label="Export all my data as PDF"
+                style={{
+                  flex: '1 1 160px',
+                  padding: '11px 16px',
+                  borderRadius: '12px',
+                  background: 'rgba(var(--accent-rgb), 0.10)',
+                  border: '1px solid rgba(var(--accent-rgb), 0.28)',
+                  color: 'var(--accent)',
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  letterSpacing: '0.01em',
+                  cursor: exportBusy ? 'not-allowed' : 'pointer',
+                  opacity: exportBusy && exportBusy !== 'pdf' ? 0.55 : 1,
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                {exportBusy === 'pdf' ? 'Preparing…' : 'Export as PDF'}
               </button>
             </div>
 

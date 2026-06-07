@@ -290,6 +290,61 @@ export function buildFullCsv(data) {
   return [header, '', sections.join('\r\n\r\n'), ''].join('\r\n')
 }
 
+// ─── PDF (a readable report) ──────────────────────────────────────────────────────
+// jsPDF is heavy, so it's dynamically imported here — it only loads when a member
+// actually clicks "Export as PDF" (kept out of the main bundle).
+
+export async function buildPdfBlob(data) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+  const margin = 48
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  const maxW = pageW - margin * 2
+  let y = margin
+
+  const ensure = (h) => { if (y + h > pageH - margin) { doc.addPage(); y = margin } }
+  const line = (str, { size = 10, bold = false, color = [40, 40, 40], gap = 4 } = {}) => {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setFontSize(size)
+    doc.setTextColor(color[0], color[1], color[2])
+    for (const wrapped of doc.splitTextToSize(String(str ?? ''), maxW)) {
+      ensure(size + gap)
+      doc.text(wrapped, margin, y)
+      y += size + gap
+    }
+  }
+  const heading = (str) => { y += 12; ensure(20); line(str, { size: 13, bold: true, color: [20, 20, 20] }); y += 2 }
+  const dim = (str) => line(str, { size: 9, color: [120, 120, 120] })
+
+  line('Movie Club — Your Data', { size: 20, bold: true, color: [20, 20, 20], gap: 7 })
+  dim(`${data.profile?.name ?? ''}${data.profile?.email ? ' · ' + data.profile.email : ''}`)
+  dim(`Exported ${new Date(data.exportedAt).toLocaleString()}`)
+
+  heading('Profile')
+  for (const [k, v] of Object.entries(data.profile ?? {})) line(`${k}: ${v ?? '—'}`)
+
+  const section = (title, rows, fmt) => {
+    heading(`${title} (${rows?.length ?? 0})`)
+    if (!rows || rows.length === 0) { dim('None'); return }
+    for (const r of rows) line(`• ${fmt(r)}`)
+  }
+  const yn = (b) => (b == null ? '' : b ? 'yes' : 'no')
+
+  section('Scores', data.scores, r => `${r.film ?? '—'} — ${r.score ?? '—'}${r.pre_watch_excitement != null ? ` (excitement ${r.pre_watch_excitement})` : ''}${r.recommend_outside_club != null ? `, recommend: ${yn(r.recommend_outside_club)}` : ''}`)
+  section('Reviews', data.reviews, r => `${r.film ?? '—'}: ${r.body ?? ''}`)
+  section('Comments', data.comments, r => `${r.film ?? '—'}: ${r.body ?? ''}`)
+  section('Picks', data.picks, r => `${r.film ?? '—'}${r.month ? ` (${r.month})` : ''}${r.justification ? ` — ${r.justification}` : ''}`)
+  section('Upcoming picks', data.upcomingPicks, r => `${r.title ?? '—'}${r.justification ? ` — ${r.justification}` : ''}`)
+  section('Draft queue', data.draftQueue, r => `${r.position != null ? r.position + '. ' : ''}${r.title ?? '—'}${r.year_released ? ` (${r.year_released})` : ''}`)
+  section('Watchlist', data.watchlist, r => `${r.title ?? '—'}${r.year_released ? ` (${r.year_released})` : ''}`)
+  section('Guesses', data.guesses, r => `${r.film ?? '—'}`)
+  section('Predictions', data.predictions, r => `${r.film ?? '—'} — predicted ${r.predicted_score ?? '—'}`)
+  section('Awards', data.awards, r => `${r.award_key} (${r.scope}${r.period_ref ? ' ' + r.period_ref : ''})${r.film ? ` — ${r.film}` : ''}${r.won_as_picker ? ' [as picker]' : ''}`)
+
+  return doc.output('blob')
+}
+
 // ─── File naming + download ──────────────────────────────────────────────────────
 
 // "movie-club-ryan-2026-06-07.json" — first name slugified, today's date.

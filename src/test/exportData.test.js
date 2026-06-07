@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildFullCsv, exportFilename } from '../lib/exportData'
+import { buildFullCsv, buildPdfBlob, exportFilename } from '../lib/exportData'
 
 const sample = {
   exportedAt: '2026-06-07T00:00:00.000Z',
@@ -39,5 +39,14 @@ describe('buildFullCsv', () => {
 describe('exportFilename', () => {
   it('slugs the first name + a .ext', () => {
     expect(exportFilename('Ryan Miller', 'csv')).toMatch(/^movie-club-ryan-\d{4}-\d{2}-\d{2}\.csv$/)
+  })
+})
+
+describe('buildPdfBlob', () => {
+  it('produces a non-empty PDF blob (lazy-loads jsPDF)', async () => {
+    const blob = await buildPdfBlob(sample)
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toContain('pdf')
+    expect(blob.size).toBeGreaterThan(500)
   })
 })
