@@ -1998,8 +1998,10 @@ export function sortMovies(movies, sort) {
 
 // ─── AllFilms tab ─────────────────────────────────────────────────────────────
 
-function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenre = '', hideScores = false }) {
-  const [sort, setSort] = useState('recent')
+function AllFilmsTab({ movies, loading, onSelect, userById, seasons, initialGenre = '', hideScores = false, initialSort = '' }) {
+  // Seed from the member's saved default-sort preference (validated against the
+  // known keys), falling back to "recent".
+  const [sort, setSort] = useState(() => (SORT_OPTIONS.some(o => o.key === initialSort) ? initialSort : 'recent'))
   const [filterSeason, setFilterSeason] = useState('all')
   const [filterMinScore, setFilterMinScore] = useState('')
   const [filterMaxScore, setFilterMaxScore] = useState('')
@@ -2948,7 +2950,7 @@ export default function Films() {
         {/* Tab content */}
         <div style={{ minWidth: 0 }}>
           {activeTab === 'All Films' && (
-            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} seasons={seasons} initialGenre={genreFilter} hideScores={hideScores} />
+            <AllFilmsTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} seasons={seasons} initialGenre={genreFilter} hideScores={hideScores} initialSort={profile?.default_film_sort ?? ''} />
           )}
           {activeTab === 'The Vault' && (
             <VaultTab movies={movies} loading={loading} onSelect={handleSelect} userById={userById} hideScores={hideScores} />

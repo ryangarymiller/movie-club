@@ -155,12 +155,35 @@ function ThemeSync() {
   return null
 }
 
+// Records the signed-in member's last-online time (throttled to ~5 min) on load
+// and when the tab regains focus. Writes only; never refetches the profile, so it
+// doesn't trigger the page reloads the AuthContext focus-guard prevents.
+function PresencePing() {
+  const { profile } = useAuth()
+  const lastPing = useRef(0)
+  useEffect(() => {
+    if (!profile?.id) return
+    const ping = () => {
+      const now = Date.now()
+      if (now - lastPing.current < 5 * 60 * 1000) return
+      lastPing.current = now
+      supabase.from('users').update({ last_online_at: new Date().toISOString() }).eq('id', profile.id).then(() => {})
+    }
+    ping()
+    const onVis = () => { if (document.visibilityState === 'visible') ping() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [profile?.id])
+  return null
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
           <ThemeSync />
+          <PresencePing />
           <NotificationsProvider>
             <ReadjustmentProvider>
               <MemberOverlayProvider>

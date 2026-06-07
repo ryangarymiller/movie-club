@@ -12,7 +12,7 @@ import AvatarPicker from '../components/AvatarPicker'
 import { avatarLabel } from '../lib/avatars'
 import { deliberateSignOut } from '../lib/authLog'
 import { gatherUserData, buildFullCsv, exportFilename, downloadBlob } from '../lib/exportData'
-import { FilmDetailOverlay } from './Films.jsx'
+import { FilmDetailOverlay, SORT_OPTIONS } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { useNotifications } from '../context/NotificationsContext'
@@ -63,6 +63,45 @@ const SECTION_LABEL = {
   color: 'var(--text-faint)',
   marginBottom: '12px',
   display: 'block',
+}
+
+// IANA timezone list for the preference picker (full set where supported, else a
+// sensible US-first fallback).
+const TIMEZONES = (() => {
+  try { return Intl.supportedValuesOf('timeZone') } catch {
+    return ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'UTC']
+  }
+})()
+
+const PREF_SELECT_STYLE = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '9px 11px',
+  borderRadius: '10px',
+  fontFamily: "'DM Sans', sans-serif",
+  fontSize: '13px',
+  color: 'var(--text-strong)',
+  background: 'rgba(var(--fg-rgb), 0.05)',
+  border: '1px solid rgba(var(--fg-rgb), 0.12)',
+  outline: 'none',
+  cursor: 'pointer',
+}
+
+// "5 minutes ago" / "3 hours ago" / "2 days ago".
+function relativeTime(iso) {
+  if (!iso) return null
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return null
+  const secs = Math.floor((Date.now() - then) / 1000)
+  if (secs < 90) return 'just now'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`
+  const months = Math.floor(days / 30)
+  return `${months} month${months === 1 ? '' : 's'} ago`
 }
 
 // Small pill button matching the "Change" affordance on the color picker.
@@ -444,6 +483,22 @@ export default function Profile({ overlayUserId = null } = {}) {
   const persistTheme = (patch) => {
     if (profile?.id) supabase.from('users').update(patch).eq('id', profile.id).then(() => {})
   }
+  // Member preferences (own profile): default film sort, timezone, last-online
+  // visibility. Optimistic local state mirrors `profile`; saves write + refetch.
+  const [prefSort, setPrefSort] = useState('recent')
+  const [prefTz, setPrefTz] = useState('')
+  const [prefShowOnline, setPrefShowOnline] = useState(true)
+  useEffect(() => {
+    if (!profile) return
+    setPrefSort(profile.default_film_sort ?? 'recent')
+    setPrefTz(profile.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || ''))
+    setPrefShowOnline(profile.show_last_online ?? true)
+  }, [profile])
+  const savePref = async (patch) => {
+    if (!profile?.id) return
+    await supabase.from('users').update(patch).eq('id', profile.id)
+    await fetchProfile(profile.id)
+  }
   const { close: closeMemberOverlay } = useMemberOverlay()
   const { openStats: openMemberStats } = useMemberStatsOverlay()
   const {
@@ -514,7 +569,7 @@ export default function Profile({ overlayUserId = null } = {}) {
     setViewedUserLoading(true)
     supabase
       .from('users')
-      .select('id, name, email, user_color, avatar_id, joined_at, role, is_op, is_active')
+      .select('id, name, email, user_color, avatar_id, joined_at, role, is_op, is_active, last_online_at, show_last_online')
       .eq('id', userId)
       .single()
       .then(({ data }) => {
@@ -888,6 +943,12 @@ export default function Profile({ overlayUserId = null } = {}) {
               >
                 {memberSince}
               </p>
+              {/* Last online — only for OTHER members who allow it (you're online now). */}
+              {!isOwnProfile && displayProfile?.show_last_online && relativeTime(displayProfile?.last_online_at) && (
+                <p style={{ color: 'var(--text-faint)', fontSize: '12px', margin: '3px 0 0', fontFamily: "'DM Mono', monospace" }}>
+                  Last online {relativeTime(displayProfile.last_online_at)}
+                </p>
+              )}
             </div>
           </div>
         </section>
@@ -1411,6 +1472,61 @@ export default function Profile({ overlayUserId = null } = {}) {
             >
               {ACCENT_SWATCHES.find(s => s.name === accent)?.label ?? ''}
             </p>
+          </div>
+        </section>}
+
+        {/* ── Section 4a: Preferences ── */}
+        {isOwnProfile && <section style={{ marginBottom: '2rem', animation: 'fadeUp 0.45s 0.25s ease both' }}>
+          <span style={SECTION_LABEL}>Preferences</span>
+
+          <div style={{ ...CARD, padding: '16px' }}>
+            {/* Default film sort — the initial sort for the All Films poster wall */}
+            <div style={{ marginBottom: '18px' }}>
+              <p style={{ ...LABEL_STYLE, margin: '0 0 6px' }}>Default film sort</p>
+              <p style={{ color: 'var(--text-faint)', fontSize: '12px', margin: '0 0 8px', lineHeight: 1.45 }}>
+                How the All Films wall is sorted when you open it.
+              </p>
+              <select
+                value={prefSort}
+                onChange={e => { setPrefSort(e.target.value); savePref({ default_film_sort: e.target.value }) }}
+                style={PREF_SELECT_STYLE}
+                aria-label="Default film sort"
+              >
+                {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+            </div>
+
+            {/* Timezone — used to render deadlines in the member's local time */}
+            <div style={{ marginBottom: '18px' }}>
+              <p style={{ ...LABEL_STYLE, margin: '0 0 6px' }}>Timezone</p>
+              <p style={{ color: 'var(--text-faint)', fontSize: '12px', margin: '0 0 8px', lineHeight: 1.45 }}>
+                Deadlines are shown in your local time. Detected: {Intl.DateTimeFormat().resolvedOptions().timeZone || '—'}.
+              </p>
+              <select
+                value={prefTz}
+                onChange={e => { setPrefTz(e.target.value); savePref({ timezone: e.target.value }) }}
+                style={PREF_SELECT_STYLE}
+                aria-label="Timezone"
+              >
+                {prefTz && !TIMEZONES.includes(prefTz) && <option value={prefTz}>{prefTz.replace(/_/g, ' ')}</option>}
+                {TIMEZONES.map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+              </select>
+            </div>
+
+            {/* Last-online visibility */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ ...LABEL_STYLE, margin: 0 }}>Show last online</p>
+                <p style={{ color: 'var(--text-faint)', fontSize: '12px', margin: '4px 0 0', lineHeight: 1.45 }}>
+                  Let other members see when you were last active.
+                </p>
+              </div>
+              <NotifToggle
+                checked={prefShowOnline}
+                onChange={(v) => { setPrefShowOnline(v); savePref({ show_last_online: v }) }}
+                label="Show last online"
+              />
+            </div>
           </div>
         </section>}
 
