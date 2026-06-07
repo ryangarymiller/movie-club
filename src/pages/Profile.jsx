@@ -16,6 +16,7 @@ import { FilmDetailOverlay, SORT_OPTIONS } from './Films.jsx'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { useNotifications } from '../context/NotificationsContext'
+import { useTour } from '../context/TourContext'
 
 const ACCENT_SWATCHES = [
   { name: 'crimson',    hex: '#dc2626', label: 'Crimson'    },
@@ -483,6 +484,7 @@ export default function Profile({ overlayUserId = null } = {}) {
   const persistTheme = (patch) => {
     if (profile?.id) supabase.from('users').update(patch).eq('id', profile.id).then(() => {})
   }
+  const { startTour } = useTour()
   // Member preferences (own profile): default film sort, timezone, last-online
   // visibility. Optimistic local state mirrors `profile`; saves write + refetch.
   const [prefSort, setPrefSort] = useState('recent')
@@ -1529,6 +1531,22 @@ export default function Profile({ overlayUserId = null } = {}) {
                 onChange={(v) => { setPrefShowOnline(v); savePref({ show_last_online: v }) }}
                 label="Show last online"
               />
+            </div>
+
+            {/* Replay the guided tour */}
+            <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid rgba(var(--fg-rgb), 0.07)' }}>
+              <button
+                type="button"
+                onClick={startTour}
+                style={{
+                  width: '100%', padding: '11px 16px', borderRadius: '12px',
+                  background: 'rgba(var(--accent-rgb), 0.10)', border: '1px solid rgba(var(--accent-rgb), 0.28)',
+                  color: 'var(--accent)', fontFamily: "'DM Sans', sans-serif", fontSize: '14px', fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Replay app tour
+              </button>
             </div>
           </div>
         </section>}

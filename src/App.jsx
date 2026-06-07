@@ -24,7 +24,8 @@ import Stats from './pages/Stats'
 import Awards from './pages/Awards'
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
-import WelcomeDialog from './components/WelcomeDialog'
+import GuidedTour from './components/GuidedTour'
+import { TourProvider } from './context/TourContext'
 
 function RequireAuth({ children }) {
   const { session, profile, profileLoaded, profileError, loading } = useAuth()
@@ -74,7 +75,8 @@ function RequireAuth({ children }) {
 
   return (
     <>
-      {!profile.has_completed_onboarding && <WelcomeDialog />}
+      {/* GuidedTour self-gates: it opens for un-onboarded members and on replay. */}
+      <GuidedTour />
       {children}
     </>
   )
@@ -189,11 +191,13 @@ export default function App() {
               <MemberOverlayProvider>
                 <MemberStatsOverlayProvider>
                   <PersonOverlayProvider>
-                    <ScrollRestorer />
-                    <AppRoutes />
-                    <MemberOverlayHost />
-                    <MemberStatsOverlay />
-                    <PersonOverlay />
+                    <TourProvider>
+                      <ScrollRestorer />
+                      <AppRoutes />
+                      <MemberOverlayHost />
+                      <MemberStatsOverlay />
+                      <PersonOverlay />
+                    </TourProvider>
                   </PersonOverlayProvider>
                 </MemberStatsOverlayProvider>
               </MemberOverlayProvider>

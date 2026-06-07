@@ -484,6 +484,14 @@ Films open the film overlay and member names/avatars open the **member overlay**
 
 Global CSS classes `.mc-modal-backdrop` / `.mc-modal-panel` ensure modals never overflow the viewport top (mobile keyboard / off-screen safety). Apply these to all modals. ScoreModal uses these classes; mobile keyboard push-up is fixed.
 
+### Onboarding — Guided Tour (Phase 1/3 — implemented)
+
+The one-shot `WelcomeDialog` is **superseded** by `src/components/GuidedTour.jsx` — a skippable, **replayable** multi-step carousel (Welcome · This Month · Films · Stats · Awards · Notifications · Preferences). It self-gates: opens automatically for members with `has_completed_onboarding = false` (finishing/skipping sets the flag), and on demand via `useTour().startTour()` (`src/context/TourContext.jsx`, in the provider stack). A "Replay app tour" button lives in Profile → Preferences. Keyboard: ←/→ navigate, Esc skips.
+
+### Member Preferences (Phase 3 — implemented)
+
+Profile "Preferences" section (own profile only): **default film sort** (`users.default_film_sort`, a SORT_OPTIONS key — the All Films wall seeds its initial sort from it), **timezone** (`users.timezone`, full IANA picker, shows the detected zone), and a **"Show last online" toggle** (`users.show_last_online`). `PresencePing` (App.jsx) records `users.last_online_at` on load + tab refocus (throttled ~5min, write-only — no profile refetch, so it doesn't trip the focus-guard reload). Other members' profiles show "Last online X ago" when `show_last_online` is true.
+
 ---
 
 ## Themes
