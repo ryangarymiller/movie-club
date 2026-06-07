@@ -1950,6 +1950,7 @@ function filmStddev(movie) {
 export const SORT_OPTIONS = [
   { key: 'recent', label: 'Most Recent' },
   { key: 'oldest', label: 'Least Recent' },
+  { key: 'toscore', label: 'To Score First' },
   { key: 'high', label: 'Highest Rated' },
   { key: 'low', label: 'Lowest Rated' },
   { key: 'divisive', label: 'Most Divisive' },
@@ -1961,6 +1962,15 @@ export const SORT_OPTIONS = [
 export function sortMovies(movies, sort) {
   const list = [...movies]
   return list.sort((a, b) => {
+    if (sort === 'toscore') {
+      // Films the viewer hasn't scored yet float to the top (their "still to do"
+      // list); within each group fall back to most-recent (months desc, id desc).
+      const ua = a._myScored ? 1 : 0
+      const ub = b._myScored ? 1 : 0
+      if (ua !== ub) return ua - ub
+      if ((b._monthOrder ?? 0) !== (a._monthOrder ?? 0)) return (b._monthOrder ?? 0) - (a._monthOrder ?? 0)
+      return -idCompareAsc(a, b)
+    }
     if (sort === 'high') return (displayAvg(b) ?? -1) - (displayAvg(a) ?? -1)
     if (sort === 'low') return (displayAvg(a) ?? 999) - (displayAvg(b) ?? 999)
     if (sort === 'divisive' || sort === 'unanimous') {
@@ -2692,6 +2702,7 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
 const TABS = ['All Films', 'The Vault', 'By Season', 'History']
 
 export default function Films() {
+  const { profile } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const urlTab = searchParams.get('tab')
   const urlGenre = searchParams.get('genre') ?? ''
@@ -2754,6 +2765,15 @@ export default function Films() {
         scoresByMovie[r.movie_id].push(Number(r.score))
       }
 
+      // Films the signed-in viewer has personally scored (their own score is always
+      // visible to them) — powers the "To Score First" sort.
+      const myUserId = profile?.id ?? null
+      const myScored = new Set(
+        (ratingsData ?? [])
+          .filter(r => r.user_id === myUserId && r.score != null)
+          .map(r => r.movie_id)
+      )
+
       const enriched = (moviesData ?? [])
         // Exclude films from months that are still 'upcoming' (not yet activated/
         // revealed) — showing them on the Films page would leak picks before activation.
@@ -2780,6 +2800,7 @@ export default function Films() {
           _monthLabel: monthLabel,
           _scores: scores,
           _avgScore: avgScore,
+          _myScored: myScored.has(m.id),
         }
         })
 
@@ -2793,7 +2814,7 @@ export default function Films() {
       setLoading(false)
     }
     load()
-  }, [])
+  }, [profile?.id])
 
   // A discussion post (comment/review id) to scroll to + highlight after opening,
   // carried from a notification deep-link.
