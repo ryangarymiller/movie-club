@@ -24,13 +24,16 @@ const ZACK_JOIN_MONTH = '2026-04' // first month Zack is included
 
 // Members joined_at cutoffs for expected-score calculations
 // Always excludes the test user. Uses joined_at logic to handle Zack's April join.
-function expectedMemberCount(monthYear, allUsers) {
+function expectedMembersList(monthYear, allUsers) {
   return allUsers.filter(u => {
     if (!u.is_active) return false
     if (u.email === TEST_USER_EMAIL) return false
     if (isZackPreApril(u, monthYear)) return false
     return joinedByMonth(u, monthYear)
-  }).length
+  })
+}
+function expectedMemberCount(monthYear, allUsers) {
+  return expectedMembersList(monthYear, allUsers).length
 }
 
 // Whether a given user is Zack and the film is pre-April 2026
@@ -621,15 +624,28 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
     return actual < expected
   }).map(m => {
     const mo = monthMap[m.month_id]
-    const expected = mo ? expectedMemberCount(mo.month_year, activeUsers) : 0
-    const actual = ratings.filter(r => {
-      if (r.movie_id !== m.id || r.score == null) return false
-      const ratingUser = activeUsers.find(u => u.id === r.user_id)
-      if (!ratingUser) return false
-      if (isZackPreApril(ratingUser, mo?.month_year ?? '')) return false
-      return true
-    }).length
-    return { ...m, expected, actual, month_year: mo?.month_year }
+    const expectedMembers = mo ? expectedMembersList(mo.month_year, activeUsers) : []
+    const expected = expectedMembers.length
+    const filmScored = ratings.filter(r => r.movie_id === m.id && r.score != null)
+    const scoredExpected = expectedMembers.filter(u => filmScored.some(r => r.user_id === u.id))
+    const actual = scoredExpected.length
+    const missingMembers = expectedMembers.filter(u => !scoredExpected.some(s => s.id === u.id))
+
+    // Back-calculation: if exactly one expected member is missing a score and the
+    // film has a historical average, the missing score is determined:
+    //   missing = historical_avg * expected_count - sum(known scores)
+    // Only offered when the result lands inside the valid 0.01–10.00 range.
+    let backCalc = null
+    if (missingMembers.length === 1 && m.historical_avg_score != null) {
+      const sumKnown = scoredExpected.reduce((acc, u) => {
+        const r = filmScored.find(x => x.user_id === u.id)
+        return acc + (r?.score ?? 0)
+      }, 0)
+      const raw = m.historical_avg_score * expected - sumKnown
+      const val = Math.round(raw * 100) / 100
+      if (val >= 0.01 && val <= 10.0) backCalc = { user: missingMembers[0], score: val }
+    }
+    return { ...m, expected, actual, month_year: mo?.month_year, backCalc }
   })
 
   const activeMonth = months.find(m => m.status === 'active')
@@ -645,6 +661,27 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
   })
   const canReorder = activeMovies.length > 1 && deadlinesSet === activeMovies.length
   const [reorderBusy, setReorderBusy] = useState(false)
+  const [backCalcBusy, setBackCalcBusy] = useState(null) // film id being back-calculated
+
+  // Insert (or update) the one missing score as a real rating, derived from the
+  // film's historical average. Attributed to the missing member.
+  async function runBackCalc(film) {
+    if (!film.backCalc || backCalcBusy) return
+    const { user: target, score } = film.backCalc
+    if (!window.confirm(`Back-calculate ${target.name}'s score for "${film.title}" as ${score.toFixed(2)}?\n\nDerived from the historical average — stored as a real score.`)) return
+    setBackCalcBusy(film.id); setError(null)
+    // A member may already have an excitement-only row (score null) — update it in
+    // place rather than inserting a duplicate.
+    const { data: existing } = await supabase
+      .from('ratings').select('id').eq('movie_id', film.id).eq('user_id', target.id).maybeSingle()
+    const res = existing
+      ? await supabase.from('ratings').update({ score, submitted_at: new Date().toISOString() }).eq('id', existing.id)
+      : await supabase.from('ratings').insert({ movie_id: film.id, user_id: target.id, score, submitted_at: new Date().toISOString() })
+    setBackCalcBusy(null)
+    if (res.error) { setError(`Back-calculation failed: ${res.error.message}`); return }
+    setSuccess(`Back-calculated ${target.name}'s score for ${film.title}: ${score.toFixed(2)}`)
+    onRefresh()
+  }
 
   // Move a film up/down in watch order by swapping its scoring deadline with its neighbour's.
   async function swapWatchOrder(index, dir) {
@@ -778,23 +815,49 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
         ) : (
           <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {missingScoreFilms.map(f => (
-              <button
+              <div
                 key={f.id}
-                onClick={() => onBackfillFilm?.(f.id)}
-                title="Open the Scores tab to backfill this film"
                 style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
-                  width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: '8px',
-                  border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'rgba(var(--fg-rgb), 0.02)',
-                  cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                  borderRadius: '8px', border: '1px solid rgba(var(--fg-rgb), 0.08)',
+                  background: 'rgba(var(--fg-rgb), 0.02)', overflow: 'hidden',
                 }}
               >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <p style={{ color: 'var(--text-strong)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
-                  <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>{f.month_year} · tap to backfill</p>
-                </div>
-                <Badge color="red">{f.actual}/{f.expected}</Badge>
-              </button>
+                <button
+                  onClick={() => onBackfillFilm?.(f.id)}
+                  title="Open the Scores tab to backfill this film"
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
+                    width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none',
+                    background: 'transparent', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ color: 'var(--text-strong)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
+                    <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '2px 0 0', fontFamily: "'DM Mono',monospace" }}>{f.month_year} · tap to backfill</p>
+                  </div>
+                  <Badge color="red">{f.actual}/{f.expected}</Badge>
+                </button>
+                {/* Exactly one missing score + a historical average → it's determined. */}
+                {f.backCalc && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderTop: '1px solid rgba(var(--fg-rgb), 0.06)', flexWrap: 'wrap' }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '11px', color: 'var(--text-dim)', fontFamily: "'DM Mono',monospace" }}>
+                      {f.backCalc.user.name} → <strong style={{ color: 'var(--accent)' }}>{f.backCalc.score.toFixed(2)}</strong> from historical avg
+                    </span>
+                    <button
+                      onClick={() => runBackCalc(f)}
+                      disabled={backCalcBusy === f.id}
+                      style={{
+                        padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--accent)',
+                        background: 'rgba(var(--accent-rgb), 0.12)', color: 'var(--accent)',
+                        fontFamily: "'DM Sans',sans-serif", fontSize: '12px', fontWeight: 600,
+                        cursor: backCalcBusy === f.id ? 'default' : 'pointer', opacity: backCalcBusy === f.id ? 0.6 : 1,
+                      }}
+                    >
+                      {backCalcBusy === f.id ? 'Saving…' : 'Back-calculate'}
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}

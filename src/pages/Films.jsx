@@ -8,6 +8,7 @@ import ScoreModal from '../components/ScoreModal'
 import CommentThread from '../components/CommentThread'
 import GuessThePicker from '../components/GuessThePicker'
 import VetoControl from '../components/VetoControl'
+import VetoResubmit from '../components/VetoResubmit'
 import ScoreChangeRequestButton from '../components/ScoreChangeRequest'
 import { PickChangeRequestButton } from '../components/PickChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
@@ -1815,6 +1816,13 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null }) {
               <Divider />
               <SectionLabel>Veto</SectionLabel>
               <div style={{ marginTop: '4px' }}>
+                {/* Picker-only: the club vetoed this pick — prompt a replacement. */}
+                {isPicker && m.veto_resubmit_required && scoredRatings.length === 0 && (
+                  <VetoResubmit
+                    movie={{ id: m.id, title: m.title }}
+                    onResubmitted={() => fetchDetails(movie.id, movie)}
+                  />
+                )}
                 <VetoControl
                   movieId={m.id}
                   currentUserId={profile.id}
