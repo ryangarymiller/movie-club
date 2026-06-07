@@ -208,7 +208,9 @@ function computeAllAwardRecords(rawData) {
   })
 
   // ── All-Time ──
-  const allTime = computeAllTimeAwards(movies, ratings, users, guesses)
+  const allTimeMonthByMovie = {}
+  movies.forEach(m => { allTimeMonthByMovie[m.id] = monthYearById[m.month_id] })
+  const allTime = computeAllTimeAwards(movies, ratings, users, guesses, allTimeMonthByMovie)
   pushFrom(ALLTIME_DEFS, allTime, 'alltime', 'All-Time', null)
 
   return records

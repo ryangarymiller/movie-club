@@ -869,10 +869,12 @@ export function computeAnnualAwards(movies, allRatings, users, year, guesses = [
   if (!revealedMovies.length) return null
 
   const movieIds = new Set(revealedMovies.map(m => m.id))
-  const relevantRatings = allRatings.filter(r => movieIds.has(r.movie_id))
-
   const userMap = {}
   users.forEach(u => { userMap[u.id] = u })
+  // Exclude Zack's pre-April-2026 scores from per-member critic stats (movie
+  // averages stay authoritative via historical_avg_score, computed below).
+  const relevantRatings = allRatings.filter(r =>
+    movieIds.has(r.movie_id) && isZackEligible(userMap[r.user_id]?.name, monthYearByMovie[r.movie_id]))
 
   // Per-movie scores
   const scoresByMovie = {}
@@ -1272,15 +1274,17 @@ export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
   }
 }
 
-export function computeAllTimeAwards(movies, allRatings, users, guesses = []) {
+export function computeAllTimeAwards(movies, allRatings, users, guesses = [], monthYearByMovie = {}) {
   const revealedMovies = movies.filter(m => m.scores_revealed)
   if (!revealedMovies.length) return null
 
   const movieIds = new Set(revealedMovies.map(m => m.id))
-  const relevantRatings = allRatings.filter(r => movieIds.has(r.movie_id))
-
   const userMap = {}
   users.forEach(u => { userMap[u.id] = u })
+  // Exclude Zack's pre-April-2026 scores from per-member critic stats (movie
+  // averages stay authoritative via historical_avg_score, computed below).
+  const relevantRatings = allRatings.filter(r =>
+    movieIds.has(r.movie_id) && isZackEligible(userMap[r.user_id]?.name, monthYearByMovie[r.movie_id]))
 
   // Per-movie scores
   const scoresByMovie = {}
@@ -1756,11 +1760,15 @@ function MonthlyTab({ months, movies, allRatings, users, loading, onFilm, onMemb
 
 // ─── All-Time Tab ─────────────────────────────────────────────────────────────
 
-function AllTimeTab({ movies, allRatings, users, guesses = [], loading, onFilm, onMember }) {
+function AllTimeTab({ movies, allRatings, users, guesses = [], months = [], loading, onFilm, onMember }) {
   const awards = useMemo(() => {
     if (loading || !movies.length) return null
-    return computeAllTimeAwards(movies, allRatings, users, guesses)
-  }, [movies, allRatings, users, guesses, loading])
+    const monthYearById = {}
+    months.forEach(m => { monthYearById[m.id] = m.month_year })
+    const monthYearByMovie = {}
+    movies.forEach(m => { monthYearByMovie[m.id] = monthYearById[m.month_id] })
+    return computeAllTimeAwards(movies, allRatings, users, guesses, monthYearByMovie)
+  }, [movies, allRatings, users, guesses, months, loading])
 
   const aid = useCallback((key) => `alltime:${key}:`, [])
 
@@ -2884,6 +2892,7 @@ export default function Awards() {
               allRatings={allRatings}
               users={users}
               guesses={guesses}
+              months={months}
               loading={loading}
               onFilm={onFilm}
               onMember={onMember}
