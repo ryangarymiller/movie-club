@@ -205,8 +205,8 @@ export const AVATAR_PACKS = [
         "label": "Aston Martin"
       },
       {
-        "id": "james-bond/gun-silhouette",
-        "label": "007 Silhouette"
+        "id": "james-bond/james-bond",
+        "label": "James Bond"
       },
       {
         "id": "james-bond/martini",
@@ -344,6 +344,10 @@ export const AVATAR_PACKS = [
     "slug": "alien",
     "name": "Alien",
     "icons": [
+      {
+        "id": "alien/facehugger",
+        "label": "Facehugger"
+      },
       {
         "id": "alien/ripley",
         "label": "Ripley"
