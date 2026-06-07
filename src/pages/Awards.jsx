@@ -329,9 +329,7 @@ function AwardCard({ emoji, label, winner, metric, posterUrl, posterTitle, noDat
                 color: 'var(--text-strong)',
                 margin: '0 0 4px',
                 lineHeight: 1.1,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                overflowWrap: 'break-word',
                 cursor: clickable ? 'pointer' : 'default',
                 textDecoration: clickable ? 'underline' : 'none',
                 textDecorationColor: clickable ? 'rgba(var(--fg-rgb), 0.2)' : undefined,
@@ -489,9 +487,7 @@ function BigPosterCard({ emoji, label, movie, avgScore, noData, onClick, awardId
               color: 'var(--text-strong)',
               margin: '0 0 6px',
               lineHeight: 1.05,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              overflowWrap: 'break-word',
             }}>
               {movie?.title ?? '—'}
             </p>
