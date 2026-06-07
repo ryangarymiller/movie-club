@@ -8,7 +8,16 @@ const DISPLAY = "'Bebas Neue', sans-serif"
 const AMBER = '#fbbf24'
 
 export default function VetoControl({ movieId, currentUserId, totalActiveMembers, threshold }) {
-  const vetoThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 3
+  // The threshold is an admin-configurable global (app_settings.veto_threshold);
+  // fall back to the prop, then to 3.
+  const [dbThreshold, setDbThreshold] = useState(null)
+  useEffect(() => {
+    let alive = true
+    supabase.from('app_settings').select('veto_threshold').limit(1).maybeSingle()
+      .then(({ data }) => { if (alive && data?.veto_threshold != null) setDbThreshold(data.veto_threshold) })
+    return () => { alive = false }
+  }, [])
+  const vetoThreshold = dbThreshold ?? (Number.isFinite(threshold) && threshold > 0 ? threshold : 3)
 
   const [votes, setVotes] = useState([])
   const [loading, setLoading] = useState(true)

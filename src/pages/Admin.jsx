@@ -673,6 +673,40 @@ function AiRecapPanel({ months, movies, setError, setSuccess }) {
   )
 }
 
+// Admin-configurable veto threshold (app_settings.veto_threshold). The DB trigger
+// and the VetoControl client both read this value.
+function VetoThresholdPanel({ setError, setSuccess }) {
+  const [threshold, setThreshold] = useState(3)
+  useEffect(() => {
+    supabase.from('app_settings').select('veto_threshold').limit(1).maybeSingle()
+      .then(({ data }) => { if (data?.veto_threshold != null) setThreshold(data.veto_threshold) })
+  }, [])
+  async function save(v) {
+    const n = Math.max(1, Math.min(20, parseInt(v, 10) || 3))
+    setThreshold(n)
+    const { error } = await supabase.from('app_settings').update({ veto_threshold: n, updated_at: new Date().toISOString() }).eq('id', true)
+    if (error) setError('Failed to save veto threshold: ' + error.message)
+    else setSuccess(`Veto threshold set to ${n} vote${n === 1 ? '' : 's'}.`)
+  }
+  return (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <Label>Veto Threshold</Label>
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace", lineHeight: 1.5 }}>
+        Veto votes needed on an unscored pick to force the picker to resubmit it.
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-muted)' }}>Votes required</span>
+        <input
+          type="number" min="1" max="20" value={threshold}
+          onChange={e => setThreshold(e.target.value)}
+          onBlur={e => save(e.target.value)}
+          style={{ width: '64px', background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)', borderRadius: '8px', padding: '7px 9px', color: 'var(--text-strong)', fontFamily: "'DM Mono',monospace", fontSize: '12px' }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfillFilm, onRefresh, setError, setSuccess }) {
   const totalFilms = movies.length
   const totalRatings = ratings.length
@@ -947,6 +981,9 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
 
       {/* AI month recaps + Best Review (server-side Anthropic call) */}
       <AiRecapPanel months={months} movies={movies} setError={setError} setSuccess={setSuccess} />
+
+      {/* Configurable veto threshold (app_settings.veto_threshold) */}
+      <VetoThresholdPanel setError={setError} setSuccess={setSuccess} />
 
       {/* Pending score-change requests (member → admin approval) */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
