@@ -3493,8 +3493,26 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
     // Club-wide genre mix as a donut (all club films), shown on the Club tab.
+    // This counts FILMS PICKED per genre (existence-based), not scores.
     const clubGenreDonut = topGenres.map(([name, value]) => ({ name, value }))
     const totalFilmsForGenre = revealedMovies.length
+
+    // Club-wide AVG SCORE per genre — average of every visible member score on
+    // films carrying that genre (the `ratings` here are already RLS-gated to what
+    // the viewer can see, so this respects the rolling reveal).
+    const clubGenreScoreAcc = {}
+    for (const r of ratings) {
+      if (r.score == null) continue
+      const mv = movieMap[r.movie_id]
+      if (!mv || !mv._exists) continue
+      const parts = (Array.isArray(mv.genre) ? mv.genre : (mv.genre ? String(mv.genre).split(',') : []))
+        .map(s => String(s).trim()).filter(Boolean)
+      for (const g of parts) (clubGenreScoreAcc[g] ??= []).push(Number(r.score))
+    }
+    const clubGenreScoreBars = Object.entries(clubGenreScoreAcc)
+      .map(([name, arr]) => ({ name, value: avg(arr), _count: arr.length }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
     // Are there any movies with genre data at all?
     const hasAnyGenreData = revealedMovies.some(m => m.genre && (Array.isArray(m.genre) ? m.genre.length > 0 : String(m.genre).trim() !== ''))
 
@@ -3811,6 +3829,7 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
       activeUsers,
       topGenres,
       clubGenreDonut,
+      clubGenreScoreBars,
       hasAnyGenreData,
       totalFilmsForGenre,
       blindspotGenres,
@@ -4325,10 +4344,10 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
         </GlassCard>
       </div>
 
-      {/* Favourite Genres — club-wide mix across every film picked for the club.
-          (The per-member genre charts live on the Me / member pages.) */}
+      {/* Most Picked Genres — club-wide mix by FILMS PICKED (not score) across every
+          film picked for the club. (Per-member genre charts live on the Me pages.) */}
       <div>
-        <SectionLabel>Favourite Genres</SectionLabel>
+        <SectionLabel>Most Picked Genres</SectionLabel>
         <GlassCard style={{ padding: '16px 12px' }}>
           {stats.clubGenreDonut.length === 0 ? (
             <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
@@ -4336,6 +4355,26 @@ function ClubTab({ movies, ratings, users, loading, monthsById = {}, onFilm, onM
             </p>
           ) : (
             <DonutChart data={stats.clubGenreDonut} height={220} onLegendClick={onGenre} />
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Avg Score by Genre — how the whole club rates each genre (by score). */}
+      <div>
+        <SectionLabel>Avg Score by Genre</SectionLabel>
+        <GlassCard style={{ padding: '16px 10px' }}>
+          {stats.clubGenreScoreBars.length === 0 ? (
+            <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>
+              {stats.hasAnyGenreData === false ? 'Run genre backfill in Admin to see this chart.' : 'No scored films with genre data yet.'}
+            </p>
+          ) : (
+            <ComparisonBar
+              data={stats.clubGenreScoreBars}
+              keys={[{ key: 'value', name: 'Avg' }]}
+              layout="vertical"
+              smartDomain
+              height={Math.max(120, stats.clubGenreScoreBars.length * 30 + 20)}
+            />
           )}
         </GlassCard>
       </div>
@@ -4905,7 +4944,7 @@ export default function Stats() {
           .eq('is_active', true),
         supabase
           .from('ratings')
-          .select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
+          .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
           .eq('user_id', profile.id),
         supabase
           .from('months')
