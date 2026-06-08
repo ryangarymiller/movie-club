@@ -27,6 +27,9 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [confirmBold, setConfirmBold] = useState(false)
+  // Lets a member who's already watched the film jump straight to their final
+  // score, skipping the (optional) pre-watch excitement step.
+  const [skipExcitement, setSkipExcitement] = useState(false)
   const [visible, setVisible] = useState(false)
   const inputRef = useRef(null)
 
@@ -40,10 +43,11 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   const isExcitementMode =
     !finalScoreAlreadySubmitted &&
     !existingRating?.pre_watch_excitement &&
-    !movie.scores_revealed
+    !movie.scores_revealed &&
+    !skipExcitement
   const isFinalMode =
     !finalScoreAlreadySubmitted &&
-    (existingRating?.pre_watch_excitement || movie.scores_revealed) &&
+    (existingRating?.pre_watch_excitement || movie.scores_revealed || skipExcitement) &&
     !existingRating?.score
   // Seasonal readjustment: while the film's season window is open a member may
   // overwrite an already-submitted final score directly (no change request).
@@ -504,6 +508,23 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
             >
               {saving ? 'Saving…' : isExcitementMode ? 'Lock In Excitement' : isReadjustMode ? 'Update Score' : 'Submit Score'}
             </button>
+
+            {/* Already watched it? Skip the (optional) pre-watch excitement step
+                and go straight to the final score. */}
+            {isExcitementMode && (
+              <button
+                type="button"
+                onClick={() => { setSkipExcitement(true); setScoreInput(''); setError(null); setConfirmBold(false) }}
+                style={{
+                  display: 'block', width: '100%', marginTop: '12px', padding: '4px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-muted)',
+                  textDecoration: 'underline', textUnderlineOffset: '3px', textDecorationColor: 'rgba(var(--fg-rgb),0.25)',
+                }}
+              >
+                Already watched it? Skip to your score →
+              </button>
+            )}
           </>
         )}
       </div>

@@ -90,6 +90,16 @@ describe('Excitement mode (no existingRating)', () => {
     expect(input).toBeInTheDocument()
   })
 
+  it('lets the member skip excitement and go straight to scoring', async () => {
+    renderModal()
+    expect(screen.getByText(/pre-watch excitement/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /skip to your score/i }))
+    // Now in final-score mode: the recommend prompt + "Submit Score" CTA appear.
+    expect(screen.getByText(/would you recommend/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /submit score/i })).toBeInTheDocument()
+    expect(screen.queryByText(/pre-watch excitement/i)).not.toBeInTheDocument()
+  })
+
   it('shows a validation error when submitted with an empty input', async () => {
     renderModal()
     const submitBtn = screen.getByRole('button', { name: /lock in excitement/i })
