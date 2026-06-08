@@ -192,3 +192,19 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+/* Recharts adds a focusable SVG surface (tabIndex) for a11y; clicking a chart —
+ * e.g. tapping/clicking away from a genre pie slice — leaves a stray focus outline
+ * "bounding box". These are decorative charts, so suppress that focus ring. */
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-sector:focus,
+.recharts-sector:focus-visible,
+.recharts-layer:focus,
+.recharts-layer:focus-visible,
+.recharts-pie:focus,
+.recharts-pie:focus-visible {
+  outline: none !important;
+}
