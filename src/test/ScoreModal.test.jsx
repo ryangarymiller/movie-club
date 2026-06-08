@@ -86,7 +86,7 @@ describe('Excitement mode (no existingRating)', () => {
 
   it('renders the score input', () => {
     renderModal()
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
     expect(input).toBeInTheDocument()
   })
 
@@ -99,28 +99,28 @@ describe('Excitement mode (no existingRating)', () => {
     )
   })
 
-  it('shows "Enter a valid number" for non-numeric input', async () => {
+  it('normalizes free-text entry (strips junk, comma -> dot) and validates empty', async () => {
     renderModal()
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
 
-    // jsdom sanitises type="number" and ignores non-numeric values through
-    // the normal value setter. Temporarily switch type to text, set the value,
-    // fire the React change event, then restore — this is the most reliable way
-    // to get a non-numeric string past the number input sanitisation.
-    input.type = 'text'
-    fireEvent.change(input, { target: { value: 'abc' } })
-    input.type = 'number'
+    // The input is type=text + manual normalization (not type=number), so junk
+    // chars are stripped and a comma decimal becomes a dot — the fix for the
+    // "value invalid" reports on comma-decimal keyboards / number-input quirks.
+    fireEvent.change(input, { target: { value: 'a8b,5c' } })
+    expect(input).toHaveValue('8.5')
 
+    // Submitting an empty field asks for a score.
+    fireEvent.change(input, { target: { value: '' } })
     const submitBtn = screen.getByRole('button', { name: /lock in excitement/i })
     await userEvent.click(submitBtn)
     await waitFor(() =>
-      expect(screen.getByText('Enter a valid number')).toBeInTheDocument()
+      expect(screen.getByText('Score is required')).toBeInTheDocument()
     )
   })
 
   it('shows a range error for a score above 10', async () => {
     renderModal()
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
     await userEvent.type(input, '11')
     const submitBtn = screen.getByRole('button', { name: /lock in excitement/i })
     await userEvent.click(submitBtn)
@@ -150,7 +150,7 @@ describe('Final score mode (existingRating with pre_watch_excitement, no score)'
 
   it('renders the score input', () => {
     renderModal({ existingRating })
-    expect(screen.getByRole('spinbutton')).toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
   })
 
   it('displays the locked pre-watch excitement value', () => {
@@ -173,7 +173,7 @@ describe('Confirmation dialog for extreme scores (final score mode)', () => {
 
   it('shows "Are you sure?" confirmation for a score above 8.99', async () => {
     renderModal({ existingRating })
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
     await userEvent.type(input, '9.5')
     const submitBtn = screen.getByRole('button', { name: /submit score/i })
     await userEvent.click(submitBtn)
@@ -184,7 +184,7 @@ describe('Confirmation dialog for extreme scores (final score mode)', () => {
 
   it('shows "Are you sure?" confirmation for a score below 2.01', async () => {
     renderModal({ existingRating })
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
     await userEvent.type(input, '1.5')
     const submitBtn = screen.getByRole('button', { name: /submit score/i })
     await userEvent.click(submitBtn)
@@ -195,7 +195,7 @@ describe('Confirmation dialog for extreme scores (final score mode)', () => {
 
   it('"Go Back" dismisses the confirmation and returns to the score input', async () => {
     renderModal({ existingRating })
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
     await userEvent.type(input, '9.5')
     await userEvent.click(screen.getByRole('button', { name: /submit score/i }))
     await waitFor(() => expect(screen.getByText('Are you sure?')).toBeInTheDocument())
@@ -209,7 +209,7 @@ describe('Confirmation dialog for extreme scores (final score mode)', () => {
 
   it('"Yes, submit" in the dialog saves and calls onSaved', async () => {
     const { onSaved } = renderModal({ existingRating })
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
     await userEvent.type(input, '9.5')
     await userEvent.click(screen.getByRole('button', { name: /submit score/i }))
     await waitFor(() => expect(screen.getByText('Are you sure?')).toBeInTheDocument())
@@ -220,7 +220,7 @@ describe('Confirmation dialog for extreme scores (final score mode)', () => {
 
   it('does NOT show confirmation for a score in the normal range (e.g. 7.0)', async () => {
     const { onSaved } = renderModal({ existingRating })
-    const input = screen.getByRole('spinbutton')
+    const input = screen.getByRole('textbox')
     await userEvent.type(input, '7')
     await userEvent.click(screen.getByRole('button', { name: /submit score/i }))
     // Confirmation should never appear

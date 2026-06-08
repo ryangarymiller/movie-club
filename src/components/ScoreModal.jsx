@@ -87,8 +87,19 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   // Android/browser Back closes the modal instead of navigating away.
   useBackClose(true, handleClose)
 
+  // Normalize free-text decimal entry instead of relying on <input type=number>,
+  // which hands back an empty string for comma-decimal keyboards/locales and
+  // various intermediate states — the cause of spurious "value invalid" errors.
+  // Accept a comma OR dot as the separator, keep only digits + one separator, and
+  // cap to two decimal places.
   function handleInput(e) {
-    setScoreInput(e.target.value)
+    let v = String(e.target.value).replace(',', '.').replace(/[^\d.]/g, '')
+    const dot = v.indexOf('.')
+    if (dot !== -1) {
+      // keep the first dot, drop any others, and limit to 2 decimals
+      v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '').slice(0, 2)
+    }
+    setScoreInput(v)
     setError(null)
     setConfirmBold(false)
   }
@@ -379,11 +390,9 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
               <input
                 id="score-input"
                 ref={inputRef}
-                type="number"
+                type="text"
                 inputMode="decimal"
-                min="0.01"
-                max="10.00"
-                step="0.01"
+                autoComplete="off"
                 value={scoreInput}
                 onChange={handleInput}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
