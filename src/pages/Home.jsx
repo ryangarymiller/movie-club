@@ -171,7 +171,7 @@ function StatCard({ label, value, sub, onClick }) {
       onMouseEnter={onClick ? e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.06)' } : undefined}
       onMouseLeave={onClick ? e => { e.currentTarget.style.background = 'rgba(var(--fg-rgb),0.03)' } : undefined}
     >
-      <p className="text-gray-600 uppercase mb-1.5 truncate" style={{ fontSize: '9px', letterSpacing: '0.12em', fontFamily: "'DM Mono', monospace" }}>{label}</p>
+      <p className="text-gray-600 uppercase mb-1.5 leading-tight" style={{ fontSize: '9px', letterSpacing: '0.12em', fontFamily: "'DM Mono', monospace" }}>{label}</p>
       <p className="text-white font-black leading-none mb-1" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '1.5rem' }}>{value}</p>
       {sub && <p className="leading-tight line-clamp-2" style={{ fontSize: '10px', color: onClick ? 'var(--accent-light)' : 'var(--text-muted)' }}>{sub}</p>}
     </div>
@@ -305,28 +305,22 @@ export default function Home() {
     const visibleUsers = (usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com' && u.is_active !== false)
     setUsers(visibleUsers)
 
-    // ── Milestone totals (counts only — test account excluded) ──────────────────
-    // The test account's score/review/comment activity must not be counted. We
-    // exclude it by user_id; head-only count queries avoid pulling any rows.
-    // Scores are scoped to REVEALED films' ids so the total is identical for every
-    // viewer (ratings SELECT RLS is rolling/per-viewer for the active month, which
-    // would otherwise make the count viewer-dependent — a club milestone shouldn't be).
-    const testUserId = (usersData ?? []).find(u => u.email === 'i.am.ryan.the.miller@gmail.com')?.id ?? null
-    const filterTest = q => (testUserId ? q.neq('user_id', testUserId) : q)
-    const revealedIds = (movies ?? []).filter(m => m.scores_revealed).map(m => m.id)
-    const scoresQ = revealedIds.length
-      ? filterTest(supabase.from('ratings').select('id', { count: 'exact', head: true }).not('score', 'is', null).in('movie_id', revealedIds))
+    // ── Milestone stats — PERSONAL to the viewer (their own journey on their home) ──
+    // Films watched = films YOU have a final score for; avg = your mean score; posts
+    // = your reviews + comments. (Head-only count queries avoid pulling rows.)
+    const myScored = (ratings ?? []).filter(r => r.score != null)
+    const myAvg = myScored.length
+      ? myScored.reduce((s, r) => s + Number(r.score), 0) / myScored.length
       : null
-    const [scoresCount, reviewsCount, commentsCount] = await Promise.all([
-      scoresQ ?? Promise.resolve({ count: 0 }),
-      filterTest(supabase.from('reviews').select('id', { count: 'exact', head: true })),
-      filterTest(supabase.from('comments').select('id', { count: 'exact', head: true })),
+    const [myReviewsCount, myCommentsCount] = await Promise.all([
+      supabase.from('reviews').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
+      supabase.from('comments').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
     ])
     setMilestoneCounts({
-      filmsWatched: revealedIds.length,
-      scores: scoresCount.count ?? 0,
-      reviews: reviewsCount.count ?? 0,
-      comments: commentsCount.count ?? 0,
+      filmsWatched: myScored.length,
+      avgScore: myAvg,
+      reviews: myReviewsCount.count ?? 0,
+      comments: myCommentsCount.count ?? 0,
     })
 
     // Build the Recent Activity feed: merge ratings, reviews, comments into one list.
@@ -404,7 +398,6 @@ export default function Home() {
   const milestoneBanner = (() => {
     if (!milestoneCounts) return null
     const candidates = [
-      { ...roundMilestone(milestoneCounts.scores, { step: 25 }), noun: 'scores', glyph: '💯' },
       { ...roundMilestone(milestoneCounts.filmsWatched, { step: 10 }), noun: 'films watched', glyph: '🎬' },
       { ...roundMilestone(milestoneCounts.reviews + milestoneCounts.comments, { step: 25 }), noun: 'discussion posts', glyph: '💬' },
     ].filter(c => c.kind)
@@ -685,22 +678,22 @@ export default function Home() {
                   <StatCard
                     label="Films Watched"
                     value={milestoneCounts.filmsWatched}
-                    sub="all-time"
+                    sub="by you"
                     onClick={() => navigate('/films')}
                   />
                 )}
-                {milestoneCounts.scores > 0 && (
+                {milestoneCounts.avgScore != null && (
                   <StatCard
-                    label="Scores Cast"
-                    value={milestoneCounts.scores}
-                    sub="all-time"
+                    label="Your Avg Score"
+                    value={milestoneCounts.avgScore.toFixed(2)}
+                    sub="across your scores"
                   />
                 )}
                 {(milestoneCounts.reviews + milestoneCounts.comments) > 0 && (
                   <StatCard
-                    label="Discussion"
+                    label="Your Posts"
                     value={milestoneCounts.reviews + milestoneCounts.comments}
-                    sub="posts"
+                    sub="reviews + comments"
                   />
                 )}
               </div>
