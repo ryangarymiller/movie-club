@@ -217,6 +217,9 @@ export default function Home() {
   const [activeClubAvgs, setActiveClubAvgs] = useState({}) // movie_id → rolling club avg (RLS-gated)
   const [activeMonthYear, setActiveMonthYear] = useState(null)
   const [allMovies, setAllMovies] = useState([])
+  // Club "films watched" = revealed OR active-month films (excludes the upcoming
+  // month's not-yet-watched picks, e.g. June's Juno/Gattaca).
+  const [clubFilmsWatched, setClubFilmsWatched] = useState(0)
   const [myRatings, setMyRatings] = useState([])
   const [users, setUsers] = useState([])
   const [activity, setActivity] = useState([])
@@ -300,6 +303,7 @@ export default function Home() {
     setActiveClubAvgs(avgs)
     setActiveMonthYear(activeMonth?.month_year ?? null)
     setAllMovies(movies ?? [])
+    setClubFilmsWatched((movies ?? []).filter(m => m.scores_revealed || m.month_id === activeMonth?.id).length)
     setMyRatings(ratings ?? [])
     // Test account must be invisible in all UI — filter by email. Also exclude inactive members.
     const visibleUsers = (usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com' && u.is_active !== false)
@@ -591,7 +595,7 @@ export default function Home() {
               />
               <StatCard
                 label="Films"
-                value={allMovies.length}
+                value={clubFilmsWatched}
                 sub={`watched`}
                 onClick={() => navigate('/films')}
               />
