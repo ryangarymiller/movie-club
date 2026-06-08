@@ -1385,7 +1385,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
         </GlassCard>
       </div>
 
-      {/* Member comparison (mini) */}
+      {/* Member comparison (mini) — how each member scores everyone's films */}
       {stats.memberAvgs.length > 0 && (
         <div>
           <SectionLabel>Member Averages</SectionLabel>
@@ -1398,6 +1398,25 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
               height={Math.max(120, stats.memberAvgs.length * 30 + 20)}
               cellFill="_fill"
               memberIds={stats.memberAvgs.map(u => u.id)}
+              onMember={onMember}
+            />
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Avg score of each member's own picks — curation quality */}
+      {stats.pickerAvgs.length > 0 && (
+        <div>
+          <SectionLabel>Avg Score of Their Picks</SectionLabel>
+          <GlassCard style={{ padding: '14px 10px' }}>
+            <ComparisonBar
+              data={stats.pickerAvgs.map(u => ({ name: firstLastFull(u.name), value: u.pickAvg, _fill: userColor(u) }))}
+              keys={[{ key: 'value', name: 'Pick avg' }]}
+              layout="vertical"
+              smartDomain
+              height={Math.max(120, stats.pickerAvgs.length * 30 + 20)}
+              cellFill="_fill"
+              memberIds={stats.pickerAvgs.map(u => u.id)}
               onMember={onMember}
             />
           </GlassCard>
@@ -1551,75 +1570,6 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
           />
         ) : (
           <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>Need at least 2 scores per film.</p>
-        )}
-      </div>
-
-      {/* Member Averages */}
-      <div>
-        <SectionLabel>Member Avg Scores</SectionLabel>
-        {stats.memberAvgs.length === 0 ? (
-          <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>No ratings yet.</p>
-        ) : (
-          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-            {stats.memberAvgs.map(u => {
-              return (
-              <GlassCard key={u.id} onClick={() => onMember?.(u.id)} style={{ flexShrink: 0, padding: '14px 16px', textAlign: 'center', minWidth: '90px' }}>
-                {/* Avatar */}
-                <Avatar user={u} size={40} style={{ margin: '0 auto 8px' }} />
-                <p style={{
-                  fontFamily: "'DM Sans',sans-serif",
-                  color: 'var(--text-muted)', fontSize: '11px',
-                  margin: '0 0 4px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden', textOverflow: 'ellipsis',
-                  maxWidth: '80px',
-                }}>
-                  {firstLast(u.name)}
-                </p>
-                <p style={{
-                  fontFamily: "'Bebas Neue',sans-serif",
-                  color: 'var(--text-strong)', fontSize: '1.3rem',
-                  letterSpacing: '0.04em', lineHeight: 1,
-                  margin: 0,
-                }}>
-                  {fmt(u.avgScore)}
-                </p>
-              </GlassCard>
-            )})}
-          </div>
-        )}
-      </div>
-
-      {/* Picker Averages — how well each member's own picks scored (curation) */}
-      <div>
-        <SectionLabel>Avg Score of Their Picks</SectionLabel>
-        {stats.pickerAvgs.length === 0 ? (
-          <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>No revealed picks yet.</p>
-        ) : (
-          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-            {stats.pickerAvgs.map(u => (
-              <GlassCard key={u.id} onClick={() => onMember?.(u.id)} style={{ flexShrink: 0, padding: '14px 16px', textAlign: 'center', minWidth: '90px' }}>
-                <Avatar user={u} size={40} style={{ margin: '0 auto 8px' }} />
-                <p style={{
-                  fontFamily: "'DM Sans',sans-serif",
-                  color: 'var(--text-muted)', fontSize: '11px', margin: '0 0 4px',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px',
-                }}>
-                  {firstLast(u.name)}
-                </p>
-                <p style={{
-                  fontFamily: "'Bebas Neue',sans-serif",
-                  color: 'var(--text-strong)', fontSize: '1.3rem',
-                  letterSpacing: '0.04em', lineHeight: 1, margin: 0,
-                }}>
-                  {fmt(u.pickAvg)}
-                </p>
-                <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '9px', margin: '4px 0 0', letterSpacing: '0.06em' }}>
-                  {u.pickCount} pick{u.pickCount === 1 ? '' : 's'}
-                </p>
-              </GlassCard>
-            ))}
-          </div>
         )}
       </div>
 
