@@ -1291,6 +1291,19 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
       .filter(u => u.avgScore != null)
       .sort((a, b) => b.avgScore - a.avgScore)
 
+    // Picker averages: how well each member's OWN picks scored — the mean of the
+    // club averages of the (revealed) films they picked. Measures curation, distinct
+    // from memberAvgs (how harshly/generously they score everyone else's picks).
+    const pickerAvgs = users
+      .filter(u => u.is_active !== false)
+      .map(u => {
+        const picks = revealed.filter(m => m.picker_revealed && m.picked_by_user_id === u.id)
+        const pickScores = picks.map(m => movieAvg(m)).filter(v => v != null)
+        return { ...u, pickAvg: pickScores.length ? avg(pickScores) : null, pickCount: pickScores.length }
+      })
+      .filter(u => u.pickAvg != null)
+      .sort((a, b) => b.pickAvg - a.pickAvg)
+
     // All-time score distribution buckets (0–10)
     const distBuckets = Array.from({ length: 10 }, (_, i) => ({
       label: `${i}–${i + 1}`,
@@ -1320,6 +1333,7 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
       highest: highest ? { movie: highest, avgScore: maxA } : null,
       lowest: lowest ? { movie: lowest, avgScore: minA } : null,
       memberAvgs,
+      pickerAvgs,
       movieScores,
       movieAvg,
     }
@@ -1572,6 +1586,39 @@ function OverviewTab({ movies, ratings, users, loading, onFilm, onMember }) {
                 </p>
               </GlassCard>
             )})}
+          </div>
+        )}
+      </div>
+
+      {/* Picker Averages — how well each member's own picks scored (curation) */}
+      <div>
+        <SectionLabel>Avg Score of Their Picks</SectionLabel>
+        {stats.pickerAvgs.length === 0 ? (
+          <p style={{ fontFamily: "'DM Sans',sans-serif", color: 'var(--hairline)', fontSize: '13px', margin: 0 }}>No revealed picks yet.</p>
+        ) : (
+          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
+            {stats.pickerAvgs.map(u => (
+              <GlassCard key={u.id} onClick={() => onMember?.(u.id)} style={{ flexShrink: 0, padding: '14px 16px', textAlign: 'center', minWidth: '90px' }}>
+                <Avatar user={u} size={40} style={{ margin: '0 auto 8px' }} />
+                <p style={{
+                  fontFamily: "'DM Sans',sans-serif",
+                  color: 'var(--text-muted)', fontSize: '11px', margin: '0 0 4px',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px',
+                }}>
+                  {firstLast(u.name)}
+                </p>
+                <p style={{
+                  fontFamily: "'Bebas Neue',sans-serif",
+                  color: 'var(--text-strong)', fontSize: '1.3rem',
+                  letterSpacing: '0.04em', lineHeight: 1, margin: 0,
+                }}>
+                  {fmt(u.pickAvg)}
+                </p>
+                <p style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text-faint)', fontSize: '9px', margin: '4px 0 0', letterSpacing: '0.06em' }}>
+                  {u.pickCount} pick{u.pickCount === 1 ? '' : 's'}
+                </p>
+              </GlassCard>
+            ))}
           </div>
         )}
       </div>
