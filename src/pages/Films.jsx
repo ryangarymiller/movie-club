@@ -1441,10 +1441,11 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
             </div>
           </div>
 
-          {/* ── SUBMIT YOUR SCORE (backfill CTA) ──
-              Only after the detail load confirms there's genuinely no score for the
-              viewer — never while the overlay is still loading (ratings empty mid-fetch). */}
-          {!detailLoading && m.scores_revealed && !myHasFinalScore && (
+          {/* ── SUBMIT YOUR SCORE ──
+              Shows for any unscored film the viewer can act on: a revealed/historical
+              film (backfill) OR an active-month film (live rolling scoring — Juno etc.).
+              Only after the detail load confirms there's genuinely no score yet. */}
+          {!detailLoading && !myHasFinalScore && (m.scores_revealed || m.month_id === activeMonthId) && (
             <>
               <Divider />
               <div style={{
@@ -1877,18 +1878,36 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
           {profile && (
             <>
               <Divider />
-              <div ref={discussionRef} style={{ marginTop: '4px' }}>
-                <CommentThread
-                  movieId={m.id}
-                  currentUserId={profile.id}
-                  /* Moderation (deleting others' content) is gated behind admin
-                     MODE, not just the admin role — so it isn't offered in normal use. */
-                  isAdmin={isAdmin && profile?.admin_mode_enabled}
-                  users={users}
-                  canParticipate={myRating?.score != null}
-                  focusId={focusPostId}
-                />
-              </div>
+              {/* Discussion is rolling-gated: you can't read others' reviews/comments
+                  until you've scored the film (or it's revealed). canSeeScores has no
+                  admin bypass, so this locks the thread for admins too — fixing a leak
+                  where an admin could read reviews before scoring. */}
+              {canSee ? (
+                <div ref={discussionRef} style={{ marginTop: '4px' }}>
+                  <CommentThread
+                    movieId={m.id}
+                    currentUserId={profile.id}
+                    /* Moderation (deleting others' content) is gated behind admin
+                       MODE, not just the admin role — so it isn't offered in normal use. */
+                    isAdmin={isAdmin && profile?.admin_mode_enabled}
+                    users={users}
+                    canParticipate={myRating?.score != null}
+                    focusId={focusPostId}
+                  />
+                </div>
+              ) : (
+                <div style={{
+                  marginTop: '4px', padding: '20px 16px', textAlign: 'center',
+                  background: 'rgba(var(--fg-rgb),0.025)', border: '1px solid rgba(var(--fg-rgb),0.07)', borderRadius: '14px',
+                }}>
+                  <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(var(--fg-rgb),0.3)', margin: '0 0 6px' }}>
+                    🔒 Discussion locked
+                  </p>
+                  <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-dim)', margin: 0, lineHeight: 1.5 }}>
+                    Submit your score to unlock the discussion and see other members’ reviews.
+                  </p>
+                </div>
+              )}
             </>
           )}
 

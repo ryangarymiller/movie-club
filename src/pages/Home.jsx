@@ -284,7 +284,14 @@ export default function Home() {
       }
     }
     setPickPrompt(nextPick)
-    const active = movies?.filter(m => m.month_id === activeMonth?.id) ?? []
+    // Watch order: earliest scoring deadline first (nulls last, ties by id) — the
+    // order the club watches films, used by "Your Turn" and This Month's films.
+    const active = (movies?.filter(m => m.month_id === activeMonth?.id) ?? [])
+      .sort((a, b) => {
+        const da = a.scoring_deadline ? new Date(a.scoring_deadline).getTime() : Infinity
+        const db = b.scoring_deadline ? new Date(b.scoring_deadline).getTime() : Infinity
+        return da !== db ? da - db : String(a.id).localeCompare(String(b.id))
+      })
     setActiveMovies(active)
 
     // Rolling club average per active film — computed from the RLS-gated ratings
@@ -331,13 +338,22 @@ export default function Home() {
     const userMap = Object.fromEntries(visibleUsers.map(u => [u.id, u.name]))
     const colorById = Object.fromEntries(visibleUsers.map(u => [u.id, userColor(u)]))
     const movieMap = Object.fromEntries((movies ?? []).map(m => [m.id, m]))
+    // Rolling visibility for activity: always show that someone "scored" a film, but
+    // mask the actual number until the viewer can see that film's scores (they've
+    // scored it, or it's revealed). Mirrors canSeeScores. Admins receive others' rows
+    // via the RLS admin bypass, so without this their feed would leak unrevealed scores.
+    const myScoredIds = new Set((ratings ?? []).filter(r => r.score != null).map(r => r.movie_id))
+    const canSeeFilmScores = (mid) => {
+      const mv = movieMap[mid]
+      return !!mv && (mv.scores_revealed || myScoredIds.has(mid))
+    }
     const events = []
     for (const r of recentRatings ?? []) {
       if (!userMap[r.user_id] || r.score == null) continue
       events.push({
         key: `rating-${r.id}`, at: r.submitted_at, userId: r.user_id, memberName: userMap[r.user_id],
         movie: movieMap[r.movie_id] ?? null, filmTitle: movieMap[r.movie_id]?.title ?? 'a film',
-        verb: 'scored', suffix: Number(r.score).toFixed(2),
+        verb: 'scored', suffix: canSeeFilmScores(r.movie_id) ? Number(r.score).toFixed(2) : null,
       })
     }
     for (const r of recentReviews ?? []) {
@@ -366,13 +382,16 @@ export default function Home() {
     load()
   }, [load])
 
-  // Live-refresh when any rating changes (e.g. you score from the movie page, or
-  // another member scores) so "Your Turn" / activity update without a refresh.
+  // Live-refresh when a rating, review, or comment changes (e.g. you score or post
+  // from the movie page, or another member does) so "Your Turn" / Recent Activity
+  // update without a refresh. RLS still scopes what each subscriber receives.
   useEffect(() => {
     if (!profile) return
     const channel = supabase
-      .channel('home-ratings')
+      .channel('home-activity')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => load())
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [profile, load])

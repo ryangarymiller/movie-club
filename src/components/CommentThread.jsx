@@ -153,6 +153,22 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
     return () => { alive = false }
   }, [fetchAll])
 
+  // Live-update the open thread when reviews/comments/reactions/votes change, so a
+  // new post or reaction from another member appears with no refresh. Reviews/comments
+  // are filtered to this film; reactions/votes carry no movie_id so we refetch on any
+  // change (fetchAll re-scopes to this thread's targets). RLS still gates what arrives.
+  useEffect(() => {
+    if (!movieId) return
+    const channel = supabase
+      .channel(`thread:${movieId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews', filter: `movie_id=eq.${movieId}` }, () => fetchAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments', filter: `movie_id=eq.${movieId}` }, () => fetchAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, () => fetchAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, () => fetchAll())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [movieId, fetchAll])
+
   // Keep `now` fresh so edit affordances expire on their own.
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000)
