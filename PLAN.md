@@ -17,6 +17,10 @@
 - **UX:** This Month pick CTA absorbs the deadline reminder as a subtitle (dropped the redundant banner). Admin "dev mode / not enforced" copy replaced with the soft-enforcement description. Home milestones per-member; "23 watched" club-stat fix; Stats Overview avg-of-picks bar chart + member-avg dedup; ScoreModal "value invalid" + skip-excitement fixes; genre-pie focus-box removal.
 - **Docs:** corrected email reality (verified domain delivers to opted-in members, not test-mode-only); full README/spec/CLAUDE congruence pass (4c live, Auteur = best picker, per-user export shipped, 4 modes/8 accents, Connection Web actor+writer+director).
 - **Email finding:** of 5 members only the two Ryans have `channel_email = true`; Resend sends from a verified domain (`movieclub.cc`) — email works, most members just haven't opted in.
+- **Admin club-wide export** (`ClubExportPanel` + `gatherClubData`/`buildClubCsv`): JSON/CSV of all members' films/scores/reviews/comments (test excluded).
+- **Day-before deadline reminder** (`cron_notify_due_soon`, `notify-due-soon` cron, type `deadline_soon` + 📅 glyph): pings non-scorers 24h before a film's deadline.
+- **Awards DB refresh** — client-soft `triggerAwardsWrite()` on Admin dashboard mount so the persisted `awards` table stays current after server-side reveals (cron/activation). (Awards were already persisted on admin reveals — corrected an earlier "unbuilt" misread.)
+- **RT comparison — decision:** no public Rotten Tomatoes API (Fandango partner-only). OMDb returns RT Tomatometer for many films (free key, spotty coverage) — the only practical proxy. Left unbuilt pending a call on whether the partial coverage is worth a second backfill; TMDB `vote_average` remains the consensus proxy.
 
 ---
 
@@ -463,7 +467,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] Full light mode — CSS-variable token system; light-mode accent overrides (vibrant per-accent colors + dark accent text for legibility); dark mode preserved
 - [x] 7 accent colors via CSS variables (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet) — active bottom-nav tab uses accent color
 - [x] 20 user colors with ring display and one-per-member enforcement — `userColor()` reads DB `user_color` first so chosen color propagates into Stats + Films member filter; Profile picker strikes out taken colors and collapses after selection
-- [~] Avatar library — admin **custom-avatar upload** (`custom_avatars` + Assets tab) + the static base set ship. The full set of ~18 themed packs (spec asset list, several trademarked IP) is **NOT built** — custom upload is the workaround.
+- [x] Avatar library — **accepted as done** (Ryan, session 13): admin **custom-avatar upload** (`custom_avatars` + Assets tab) + the static base set. The ~18 themed IP packs are descoped (custom upload covers any gap).
 - [x] Settings page — theme (4 modes), accent (8), user color, notifications + quiet hours, avatar, default film sort, timezone, last-online toggle, tour replay (Profile); admin-mode via `admin_mode_enabled`
 - [x] Last online tracking + visibility toggle — `PresencePing` writes `last_online_at`; `show_last_online` toggle in Preferences
 
@@ -488,7 +492,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 ## Phase 6 — Awards & Recaps
 - [x] **"The Underrated" award (💎)** (session 10) — biggest positive club-avg minus TMDB-avg gap; Monthly / Season / Annual / All-Time; badge on film + profile pages; backed by new `movies.tmdb_vote_average` column
 - [x] **"The Deep Cut" award (🕳️)** (session 10) — genre rarity + log-scaled inverse TMDB `vote_count` obscurity score; same scopes; backed by `movies.tmdb_vote_count` + `tmdb_popularity`
-- [ ] Automated award calculation **written to the `awards` DB table** on reveal — **NOT built**: awards are computed live in `src/lib/awards.js` on each render instead (the `awards` table exists but is currently unused). Functionally fine; a divergence from the spec's "persist on reveal" design.
+- [x] Automated award calculation written to the `awards` DB table on reveal — `writeAwardsToDb()` (via `triggerAwardsWrite()`) upserts on every admin reveal; the UI live-computes as a fallback so results are always correct. A **client-soft refresh** on Admin dashboard mount (session 13) now also covers **server-side** reveals (the deadline cron + `activate_month`), which don't call the client path. *(Corrects an earlier note that wrongly called this unbuilt.)*
 - [x] **Auteur Award** — implemented as the season's **best picker by average pick score** (≥2 scored picks), finalized after the season's readjustment window closes. Per Ryan's decision it is **not** a ranked-choice vote (scores already rank the films). `auteur_award` key / season scope; the `auteur_votes` table is retained but unused for the award.
 - [x] AI monthly recap — `ai-recap` Edge Function (`claude-sonnet-4-6`, admin-gated); generated once per month + stable; surfaces in the month reveal and on Films → History
 - [x] AI best review detection — `ai-recap` picks the Best Review of the Month
@@ -510,6 +514,6 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] Admin Month Activation + Deadline Grace panels — activation date, auto-activate toggle, "Activate now" (`activate_month`), and `deadline_grace_days` tuning
 - [x] Admin Readjustment tab — Season Readjustment panel (open/close, length, per-season auto)
 - [x] Admin Assets tab — custom avatar upload/manage
-- [ ] Admin club-wide export tab — CSV + PDF (optional; per-user export already ships on Profile)
-- [ ] Watch schedule with suggested dates + reminders — **NOT built** (deadlines are auto-split, but there's no separate suggested-schedule / reminder feature)
+- [x] Admin club-wide export (session 13) — `ClubExportPanel` on the dashboard: JSON or CSV of every member's films/scores/reviews/comments (test excluded), via `gatherClubData()` / `buildClubCsv()` in `src/lib/exportData.js`
+- [x] Deadline reminder + schedule (session 13) — a **day-before reminder** notification (`cron_notify_due_soon`, hourly `notify-due-soon` cron, type `deadline_soon`) pings members who haven't scored a film due within 24h; the deadline schedule itself is the This Month film cards (sorted by deadline, inline countdowns). A "suggested when to watch" feature is intentionally descoped.
 - [x] Streaming providers — genre auto-backfilled from TMDB (Admin); genre/cast charts populated

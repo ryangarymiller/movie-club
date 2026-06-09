@@ -172,6 +172,7 @@ A `public.notifications` table (see Key Data Models) stores all in-app notificat
 - An `@mention` in a review/comment body (parsed against each member's FirstLast handle)
 - A `score_change_requests` decision (`approved`/`denied`) delivered to the requester
 - A **late score** (`notify_late_score`, `trg_notify_late_score` on `ratings`): a final score submitted/changed on the **active** month's already-revealed film (its soft deadline passed) notifies every other member — the club average they see just changed. Gating on `status='active'` + `scores_revealed` keeps it to genuine live late scores (historical/backfill on revealed months + readjustment re-scores never fire it). Type `late_score`; the existing email/push INSERT triggers handle delivery.
+- A **day-before deadline reminder** (`cron_notify_due_soon`, `notify-due-soon` pg_cron job, hourly `'35 * * * *'`): for each unrevealed active-month film due within 24h, notifies each active member who hasn't scored it yet ("Due tomorrow"). Deduped per (member, film) via the notifications table so it sends once. Type `deadline_soon` (📅).
 
 ### Notification center
 - `src/context/NotificationsContext.jsx` — loads notifications, subscribes to Supabase Realtime for live updates, exposes `markRead`/`markAllRead`, and surfaces preference state (muted types gate the unread badge count).
@@ -569,6 +570,8 @@ All historical films (Jan–May 2026) import with `scores_revealed = true` and `
 - **Deactivate:** counterpart to Activate — sets an active month back to `status='upcoming'` (after a confirm) so members can keep adding/changing picks. **Non-destructive:** films already materialized for that month are left in place (re-activating re-splits deadlines). Enabled only when the selected month is currently active.
 - **Upcoming Picks preview:** Admin-only section (behind a "Reveal" toggle on the Admin dashboard) showing all pending `upcoming_picks` before materialization. Regular members — including admins in their member-facing view — never see others' picks pre-reveal; this preview is strictly the admin panel.
 - Auto genre backfill runs on the Admin dashboard when any film is missing a genre (fetches from TMDB and updates `movies` in the background).
+- **Club-wide export** (`ClubExportPanel`): downloads the whole club's data — every member's films/scores/reviews/comments — as JSON or CSV (`gatherClubData()` / `buildClubCsv()` in `src/lib/exportData.js`; test account excluded). The per-member "download my data" export lives on each Profile.
+- **Awards DB refresh:** `triggerAwardsWrite()` (→ `writeAwardsToDb`, upsert into `awards`) runs on every admin reveal AND once on Admin dashboard mount (client-soft), so the persisted `awards` table stays current even after **server-side** reveals (the deadline cron + `activate_month`), which don't call the client path. The UI also live-computes awards as a fallback, so results are always correct regardless.
 - **Op-only (Ryan Miller):** Admin Members tab shows Op / Admin / Member tiers; op can promote members to admin or demote admins to member. No other admin can change roles. **DB-enforced:** the `trg_enforce_op_role` trigger rejects any `role`/`is_op` change by a non-op, so it can't be bypassed via the API (the `materialize_and_split_month` RPC is likewise authorization-gated).
 
 ---

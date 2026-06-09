@@ -368,3 +368,104 @@ export function downloadBlob(filename, content, mimeType) {
   // Revoke on the next tick so the click has resolved.
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
+
+// ─── Admin: club-wide export ─────────────────────────────────────────────────────
+//
+// The whole club's data in one file — every member's films, scores, reviews and
+// comments. Admin-only (RLS lets admins read all rows; the dashboard panel that
+// calls this is already admin-gated). The test account is filtered out everywhere,
+// same as the rest of the app. Picker identities come via `movies_safe`, which
+// exposes them to admins.
+
+const CLUB_TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+
+export async function gatherClubData(supabase) {
+  const [usersRes, monthsRes, moviesRes, ratingsRes, reviewsRes, commentsRes] = await Promise.all([
+    supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, timezone'),
+    supabase.from('months').select('id, month_year, status'),
+    supabase.from('movies_safe').select('id, month_id, title, year_released, director, genre, picked_by_user_id, scores_revealed, picker_revealed, scoring_deadline, historical_avg_score'),
+    supabase.from('ratings').select('movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
+    supabase.from('reviews').select('id, movie_id, user_id, body, created_at'),
+    supabase.from('comments').select('id, movie_id, user_id, review_id, parent_comment_id, body, created_at'),
+  ])
+  for (const res of [usersRes, monthsRes, moviesRes, ratingsRes, reviewsRes, commentsRes]) {
+    if (res.error) throw res.error
+  }
+
+  const allUsers = usersRes.data ?? []
+  const testIds = new Set(allUsers.filter(u => (u.email ?? '').toLowerCase() === CLUB_TEST_EMAIL).map(u => u.id))
+  const nameById = Object.fromEntries(allUsers.map(u => [u.id, u.name]))
+  const notTest = (uid) => uid && !testIds.has(uid)
+
+  const monthById = {}
+  for (const m of (monthsRes.data ?? [])) monthById[m.id] = { label: monthLabel(m.month_year), status: m.status }
+
+  const movies = moviesRes.data ?? []
+  const movieById = Object.fromEntries(movies.map(m => [m.id, m]))
+  const ratings = (ratingsRes.data ?? []).filter(r => notTest(r.user_id) && r.score != null)
+
+  // club average per film: prefer the authoritative historical avg, else the mean
+  // of non-test member scores.
+  const scoresByMovie = {}
+  for (const r of ratings) (scoresByMovie[r.movie_id] ??= []).push(Number(r.score))
+  const clubAvg = (m) => {
+    if (m.historical_avg_score != null) return Number(m.historical_avg_score)
+    const s = scoresByMovie[m.id] ?? []
+    return s.length ? s.reduce((a, b) => a + b, 0) / s.length : null
+  }
+
+  const members = allUsers
+    .filter(u => !testIds.has(u.id))
+    .map(u => ({ name: u.name, email: u.email, role: u.is_op ? 'op' : u.role, joined_at: u.joined_at, is_active: u.is_active, timezone: u.timezone }))
+
+  const films = movies.map(m => ({
+    film: m.title,
+    year_released: m.year_released,
+    month: monthById[m.month_id]?.label ?? null,
+    picker: m.picked_by_user_id ? (nameById[m.picked_by_user_id] ?? null) : null,
+    director: m.director,
+    genre: Array.isArray(m.genre) ? m.genre.join(' / ') : m.genre,
+    club_avg: clubAvg(m) != null ? Number(clubAvg(m).toFixed(2)) : null,
+    scores_revealed: m.scores_revealed,
+    scoring_deadline: m.scoring_deadline,
+  }))
+
+  // Long-form scores: one row per (film, member) — the most analysable shape.
+  const scores = ratings.map(r => ({
+    film: movieById[r.movie_id]?.title ?? null,
+    month: movieById[r.movie_id] ? (monthById[movieById[r.movie_id].month_id]?.label ?? null) : null,
+    member: nameById[r.user_id] ?? null,
+    score: r.score,
+    pre_watch_excitement: r.pre_watch_excitement,
+    recommend_outside_club: r.recommend_outside_club,
+    submitted_at: r.submitted_at,
+  }))
+
+  const reviews = (reviewsRes.data ?? [])
+    .filter(r => notTest(r.user_id))
+    .map(r => ({ film: movieById[r.movie_id]?.title ?? null, author: nameById[r.user_id] ?? null, body: r.body, created_at: r.created_at }))
+
+  const comments = (commentsRes.data ?? [])
+    .filter(c => notTest(c.user_id))
+    .map(c => ({ film: movieById[c.movie_id]?.title ?? null, author: nameById[c.user_id] ?? null, body: c.body, review_id: c.review_id, parent_comment_id: c.parent_comment_id, created_at: c.created_at }))
+
+  return { exportedAt: new Date().toISOString(), members, films, scores, reviews, comments }
+}
+
+// Build the club-wide export as one multi-section CSV.
+export function buildClubCsv(data) {
+  const sections = [
+    csvSection('Members', ['name', 'email', 'role', 'joined_at', 'is_active', 'timezone'], data.members),
+    csvSection('Films', ['film', 'year_released', 'month', 'picker', 'director', 'genre', 'club_avg', 'scores_revealed', 'scoring_deadline'], data.films),
+    csvSection('Scores', ['film', 'month', 'member', 'score', 'pre_watch_excitement', 'recommend_outside_club', 'submitted_at'], data.scores),
+    csvSection('Reviews', ['film', 'author', 'body', 'created_at'], data.reviews),
+    csvSection('Comments', ['film', 'author', 'body', 'review_id', 'parent_comment_id', 'created_at'], data.comments),
+  ]
+  const header = ['Movie Club — club-wide data export', `Exported at,${csvCell(data.exportedAt)}`].join('\r\n')
+  return [header, '', sections.join('\r\n\r\n'), ''].join('\r\n')
+}
+
+// "movie-club-all-2026-06-09.json"
+export function clubExportFilename(ext) {
+  return `movie-club-all-${new Date().toISOString().slice(0, 10)}.${ext}`
+}

@@ -47,6 +47,7 @@ const TYPE_META = {
   mention:         { glyph: '@',  fallback: 'You were mentioned' },
   score_change:    { glyph: '✏️', fallback: 'Score change' },
   late_score:      { glyph: '⏰', fallback: 'A late score came in' },
+  deadline_soon:   { glyph: '📅', fallback: 'A film is due soon' },
   pick_change:     { glyph: '🎬', fallback: 'Pick change' },
   veto:            { glyph: '🚫', fallback: 'Your pick was vetoed' },
 }

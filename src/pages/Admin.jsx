@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { writeAwardsToDb } from '../lib/awards'
+import { gatherClubData, buildClubCsv, clubExportFilename, downloadBlob } from '../lib/exportData'
 import { ScoreChangeRequestsAdminPanel } from '../components/ScoreChangeRequest'
 import { PickChangeRequestsAdminPanel } from '../components/PickChangeRequest'
 import Avatar from '../components/Avatar'
@@ -794,7 +795,63 @@ function DeadlineGracePanel({ setError, setSuccess }) {
   )
 }
 
+// Admin club-wide data export — the whole club's films/scores/reviews/comments
+// in one JSON or CSV file (test account excluded). Members export their own data
+// from their Profile; this is the admin "dump everything" counterpart.
+function ClubExportPanel({ setError, setSuccess }) {
+  const [busy, setBusy] = useState(null) // 'json' | 'csv'
+  const run = useCallback(async (format) => {
+    if (busy) return
+    setBusy(format)
+    try {
+      const data = await gatherClubData(supabase)
+      if (format === 'csv') {
+        downloadBlob(clubExportFilename('csv'), buildClubCsv(data), 'text/csv;charset=utf-8')
+      } else {
+        downloadBlob(clubExportFilename('json'), JSON.stringify(data, null, 2), 'application/json')
+      }
+      setSuccess(`Club export ready (${format.toUpperCase()}).`)
+    } catch (e) {
+      setError('Club export failed: ' + (e?.message || 'unknown error'))
+    } finally {
+      setBusy(null)
+    }
+  }, [busy, setError, setSuccess])
+
+  const btn = (primary) => ({
+    padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+    fontFamily: "'DM Sans',sans-serif", cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
+    border: primary ? 'none' : '1px solid rgba(var(--fg-rgb), 0.12)',
+    background: primary ? 'var(--accent)' : 'transparent',
+    color: primary ? 'var(--text-strong)' : 'var(--text-muted)',
+  })
+
+  return (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <Label>Club-wide Export</Label>
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace", lineHeight: 1.5 }}>
+        Download the whole club's data — every member's films, scores, reviews and comments (test account excluded). Members can export just their own data from their Profile.
+      </p>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button onClick={() => run('json')} disabled={!!busy} style={btn(true)}>{busy === 'json' ? 'Gathering…' : 'Export JSON'}</button>
+        <button onClick={() => run('csv')} disabled={!!busy} style={btn(false)}>{busy === 'csv' ? 'Gathering…' : 'Export CSV'}</button>
+      </div>
+    </div>
+  )
+}
+
 function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfillFilm, onRefresh, setError, setSuccess }) {
+  // Keep the persisted `awards` table fresh: server-side reveals (the deadline
+  // cron + activate_month) don't call triggerAwardsWrite, so refresh once when an
+  // admin opens the dashboard. Idempotent upsert; the UI also live-computes as a
+  // fallback, so this only keeps the stored copy (and exports/notifications) current.
+  const awardsRefreshed = useRef(false)
+  useEffect(() => {
+    if (awardsRefreshed.current) return
+    awardsRefreshed.current = true
+    triggerAwardsWrite()
+  }, [])
+
   const totalFilms = movies.length
   const totalRatings = ratings.length
   const vaultFilms = movies.filter(m => {
@@ -1074,6 +1131,9 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
 
       {/* Configurable veto threshold (app_settings.veto_threshold) */}
       <VetoThresholdPanel setError={setError} setSuccess={setSuccess} />
+
+      {/* Club-wide data export (all members' data, JSON/CSV) */}
+      <ClubExportPanel setError={setError} setSuccess={setSuccess} />
 
       {/* Pending score-change requests (member → admin approval) */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
