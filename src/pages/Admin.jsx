@@ -124,7 +124,8 @@ function SuccessBanner({ msg, onClose }) {
 // ─────────────────────────────────────────────
 // Activate a month: set status='active', set active_date (default the 1st, editable),
 // and materialize its upcoming picks into movies + split deadlines via the RPC.
-// Deadlines are NOT enforced yet (dev mode) — they are just computed/shown.
+// Deadlines are soft-enforced: a film's scores auto-reveal once its deadline
+// (+ grace) passes (the enforce-due-deadlines pg_cron job); late scores still count.
 // Admin oversight: members' UNRELEASED upcoming picks are secret in the member-facing
 // UI (even to admins, so the surprise isn't spoiled there). Admins can still read them
 // via RLS — this panel surfaces them ONLY here, behind an explicit "Reveal" toggle so an
@@ -353,7 +354,7 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
     <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
       <Label>Month Activation</Label>
       <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace" }}>
-        Sets the month active, records its active date, and materializes upcoming picks into films with deadlines split evenly. Deadlines are not enforced yet (dev mode).
+        Sets the month active, records its active date, and materializes upcoming picks into films with deadlines split evenly. Deadlines are soft-enforced: a film's scores auto-reveal once its deadline (+ grace) passes; non-scorers are marked absent and late scores still count.
       </p>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 160px', minWidth: 0 }}>
@@ -758,6 +759,41 @@ function VetoThresholdPanel({ setError, setSuccess }) {
   )
 }
 
+// Admin-configurable soft-deadline grace (app_settings.deadline_grace_days). The
+// enforce-due-deadlines pg_cron job reveals a film's scores once its scoring
+// deadline plus this many days has passed.
+function DeadlineGracePanel({ setError, setSuccess }) {
+  const [grace, setGrace] = useState(1)
+  useEffect(() => {
+    supabase.from('app_settings').select('deadline_grace_days').limit(1).maybeSingle()
+      .then(({ data }) => { if (data?.deadline_grace_days != null) setGrace(data.deadline_grace_days) })
+  }, [])
+  async function save(v) {
+    const n = Math.max(0, Math.min(30, parseInt(v, 10) || 0))
+    setGrace(n)
+    const { error } = await supabase.from('app_settings').update({ deadline_grace_days: n, updated_at: new Date().toISOString() }).eq('id', true)
+    if (error) setError('Failed to save deadline grace: ' + error.message)
+    else setSuccess(`Deadline grace set to ${n} day${n === 1 ? '' : 's'}.`)
+  }
+  return (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <Label>Deadline Grace</Label>
+      <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '8px 0 12px', fontFamily: "'DM Mono',monospace", lineHeight: 1.5 }}>
+        Soft enforcement: a film's scores auto-reveal this many days after its scoring deadline passes. Non-scorers are marked absent (not zeroed) and late scores still count. Set 0 to reveal right at the deadline.
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-muted)' }}>Grace (days)</span>
+        <input
+          type="number" min="0" max="30" value={grace}
+          onChange={e => setGrace(e.target.value)}
+          onBlur={e => save(e.target.value)}
+          style={{ width: '64px', background: 'rgba(var(--fg-rgb), 0.05)', border: '1px solid rgba(var(--fg-rgb), 0.1)', borderRadius: '8px', padding: '7px 9px', color: 'var(--text-strong)', fontFamily: "'DM Mono',monospace", fontSize: '12px' }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfillFilm, onRefresh, setError, setSuccess }) {
   const totalFilms = movies.length
   const totalRatings = ratings.length
@@ -962,6 +998,9 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
         setError={setError}
         setSuccess={setSuccess}
       />
+
+      {/* Soft-deadline grace period (app_settings.deadline_grace_days) */}
+      <DeadlineGracePanel setError={setError} setSuccess={setSuccess} />
 
       {/* Season readjustment window (open/close + end time) */}
       <SeasonReadjustmentPanel

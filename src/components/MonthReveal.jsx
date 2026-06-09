@@ -32,7 +32,7 @@ function Label({ children }) {
 
 // Minimal, safe renderer for the AI recap: splits into paragraphs and renders
 // **bold** spans. No raw HTML / dangerouslySetInnerHTML.
-function RecapProse({ text }) {
+export function RecapProse({ text }) {
   const paragraphs = String(text).split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
   const renderInline = (s) => s.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((seg, i) => {
     const m = seg.match(/^\*\*([^*]+)\*\*$/)

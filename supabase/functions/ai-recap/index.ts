@@ -65,13 +65,15 @@ function collectText(content: unknown): string {
 const fmt = (n: unknown) => (typeof n === "number" ? n.toFixed(2) : "—");
 
 // deno-lint-ignore no-explicit-any
-function buildPrompt(monthLabel: string, films: any[], reviews: any[]): string {
-  const filmLines = films.map((f) => {
+function buildPrompt(monthLabel: string, films: any[], reviews: any[], nameCollisions: string[][]): string {
+  // Films arrive in WATCH ORDER (sorted by scoring_deadline); number them so the
+  // model can't mistake a later film for the month's opener.
+  const filmLines = films.map((f, idx) => {
     const scores = f.memberScores.map((m: { name: string; score: number }) => `${m.name} ${fmt(m.score)}`).join(", ");
     return [
-      `• "${f.title}"${f.year ? ` (${f.year})` : ""} — picked by ${f.pickerName ?? "unknown"}`,
-      `  director: ${f.director ?? "—"}; genre: ${f.genre ?? "—"}; club average: ${fmt(f.clubAvg)}`,
-      `  scores: ${scores || "none yet"}`,
+      `${idx + 1}. "${f.title}"${f.year ? ` (${f.year})` : ""} — picked by ${f.pickerName ?? "unknown"}`,
+      `   director: ${f.director ?? "—"}; genre: ${f.genre ?? "—"}; club average: ${fmt(f.clubAvg)}`,
+      `   scores: ${scores || "none yet"}`,
     ].join("\n");
   }).join("\n");
 
@@ -79,17 +81,21 @@ function buildPrompt(monthLabel: string, films: any[], reviews: any[]): string {
     ? reviews.map((r) => `[id:${r.id}] ${r.author} on "${r.filmTitle}":\n${r.body}`).join("\n\n")
     : "(no reviews were written this month)";
 
+  const namingRule = nameCollisions.length
+    ? `Refer to members by first name — EXCEPT these members share a first name, so always use their full name (or last name) to tell them apart, never the bare first name: ${nameCollisions.map((g) => g.join(" and ")).join("; ")}.`
+    : `Refer to members by first name; if two members share one, use their full or last name to distinguish them.`;
+
   return [
     `You are the in-house critic for a private five-person movie club, writing the recap for ${monthLabel}.`,
-    `Everyone watches every film and scores it 0.01–10.00. Below are this month's films with their scores, then the members' written reviews.`,
+    `Everyone watches every film and scores it 0.01–10.00. The films below are listed in WATCH ORDER — the order the club actually watched them, first to last. Film 1 opened the month; the last film closed it. The members' written reviews follow.`,
     ``,
-    `FILMS:`,
+    `FILMS (in watch order):`,
     filmLines,
     ``,
     `REVIEWS:`,
     reviewLines,
     ``,
-    `Write a warm, witty, specific recap of the month (2–3 short paragraphs, ~150–220 words). Reference the actual films, the standout scores (highs, lows, and any big disagreements), and the general mood — like a friend who watched along. Use the members' first names. Do not invent facts not present above. Plain prose (you may use light markdown emphasis); no headings.`,
+    `Write a warm, witty, specific recap of the month (2–3 short paragraphs, ~150–220 words). Reference the actual films, the standout scores (highs, lows, and any big disagreements), and the general mood — like a friend who watched along. ${namingRule} HONOR THE WATCH ORDER: only film 1 "opened"/"kicked off" the month and only the last film "closed"/"ended" it — never call a later film the opener or an earlier film the closer, and don't claim two films "bookend" the month unless they are literally the first and last. Do not invent facts not present above. Plain prose (you may use light markdown emphasis); no headings.`,
     ``,
     `Then choose the single best-written review of the month from the REVIEWS list (most insightful, funny, or well-crafted). If there are no reviews, set best_review_id to null.`,
     ``,
@@ -140,9 +146,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (existing) return json({ ok: true, skipped: true, reason: "recap_exists" }, 200);
     }
 
+    // Order by scoring_deadline so the prompt lists films in WATCH ORDER (the
+    // order the club watched them) — the recap must not contradict it (e.g. call
+    // the last film the one that "kicked off" the month).
     const { data: filmRows } = await admin.from("movies")
       .select("id, title, year_released, director, genre, historical_avg_score, picked_by_user_id")
-      .eq("month_id", monthId);
+      .eq("month_id", monthId)
+      .order("scoring_deadline", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true });
     const films = filmRows ?? [];
     if (!films.length) return json({ error: "no_films" }, 422);
     const filmIds = films.map((f) => f.id);
@@ -152,6 +163,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const userById: Record<string, { name: string; email: string }> = {};
     for (const u of users) userById[u.id] = { name: u.name, email: u.email };
     const isTest = (id: string | null) => !!id && (userById[id]?.email ?? "").toLowerCase() === TEST_EMAIL;
+
+    // Detect members who share a first name (e.g. the two Ryans) so the recap can
+    // be told to disambiguate them by full/last name instead of a bare first name.
+    const firstNameGroups: Record<string, Set<string>> = {};
+    for (const u of users) {
+      if ((u.email ?? "").toLowerCase() === TEST_EMAIL) continue;
+      const first = (u.name ?? "").trim().split(/\s+/)[0];
+      if (!first) continue;
+      (firstNameGroups[first] ??= new Set<string>()).add(u.name);
+    }
+    const nameCollisions = Object.values(firstNameGroups)
+      .filter((s) => s.size > 1)
+      .map((s) => [...s]);
 
     const [{ data: ratingRows }, { data: reviewRows }] = await Promise.all([
       admin.from("ratings").select("movie_id, user_id, score").in("movie_id", filmIds),
@@ -188,7 +212,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const reviewIds = new Set(reviews.map((r) => r.id));
 
     // ── call Claude ───────────────────────────────────────────────────────────
-    const prompt = buildPrompt(month.month_year, enrichedFilms, reviews);
+    const prompt = buildPrompt(month.month_year, enrichedFilms, reviews, nameCollisions);
     const resp = await fetch(ANTHROPIC_API_URL, {
       method: "POST",
       headers: {

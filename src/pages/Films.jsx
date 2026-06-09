@@ -14,6 +14,7 @@ import { PickChangeRequestButton } from '../components/PickChangeRequest'
 import AwardsBadges from '../components/AwardsBadges'
 import FilmScoreBars from '../components/FilmScoreBars'
 import FilmTags from '../components/FilmTags'
+import { RecapProse } from '../components/MonthReveal'
 import Avatar from '../components/Avatar'
 import { canSeeScores } from '../lib/visibility'
 import { useBackClose } from '../lib/useBackClose'
@@ -2545,6 +2546,7 @@ function HistoryFilmCard({ movie, userById, onSelect, hideScores = false }) {
 function HistoryTab({ userById, onSelect, hideScores = false }) {
   const [months, setMonths] = useState([])
   const [moviesByMonth, setMoviesByMonth] = useState({})
+  const [recapByMonth, setRecapByMonth] = useState({})
   const [selectedMonthId, setSelectedMonthId] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -2608,8 +2610,22 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
         byMonth[mid].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       }
 
+      // AI recaps — fetch ONLY for revealed months. The active month's recap names
+      // pickers, so it must stay hidden until the month fully reveals (don't even
+      // load it here).
+      const revealedIds = monthsData.filter(m => m.status === 'revealed').map(m => m.id)
+      const recapMap = {}
+      if (revealedIds.length > 0) {
+        const { data: recapRows } = await supabase
+          .from('month_recaps')
+          .select('month_id, recap_md')
+          .in('month_id', revealedIds)
+        for (const r of (recapRows ?? [])) recapMap[r.month_id] = r.recap_md
+      }
+
       setMonths(monthsData)
       setMoviesByMonth(byMonth)
+      setRecapByMonth(recapMap)
       setSelectedMonthId(monthsData[0]?.id ?? null)
       setLoading(false)
     }
@@ -2696,6 +2712,22 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
                 ))}
               </div>
               <PickerLegend movies={selectedMovies} userById={userById} />
+              {/* The month's AI recap (revealed months only — gated in the loader) */}
+              {recapByMonth[selectedMonthId] && (
+                <div style={{
+                  marginTop: '20px', padding: '16px',
+                  background: 'rgba(var(--fg-rgb), 0.03)',
+                  border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px',
+                }}>
+                  <p style={{
+                    fontFamily: "'DM Mono', monospace", fontSize: '11px', letterSpacing: '0.08em',
+                    textTransform: 'uppercase', color: 'var(--accent)', margin: '0 0 10px',
+                  }}>
+                    The Month, Recapped
+                  </p>
+                  <RecapProse text={recapByMonth[selectedMonthId]} />
+                </div>
+              )}
             </div>
           )}
         </>

@@ -1449,17 +1449,18 @@ function PicksTab({ profile, onOpenFilm }) {
   const activeMonthLabel = activeMonth ? formatMonthLabel(activeMonth.month_year) : ''
   const loading = monthLoading || picksLoading
 
-  // Pick deadline reminder. If the next month has a scheduled auto-activation date,
-  // show it; otherwise (manual trigger / unscheduled) just nudge to pick before it
-  // starts — there's no hard date yet.
-  const pickReminder = (() => {
+  // Pick deadline note — rendered as a subtitle inside the pick CTA (not a separate
+  // banner). The month name is already in the CTA's main line, so this is just the
+  // "by when" part. A scheduled auto-activation gives a hard date; otherwise it's a
+  // soft "before it starts".
+  const pickDeadlineNote = (() => {
     if (!nextMonth) return null
     if (nextMonth.auto_activate && nextMonth.active_date) {
       const d = new Date(`${nextMonth.active_date}T12:00:00`)
       const when = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      return `Pick before ${when}, when ${nextMonthLabel} starts.`
+      return `Due before ${when}, when it starts`
     }
-    return `Make sure you pick before ${nextMonthLabel} starts.`
+    return 'Before the month starts'
   })()
 
   // The viewer's own pick is always visible (RLS guarantees it's readable). Other
@@ -1489,27 +1490,15 @@ function PicksTab({ profile, onOpenFilm }) {
         </button>
       ))}
 
-      {/* Pick deadline reminder (shown until the viewer has picked) */}
-      {!loading && nextMonth && !myPick && pickReminder && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '9px 12px', marginBottom: '10px', borderRadius: '10px',
-          background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)',
-          fontFamily: "'DM Sans',sans-serif", fontSize: '12.5px', color: 'var(--text-muted)',
-        }}>
-          <span style={{ fontSize: '13px' }}>⏰</span>
-          <span>{pickReminder}</span>
-        </div>
-      )}
-
-      {/* CTA button — only shown when the viewer has not yet picked for this month */}
+      {/* CTA button — only shown when the viewer has not yet picked for this month.
+          The deadline note rides along as a subtitle (no separate reminder banner). */}
       {!loading && nextMonth && !myPick && (
         <button
           onClick={() => setShowModal(true)}
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '10px',
             width: '100%',
             padding: '13px 16px',
             borderRadius: '12px',
@@ -1517,15 +1506,21 @@ function PicksTab({ profile, onOpenFilm }) {
             background: 'rgba(var(--accent-rgb, 99,102,241),0.08)',
             color: 'var(--text-strong)',
             fontFamily: "'DM Sans',sans-serif",
-            fontWeight: 600,
-            fontSize: '14px',
             cursor: 'pointer',
             marginBottom: '20px',
             textAlign: 'left',
             transition: 'background 0.15s ease',
           }}
         >
-          <span style={{ flex: 1 }}>Pick your movie for {nextMonthLabel}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: '14px' }}>Pick your movie for {nextMonthLabel}</div>
+            {pickDeadlineNote && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', fontWeight: 400, fontSize: '12px', color: 'var(--text-dim)' }}>
+                <span style={{ fontSize: '11px' }}>⏰</span>
+                <span>{pickDeadlineNote}</span>
+              </div>
+            )}
+          </div>
           <span style={{ color: 'var(--text-dim)', fontSize: '16px' }}>→</span>
         </button>
       )}
