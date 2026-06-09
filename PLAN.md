@@ -463,9 +463,9 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] Full light mode — CSS-variable token system; light-mode accent overrides (vibrant per-accent colors + dark accent text for legibility); dark mode preserved
 - [x] 7 accent colors via CSS variables (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet) — active bottom-nav tab uses accent color
 - [x] 20 user colors with ring display and one-per-member enforcement — `userColor()` reads DB `user_color` first so chosen color propagates into Stats + Films member filter; Profile picker strikes out taken colors and collapses after selection
-- [ ] Avatar library (all 18 packs — see spec for full asset list)
-- [~] Settings page: theme ✅, accent ✅, user color ✅, notifications + quiet hours ✅ (Profile "Notifications" section, session 10); avatar, sort default, last online, timezone, tour replay, admin mode toggle — remaining
-- [ ] Last online tracking and visibility toggle
+- [~] Avatar library — admin **custom-avatar upload** (`custom_avatars` + Assets tab) + the static base set ship. The full set of ~18 themed packs (spec asset list, several trademarked IP) is **NOT built** — custom upload is the workaround.
+- [x] Settings page — theme (4 modes), accent (8), user color, notifications + quiet hours, avatar, default film sort, timezone, last-online toggle, tour replay (Profile); admin-mode via `admin_mode_enabled`
+- [x] Last online tracking + visibility toggle — `PresencePing` writes `last_online_at`; `show_last_online` toggle in Preferences
 
 ## Phase 4 — Notifications & Scheduling
 - [x] **4a — In-app notification engine + center + preferences** (session 10): `notifications` table + selective SECURITY DEFINER triggers; `NotificationsContext` + `NotificationCenter` (bell/badge, popover/sheet, per-type glyphs, mark-read); `notification_preferences` table with per-type mute, quiet hours, email + push toggles; Profile "Notifications" settings section
@@ -480,34 +480,36 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] **Genre Blindspot Grid** (session 10) — per-member genre coverage heatmap implemented
 - [x] **Club trend chart TMDB line** (session 10) — neutral grey dotted TMDB average overlaid on the "score over time" chart
 - [x] **Films member filter** (session 10) — "All Films" filter-by-member control (revealed picks only); member color from DB propagates correctly
-- [ ] Recharts stubs needing data: guess-the-picker accuracy chart stubs remain
-- [ ] Taste compatibility heatmap (member × member score correlation)
-- [ ] Winning streak tracker
-- [ ] **Rotten Tomatoes comparison** — RT API/scrape; Stats currently uses TMDB `vote_average` as a proxy. Deferred from session 8 (RT API access TBD).
+- [x] Guess-the-picker results + score-prediction charts — implemented in Stats
+- [x] Taste compatibility heatmap (member × member score correlation)
+- [x] Winning / scoring-streak tracker
+- [ ] **Rotten Tomatoes comparison** — **NOT built**; Stats uses TMDB `vote_average` as a proxy (real RT data needs RT API access — TBD).
 
 ## Phase 6 — Awards & Recaps
 - [x] **"The Underrated" award (💎)** (session 10) — biggest positive club-avg minus TMDB-avg gap; Monthly / Season / Annual / All-Time; badge on film + profile pages; backed by new `movies.tmdb_vote_average` column
 - [x] **"The Deep Cut" award (🕳️)** (session 10) — genre rarity + log-scaled inverse TMDB `vote_count` obscurity score; same scopes; backed by `movies.tmdb_vote_count` + `tmdb_popularity`
-- [ ] Automated award calculation written to DB on reveal (monthly, seasonal, annual, all-time)
+- [ ] Automated award calculation **written to the `awards` DB table** on reveal — **NOT built**: awards are computed live in `src/lib/awards.js` on each render instead (the `awards` table exists but is currently unused). Functionally fine; a divergence from the spec's "persist on reveal" design.
 - [x] **Auteur Award** — implemented as the season's **best picker by average pick score** (≥2 scored picks), finalized after the season's readjustment window closes. Per Ryan's decision it is **not** a ranked-choice vote (scores already rank the films). `auteur_award` key / season scope; the `auteur_votes` table is retained but unused for the award.
-- [ ] AI monthly recap (Claude API via Edge Function, admin editable before publish)
-- [ ] AI best review detection (Claude API)
-- [ ] The Vault — auto-add/remove based on configurable threshold (default 8.5)
-- [ ] Season readjustment window — auto-open, score-derived rankings, tie flagging, Auteur vote unlock
+- [x] AI monthly recap — `ai-recap` Edge Function (`claude-sonnet-4-6`, admin-gated); generated once per month + stable; surfaces in the month reveal and on Films → History
+- [x] AI best review detection — `ai-recap` picks the Best Review of the Month
+- [x] The Vault — auto add/remove at the ≥8.5 threshold
+- [x] Season readjustment window — admin/auto-open, score-derived rankings; Auteur finalizes on close
 
 ## Phase 7 — Polish & Extras
-- [ ] Guest mode (first name + last initial only, post-reveal data only, no login required)
+- [x] Guest mode — public read-only `/guest` (revealed data, "First L." names, no login) via SECURITY DEFINER guest views
 - [x] Export — personal "download my data" (JSON/CSV/PDF, own data only) on Profile via `src/lib/exportData.js`. *Pending (optional):* an admin-level club-wide export.
-- [ ] Milestones & anniversaries timeline (10th film, 25th film, 1-year, etc.)
-- [ ] Watchlist (private, TMDB integration)
-- [ ] Draft Queue (private, drag-and-drop ranked, TMDB integration)
-- [ ] Admin avatar pack management (upload packs, add individual avatars, organise)
-- [ ] Home page "Your turn" action cards (what user still needs to do this month)
-- [ ] Home page activity feed (recent scores, comments, awards)
+- [x] Milestones & anniversaries — `src/lib/milestones.js` on Home
+- [x] Watchlist (private, TMDB) — `PersonalLists` on own Profile
+- [x] Draft Queue (private, ranked, TMDB) — drag/arrow reorder; also a "from your draft queue" quick-pick in This Month
+- [x] Admin avatar pack management — Assets tab uploads to the `custom_avatars` Storage bucket
+- [x] Home "Your turn" action cards
+- [x] Home activity feed — collapsible Recent Activity section
 - [x] Film tags — user-applied at rating time (compact picker in ScoreModal) + add/remove from the film overlay once scored; aggregated with counts on the film page. `film_tags` table (unique(movie,user,tag), own-write RLS) + `src/components/FilmTags.jsx`. (session 11)
-- [ ] "Would recommend outside club" field on ratings, shown as % on film page
+- [x] "Would recommend outside club" — `recommend_outside_club` on ratings, shown as "X/Y would recommend" on the film page
+- [x] Person pages — `PersonOverlay` (director/writer/cast chips → in-club filmography + TMDB bio)
 - [x] Admin Month Activation + Deadline Grace panels — activation date, auto-activate toggle, "Activate now" (`activate_month`), and `deadline_grace_days` tuning
-- [ ] Admin Readjustment tab — manage readjustment window
-- [ ] Admin Assets tab — avatar pack management
+- [x] Admin Readjustment tab — Season Readjustment panel (open/close, length, per-season auto)
+- [x] Admin Assets tab — custom avatar upload/manage
 - [ ] Admin club-wide export tab — CSV + PDF (optional; per-user export already ships on Profile)
-- [ ] Streaming providers: genre field needed for genre/cast Recharts stubs
+- [ ] Watch schedule with suggested dates + reminders — **NOT built** (deadlines are auto-split, but there's no separate suggested-schedule / reminder feature)
+- [x] Streaming providers — genre auto-backfilled from TMDB (Admin); genre/cast charts populated
