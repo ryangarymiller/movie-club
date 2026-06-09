@@ -46,6 +46,7 @@ const TYPE_META = {
   reply:           { glyph: '💬', fallback: 'New reply' },
   mention:         { glyph: '@',  fallback: 'You were mentioned' },
   score_change:    { glyph: '✏️', fallback: 'Score change' },
+  late_score:      { glyph: '⏰', fallback: 'A late score came in' },
   pick_change:     { glyph: '🎬', fallback: 'Pick change' },
   veto:            { glyph: '🚫', fallback: 'Your pick was vetoed' },
 }

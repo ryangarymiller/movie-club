@@ -2612,15 +2612,35 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
 
       // AI recaps — fetch ONLY for revealed months. The active month's recap names
       // pickers, so it must stay hidden until the month fully reveals (don't even
-      // load it here).
+      // load it here). Each entry is { md, best } — best = the AI-picked review.
       const revealedIds = monthsData.filter(m => m.status === 'revealed').map(m => m.id)
       const recapMap = {}
       if (revealedIds.length > 0) {
         const { data: recapRows } = await supabase
           .from('month_recaps')
-          .select('month_id, recap_md')
+          .select('month_id, recap_md, best_review_id, best_review_blurb')
           .in('month_id', revealedIds)
-        for (const r of (recapRows ?? [])) recapMap[r.month_id] = r.recap_md
+        // The chosen "Best Review" bodies, in one query.
+        const bestIds = (recapRows ?? []).map(r => r.best_review_id).filter(Boolean)
+        const reviewById = {}
+        if (bestIds.length > 0) {
+          const { data: revRows } = await supabase
+            .from('reviews')
+            .select('id, user_id, body, movie_id')
+            .in('id', bestIds)
+          for (const rv of (revRows ?? [])) reviewById[rv.id] = rv
+        }
+        const titleById = {}
+        for (const mv of (moviesData ?? [])) titleById[mv.id] = mv.title
+        for (const r of (recapRows ?? [])) {
+          const rv = r.best_review_id ? reviewById[r.best_review_id] : null
+          recapMap[r.month_id] = {
+            md: r.recap_md,
+            best: rv
+              ? { user_id: rv.user_id, body: rv.body, blurb: r.best_review_blurb, filmTitle: titleById[rv.movie_id] ?? null }
+              : null,
+          }
+        }
       }
 
       setMonths(monthsData)
@@ -2712,20 +2732,48 @@ function HistoryTab({ userById, onSelect, hideScores = false }) {
                 ))}
               </div>
               <PickerLegend movies={selectedMovies} userById={userById} />
-              {/* The month's AI recap (revealed months only — gated in the loader) */}
+              {/* The month's AI recap + Best Review (revealed months only — gated in the loader) */}
               {recapByMonth[selectedMonthId] && (
                 <div style={{
                   marginTop: '20px', padding: '16px',
-                  background: 'rgba(var(--fg-rgb), 0.03)',
-                  border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px',
+                  background: 'rgba(var(--accent-rgb), 0.06)',
+                  border: '1px solid rgba(var(--accent-rgb), 0.25)', borderRadius: '12px',
                 }}>
                   <p style={{
                     fontFamily: "'DM Mono', monospace", fontSize: '11px', letterSpacing: '0.08em',
                     textTransform: 'uppercase', color: 'var(--accent)', margin: '0 0 10px',
                   }}>
-                    The Month, Recapped
+                    ✨ The Month, Recapped
                   </p>
-                  <RecapProse text={recapByMonth[selectedMonthId]} />
+                  <RecapProse text={recapByMonth[selectedMonthId].md} />
+                  {recapByMonth[selectedMonthId].best && (
+                    <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(var(--fg-rgb),0.1)' }}>
+                      <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#fbbf24', margin: '0 0 8px' }}>
+                        🏅 Best Review of the Month
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                        {userById[recapByMonth[selectedMonthId].best.user_id] && (
+                          <Avatar user={userById[recapByMonth[selectedMonthId].best.user_id]} size={22} ring />
+                        )}
+                        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text-strong)', fontWeight: 600 }}>
+                          {userById[recapByMonth[selectedMonthId].best.user_id]?.name ?? 'A member'}
+                        </span>
+                        {recapByMonth[selectedMonthId].best.filmTitle && (
+                          <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '12px', color: 'var(--text-dim)' }}>
+                            on {recapByMonth[selectedMonthId].best.filmTitle}
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '13px', color: 'var(--text)', lineHeight: 1.5, margin: '0 0 6px', fontStyle: 'italic' }}>
+                        “{recapByMonth[selectedMonthId].best.body}”
+                      </p>
+                      {recapByMonth[selectedMonthId].best.blurb && (
+                        <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '12px', color: 'var(--text-dim)', lineHeight: 1.45, margin: 0 }}>
+                          — {recapByMonth[selectedMonthId].best.blurb}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

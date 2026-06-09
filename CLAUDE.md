@@ -171,6 +171,7 @@ A `public.notifications` table (see Key Data Models) stores all in-app notificat
 - A reply to your review or comment
 - An `@mention` in a review/comment body (parsed against each member's FirstLast handle)
 - A `score_change_requests` decision (`approved`/`denied`) delivered to the requester
+- A **late score** (`notify_late_score`, `trg_notify_late_score` on `ratings`): a final score submitted/changed on the **active** month's already-revealed film (its soft deadline passed) notifies every other member — the club average they see just changed. Gating on `status='active'` + `scores_revealed` keeps it to genuine live late scores (historical/backfill on revealed months + readjustment re-scores never fire it). Type `late_score`; the existing email/push INSERT triggers handle delivery.
 
 ### Notification center
 - `src/context/NotificationsContext.jsx` — loads notifications, subscribes to Supabase Realtime for live updates, exposes `markRead`/`markAllRead`, and surfaces preference state (muted types gate the unread badge count).
