@@ -49,6 +49,7 @@ At a season's end, an admin (or automatic anchor on the next season's first acti
 - **Pick-Change Requests** — a member can request to swap a locked active-month pick; an admin approves (guarded on the film having zero scores) and the row swaps with fresh TMDB metadata.
 - **Guest Mode** — public, read-only, no login. Reads three `SECURITY DEFINER` views (`guest_films`/`guest_scores`/`guest_reviews`) that bake in every safety filter (revealed-only, "First L." abbreviated names, test account excluded); base tables stay RLS-locked from `anon`.
 - **Custom Avatars** — admins upload avatars to a public Storage bucket (`custom_avatars`), merged into the avatar picker alongside the static library.
+- **Personal Data Export** — "download my data" (GDPR-style) on your own profile: gathers everything the app holds about you (ratings, reviews, comments, picks, draft queue, watchlist, guesses, predictions, awards, profile) into **JSON, CSV, or PDF**. Scoped strictly to the signed-in member's own id.
 
 ### Member Profiles
 - **Member Overlay** — Clicking any member name or avatar anywhere in the app (Home, Stats, Awards, Films legend, film overlay) opens a profile popup via `MemberOverlayContext`; closing it returns you exactly where you were. The bottom-bar Profile tab remains your own profile. `/profile/:id` is kept as a deep-link fallback. "View full stats" opens a `MemberStatsOverlay` that renders that member's full Me-tab breakdown in their accent color.
@@ -181,9 +182,9 @@ Infrastructure: `pg_net` (outbound HTTP from triggers) and `pg_cron` (`auto-acti
 | 4 — Notifications and Scheduling | Email/push notifications, soft deadline enforcement, grace periods, auto month-activation |
 | 5 — Stats and Visualizations | All chart types, club-vs-TMDB comparison |
 | 6 — Awards and Recaps | Auteur Award (best picker), AI recap + Best Review, seasonal readjustment window |
-| 7 — Polish | Guest mode, milestones, veto voting, watchlist, draft queue, film tags, custom avatars, person pages |
+| 7 — Polish | Guest mode, milestones, veto voting, watchlist, draft queue, film tags, custom avatars, person pages, personal data export (JSON/CSV/PDF) |
 
-Phases 1–7 are substantially implemented. Notifications + scheduling are fully live: `pg_cron` drives both auto month-activation and **soft deadline enforcement** (a film's scores auto-reveal at its deadline + grace; non-scorers absent, late scores still count). The deliberately **un**built piece is a *hard* submission lock — the model is intentionally soft. Remaining odds and ends are export and a few cosmetic polish items.
+Phases 1–7 are substantially implemented. Notifications + scheduling are fully live: `pg_cron` drives both auto month-activation and **soft deadline enforcement** (a film's scores auto-reveal at its deadline + grace; non-scorers absent, late scores still count). The deliberately **un**built piece is a *hard* submission lock — the model is intentionally soft. Remaining is an optional admin-level club-wide export (personal "download my data" already ships) and a few cosmetic items.
 
 ---
 

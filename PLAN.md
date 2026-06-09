@@ -2,7 +2,21 @@
 
 > Living document. Update status as work completes.
 > Source of truth: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → this plan (all kept congruent).
-> Last updated: 2026-06-04 (session 12)
+> Last updated: 2026-06-09 (session 13)
+
+---
+
+## Session 13 — Phase 4c live + recap fidelity + docs congruence
+
+- **Soft deadline enforcement ON (4c):** new `cron_enforce_due_deadlines()` + hourly `enforce-due-deadlines` pg_cron job — a film's **scores** auto-reveal once `scoring_deadline + app_settings.deadline_grace_days` (default 1) passes. Soft model: scores only (picker stays hidden), non-scorers absent (not zeroed), late scores still accepted. Admin **"Deadline Grace"** panel tunes the grace. Revealed the 4 overdue May films as the first run.
+- **Self-perpetuating auto-activation (4c):** `activate_month` now seeds each next month with `auto_activate = true`, so after one manual kickoff the monthly cadence runs itself at 12am PT (the `auto-activate-due-months` cron was already on). June 2026 stays a manual kickoff (pre-existing, auto off); July onward is automatic.
+- **AI recap hardening:** generate-once guarantee (server `force` flag + skip-if-exists; client `recapsLoaded` gate) so the recap never silently re-rolls; prompt now lists films in **watch order** (numbered, ordered by `scoring_deadline`) and disambiguates shared first names (the two Ryans) — fixed a recap that called the last film the month's kickoff. Regenerated May correctly.
+- **Recaps on Films → History:** each revealed month's recap + the AI-picked **Best Review of the Month** now render below the film grid (revealed months only — the active month's recap names pickers). `RecapProse` exported from `MonthReveal`.
+- **Late-score notifications:** `notify_late_score` trigger on `ratings` — a score on the active month's already-revealed film notifies every other member (type `late_score`, ⏰ glyph).
+- **Adaptation RLS fix:** `ratings` rolling-reveal SELECT policy gained a direct `user_id = auth.uid()` clause so a member's first live score's upsert RETURNING no longer trips RLS.
+- **UX:** This Month pick CTA absorbs the deadline reminder as a subtitle (dropped the redundant banner). Admin "dev mode / not enforced" copy replaced with the soft-enforcement description. Home milestones per-member; "23 watched" club-stat fix; Stats Overview avg-of-picks bar chart + member-avg dedup; ScoreModal "value invalid" + skip-excitement fixes; genre-pie focus-box removal.
+- **Docs:** corrected email reality (verified domain delivers to opted-in members, not test-mode-only); full README/spec/CLAUDE congruence pass (4c live, Auteur = best picker, per-user export shipped, 4 modes/8 accents, Connection Web actor+writer+director).
+- **Email finding:** of 5 members only the two Ryans have `channel_email = true`; Resend sends from a verified domain (`movieclub.cc`) — email works, most members just haven't opted in.
 
 ---
 
@@ -86,14 +100,14 @@
 - [x] **Profile "Notifications" settings section** (own profile only) — per-event-type mute toggles, quiet-hours from/until, Email delivery toggle, Browser Push delivery toggle. Muting filters the in-app center + unread badge immediately.
 
 ### Phase 4b — Email + web push delivery
-- [x] **Email via Resend** — a `email_notification` DB trigger (pg_net extension) POSTs to the Resend API when: recipient has `channel_email = true`, hasn't muted the event type, and is not in their quiet-hours window (checked against their timezone). `RESEND_API_KEY` and `APP_BASE_URL` stored in `supabase_vault` (never in code). Opt-in (`channel_email` defaults to `false`). Verified end-to-end (HTTP 200 from Resend). Note: full multi-member delivery requires a verified sending domain in Resend; test mode reaches the account owner only.
+- [x] **Email via Resend** — a `email_notification` DB trigger (pg_net extension) POSTs to the Resend API when: recipient has `channel_email = true`, hasn't muted the event type, and is not in their quiet-hours window (checked against their timezone). `RESEND_API_KEY` and `APP_BASE_URL` stored in `supabase_vault` (never in code). Opt-in (`channel_email` defaults to `false`). Verified end-to-end (HTTP 200 + real email ids from Resend). Sends from a verified domain (`movieclub.cc`), so it delivers to any opted-in member — not just the account owner. (Currently only the two Ryans have email on.)
 - [x] **Web push** — `public.push_subscriptions` table; `send-push` Supabase Edge Function (Deno, `npm:web-push`) sends to a user's subscriptions with VAPID and prunes expired (404/410) ones; `push_notification` DB trigger gathers subscriptions + VAPID private key (from vault) and POSTs to the function via pg_net. Client-side: `NotificationsContext` exposes `enablePush` / `disablePush` (permission gate → SW register → `PushManager.subscribe` → store subscription → flip `channel_push`); `public/sw.js` service worker. Profile's Browser Push row is a live toggle (shows a note where unsupported, e.g. iOS without Add to Home Screen). End-to-end requires a real browser with push support.
 - [x] **`supabase_vault` secrets added:** `resend_api_key`, `app_base_url`, `vapid_private_key`, `vapid_subject`.
 - [x] **New Edge Function:** `send-push` (deployed).
 
-### Phase 4c — Scheduling / enforcement (deferred)
-- [ ] **Auto month-activation on the 1st** via pg_cron — intentionally deferred until closer to launch so dev behavior is unchanged; deadlines remain display-only.
-- [ ] **Deadline enforcement + grace periods + auto-reveal** — same deferral rationale; Phase 4c parked until launch window.
+### Phase 4c — Scheduling / enforcement (LIVE)
+- [x] **Auto month-activation** via `pg_cron` (`auto-activate-due-months`) — activates a due scheduled month at 12am PT; self-perpetuating (`activate_month` seeds the next month with auto-activate on).
+- [x] **Soft deadline enforcement + grace + auto-reveal** (`enforce-due-deadlines` cron) — scores auto-reveal at `scoring_deadline + deadline_grace_days`; non-scorers absent, late scores still count; no hard lock. Grace tunable in the Admin "Deadline Grace" panel.
 
 ### Awards — new
 - [x] **"The Underrated" (💎)** — club average minus TMDB average; biggest positive gap. Monthly / Season / Annual / All-Time. Badge on film + profile pages.
@@ -213,7 +227,7 @@
 - [x] **`materialize_and_split_month(p_month_id)` RPC** — SECURITY DEFINER; materializes upcoming picks into `movies` for the active month and auto-splits scoring deadlines evenly by film count.
 - [x] **Admin "Activate / Trigger now" button** — calls the RPC on demand.
 - [x] **Picks tab self-pick** — your own pick shown inline (clickable → justification + change-pick); picks flow through to Films + Deadlines tabs. June is now the active month.
-- [x] **Deadlines computed/displayed; enforcement deferred** — display-only until launch/July (Phase 4).
+- [x] **Deadlines computed/displayed AND soft-enforced** — scores auto-reveal at `scoring_deadline + grace` via the `enforce-due-deadlines` pg_cron job (Phase 4c, live).
 
 ### User colors & theme
 - [x] **`src/lib/colors.js`** — centralized `MEMBER_COLORS` map, `USER_COLOR_PALETTE` (20 distinct options), `memberColor()` helper. Ryan Miller → purple `#a855f7` (distinct from Chris's blue). Profile color picker strikes out taken colors.
@@ -429,7 +443,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] Master of Disguise (Annual + All-Time) — picker_guesses threaded through compute fns + lib + Admin write; least-correctly-guessed picker
 - [x] Easy Crowd (Season) — fewest low scores (≤4.0), tie-break avg; defined this session
 - [x] Most Evolved (Annual) — biggest first-half/second-half avg swing; implemented but **dormant until the year spans ≥8 months** (per owner's "trigger after more data")
-- Only **Auteur Award** remains ⏳ (needs the Phase 6 ranked-choice vote)
+- All awards implemented — the **Auteur Award** ships as the season's best picker by average pick score (NOT a ranked-choice vote; scores already rank the films)
 - [x] Guess/predictions placement (option A+C): functional placement stays the film overlay (predictions picker-only; guess on current films). Added a **Picks-tab nudge** that routes the picker to the overlay to predict their own pick once the movie exists. (Literal "submit in Picks tab" is blocked by the data model — picker_guesses/score_predictions FK to `movies.id`, not `upcoming_picks` — deferred unless a schema change is wanted.)
 
 ### Phase 2 polish — final pre-browser batch (session 7)
@@ -457,8 +471,8 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] **4a — In-app notification engine + center + preferences** (session 10): `notifications` table + selective SECURITY DEFINER triggers; `NotificationsContext` + `NotificationCenter` (bell/badge, popover/sheet, per-type glyphs, mark-read); `notification_preferences` table with per-type mute, quiet hours, email + push toggles; Profile "Notifications" settings section
 - [x] **4b — Email delivery via Resend** (session 10): `email_notification` DB trigger via pg_net; Resend key + app URL in `supabase_vault`; opt-in; verified end-to-end (full multi-member delivery needs verified sending domain in Resend)
 - [x] **4b — Web push delivery** (session 10): `push_subscriptions` table; `send-push` Edge Function (Deno + npm:web-push + VAPID); `push_notification` DB trigger via pg_net; `public/sw.js` service worker; Profile Browser Push toggle; `enablePush`/`disablePush` in context; end-to-end requires real browser
-- [ ] **4c — Auto month-activation on the 1st** via pg_cron — intentionally deferred until closer to launch; deadlines remain display-only
-- [ ] **4c — Deadline enforcement + grace periods + auto-reveal** — same deferral rationale; parked until launch window
+- [x] **4c — Auto month-activation** via pg_cron (`auto-activate-due-months`); self-perpetuating cadence
+- [x] **4c — Soft deadline enforcement + grace + auto-reveal** (`enforce-due-deadlines`); non-scorers absent, late scores still count, no hard lock
 - [ ] Watch schedule with suggested dates and reminders
 
 ## Phase 5 — Stats & Visualizations
@@ -475,7 +489,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] **"The Underrated" award (💎)** (session 10) — biggest positive club-avg minus TMDB-avg gap; Monthly / Season / Annual / All-Time; badge on film + profile pages; backed by new `movies.tmdb_vote_average` column
 - [x] **"The Deep Cut" award (🕳️)** (session 10) — genre rarity + log-scaled inverse TMDB `vote_count` obscurity score; same scopes; backed by `movies.tmdb_vote_count` + `tmdb_popularity`
 - [ ] Automated award calculation written to DB on reveal (monthly, seasonal, annual, all-time)
-- [ ] **Auteur Award** — ranked-choice (instant runoff) member vote + notification flow. ⭐ This is the **only remaining award** in the catalog (all 45 others now implemented); add it once the voting system exists. Award key/scope already reserved: `auteur_award`, season scope, backed by the `auteur_votes` table.
+- [x] **Auteur Award** — implemented as the season's **best picker by average pick score** (≥2 scored picks), finalized after the season's readjustment window closes. Per Ryan's decision it is **not** a ranked-choice vote (scores already rank the films). `auteur_award` key / season scope; the `auteur_votes` table is retained but unused for the award.
 - [ ] AI monthly recap (Claude API via Edge Function, admin editable before publish)
 - [ ] AI best review detection (Claude API)
 - [ ] The Vault — auto-add/remove based on configurable threshold (default 8.5)
@@ -483,7 +497,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 
 ## Phase 7 — Polish & Extras
 - [ ] Guest mode (first name + last initial only, post-reveal data only, no login required)
-- [ ] Export — CSV (full data) + PDF (season/year-end formatted report) — admin only
+- [x] Export — personal "download my data" (JSON/CSV/PDF, own data only) on Profile via `src/lib/exportData.js`. *Pending (optional):* an admin-level club-wide export.
 - [ ] Milestones & anniversaries timeline (10th film, 25th film, 1-year, etc.)
 - [ ] Watchlist (private, TMDB integration)
 - [ ] Draft Queue (private, drag-and-drop ranked, TMDB integration)
@@ -492,8 +506,8 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [ ] Home page activity feed (recent scores, comments, awards)
 - [x] Film tags — user-applied at rating time (compact picker in ScoreModal) + add/remove from the film overlay once scored; aggregated with counts on the film page. `film_tags` table (unique(movie,user,tag), own-write RLS) + `src/components/FilmTags.jsx`. (session 11)
 - [ ] "Would recommend outside club" field on ratings, shown as % on film page
-- [ ] Admin Schedule tab — set deadlines, watch schedule, reveal dates, grace period
+- [x] Admin Month Activation + Deadline Grace panels — activation date, auto-activate toggle, "Activate now" (`activate_month`), and `deadline_grace_days` tuning
 - [ ] Admin Readjustment tab — manage readjustment window
 - [ ] Admin Assets tab — avatar pack management
-- [ ] Admin Export tab — CSV + PDF export
+- [ ] Admin club-wide export tab — CSV + PDF (optional; per-user export already ships on Profile)
 - [ ] Streaming providers: genre field needed for genre/cast Recharts stubs

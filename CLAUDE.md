@@ -138,7 +138,7 @@ Do not attempt to build everything at once. Phases in order:
 3. **Phase 3 — Themes & Personalisation:** Light/dark mode, accent colors, user colors, avatar library, settings
 4. **Phase 4 — Notifications & Scheduling:** Email/push notifications, deadline logic, grace periods, quiet hours
 5. **Phase 5 — Stats & Visualizations:** All charts and stats pages
-6. **Phase 6 — Awards & Recaps:** Automated awards, Auteur vote, AI recap, The Vault, season readjustment
+6. **Phase 6 — Awards & Recaps:** Automated awards, Auteur award (best picker), AI recap, The Vault, season readjustment
 7. **Phase 7 — Polish:** Guest mode, export, milestones, veto voting, watchlist/draft queue
 
 ---
@@ -161,7 +161,7 @@ Do not attempt to build everything at once. Phases in order:
 
 ---
 
-## Architecture: Notifications (Phase 4a + 4b done; 4c deferred)
+## Architecture: Notifications (Phase 4a + 4b + 4c done)
 
 ### In-app notification engine
 A `public.notifications` table (see Key Data Models) stores all in-app notifications. Rows are created **only** by `SECURITY DEFINER` DB triggers — never by client code. Triggers fire selectively on meaningful events only:
@@ -181,7 +181,7 @@ A `public.notifications` table (see Key Data Models) stores all in-app notificat
 Profile page ("Notifications" settings section, own profile only): per-event-type mute toggles, quiet-hours from/until, and Email + Browser-push delivery toggles. Preferences stored in `notification_preferences`; muting filters the in-app center + unread badge immediately. Quiet-hours fields **autofill** to a 22:00–08:00 default when unset, and setting either bound seeds the other's default so the window is always complete.
 
 ### Email delivery (Resend via pg_net)
-A DB trigger (`email_notification`) POSTs to the Resend API via the `pg_net` extension when the recipient has `channel_email = true`, has not muted the event type, and is outside quiet hours (evaluated in their timezone). The Resend API key and app base URL are stored in `supabase_vault` (never in code). Verified end-to-end (HTTP 200 from Resend). Note: full multi-member delivery requires a verified sending domain in Resend; test mode reaches the account owner only.
+A DB trigger (`email_notification`) POSTs to the Resend API via the `pg_net` extension when the recipient has `channel_email = true`, has not muted the event type, and is outside quiet hours (evaluated in their timezone). The Resend API key and app base URL are stored in `supabase_vault` (never in code). Verified end-to-end (HTTP 200 from Resend, real email ids returned). It sends from a **verified domain** (`noreply@movieclub.cc`), so it delivers to **any** member who has enabled email — not just the account owner. Email is opt-in (`channel_email` default false), so only members who turned it on receive mail (currently the two Ryans).
 
 ### Web Push delivery
 `public.push_subscriptions` stores each browser's subscription object. A `push_notification` DB trigger gathers the recipient's subscriptions + VAPID private key (from vault) and POSTs to the `send-push` Edge Function via `pg_net`. The Edge Function (Deno, `npm:web-push`) sends to each subscription and prunes expired ones (404/410). Client: `NotificationsContext` exposes `pushSupported`/`pushEnabled` + `enablePush()`/`disablePush()` (permission gate → SW register → `PushManager.subscribe` → store subscription → flip `channel_push`). `public/sw.js` is the service worker. Profile's "Browser push" row is a live toggle (shown as disabled with a note where unsupported — iOS requires Add to Home Screen). Needs a real browser to validate end-to-end.
@@ -218,7 +218,7 @@ During the **active** month, score visibility is **rolling per viewer**: you see
 - A user always sees their own score regardless of reveal status
 - Admins always see everything; realtime subscriptions push reveal updates to all clients
 
-> Note: the old per-film *weekly* `scoring_deadline` auto-reveal is superseded by this rolling model — scores stay rolling per-viewer until the month ends (or an admin reveals a film manually). Deadlines remain display-only.
+> Note: the old per-film *weekly* `scoring_deadline` auto-reveal is superseded by this rolling model — scores stay rolling per-viewer until the soft deadline + grace passes (the `enforce-due-deadlines` pg_cron job auto-reveals them), the month ends, or an admin reveals a film manually.
 
 ---
 
@@ -622,9 +622,9 @@ At a season's end an **admin opens a readjustment window** (Admin → Dashboard 
 
 ## Awards Summary
 
-> Combined maximal catalog (union of spec + this doc + implemented). ✅ = computed today in
-> `src/lib/awards.js`; ⏳ = catalogued but not yet implemented (needs AI, the Auteur vote,
-> guess-the-picker data, or multi-period trends — Phase 6).
+> Combined maximal catalog (union of spec + this doc + implemented). ✅ = computed in
+> `src/lib/awards.js` (or, for Best Review, the `ai-recap` Edge Function). The catalog is now
+> **fully implemented** — including the Auteur Award (best picker, not a vote) and the AI Best Review.
 
 **Monthly:** Pick of the Month ✅, Flop of the Month ✅, The Contrarian ✅, The Oracle ✅, Hype Machine ✅, The Letdown ✅, The Surprise ✅, Most Divisive ✅, Most Unanimous ✅, The Underrated 💎 ✅, The Deep Cut 🕳️ ✅, Best Review (AI-assisted) ✅ (via the `ai-recap` Edge Function → `month_recaps.best_review_id`; shown in MonthReveal)
 
@@ -636,7 +636,7 @@ At a season's end an **admin opens a readjustment window** (Admin → Dashboard 
 
 > Definitions added this session (no spec definition existed): **Easy Crowd** = member with fewest low scores (≤6.0 in code — the original ≤4.0 was dead since nobody scores that low), tie-break highest avg (distinct from Most Generous). **Master of Disguise** = picker whose films were correctly guessed least often (min 3 guesses). **Most Evolved** = member with the biggest avg shift between the year's first and second half (activates once ≥8 distinct months exist). **The Underrated** 💎 = film where club average minus TMDB average is the largest positive gap (the club valued it most above mainstream consensus). **The Deep Cut** 🕳️ = film scoring highest on genre rarity within the club catalog + obscurity (log-scaled inverse `tmdb_vote_count`). Both backed by `movies.tmdb_vote_average`, `tmdb_vote_count`, `tmdb_popularity`; badge appears on film + profile pages; computed across all four scopes.
 
-**Auteur Award** 🎩 (Phase 6 — implemented, NOT a vote): per Ryan's decision the Auteur is *not* a ranked-choice member vote (scores already rank the films). It's the season's **best picker by average pick score** with a body-of-work bar (≥2 scored picks), **finalized only after that season's readjustment window has closed** (and the season is over) so it reflects the locked scores. Distinct from Picker of the Season (which allows a single pick and is provisional). Computed in `computeSeasonAwards` (gated on `seasons.readjustment_open` / `readjustment_ends_at`), shown on the Awards Season tab + the badge grid. Remaining ⏳ awards are only the AI-dependent ones (Best Review, AI recap).
+**Auteur Award** 🎩 (Phase 6 — implemented, NOT a vote): per Ryan's decision the Auteur is *not* a ranked-choice member vote (scores already rank the films). It's the season's **best picker by average pick score** with a body-of-work bar (≥2 scored picks), **finalized only after that season's readjustment window has closed** (and the season is over) so it reflects the locked scores. Distinct from Picker of the Season (which allows a single pick and is provisional). Computed in `computeSeasonAwards` (gated on `seasons.readjustment_open` / `readjustment_ends_at`), shown on the Awards Season tab + the badge grid. The AI-dependent pieces (Best Review, AI recap) are now also implemented via the `ai-recap` Edge Function — the award catalog is fully built.
 
 The Vault: films averaging ≥ 8.5 (configurable). Auto-removes if average drops below threshold after score updates.
 
