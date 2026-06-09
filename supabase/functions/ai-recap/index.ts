@@ -73,8 +73,9 @@ function buildPrompt(monthLabel: string, films: any[], reviews: any[], nameColli
     return [
       `${idx + 1}. "${f.title}"${f.year ? ` (${f.year})` : ""} — picked by ${f.pickerName ?? "unknown"}`,
       `   director: ${f.director ?? "—"}; genre: ${f.genre ?? "—"}; club average: ${fmt(f.clubAvg)}`,
+      f.plot ? `   about: ${f.plot}` : null,
       `   scores: ${scores || "none yet"}`,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   }).join("\n");
 
   const reviewLines = reviews.length
@@ -87,7 +88,7 @@ function buildPrompt(monthLabel: string, films: any[], reviews: any[], nameColli
 
   return [
     `You are the in-house critic for a private five-person movie club, writing the recap for ${monthLabel}.`,
-    `Everyone watches every film and scores it 0.01–10.00. The films below are listed in WATCH ORDER — the order the club actually watched them, first to last. Film 1 opened the month; the last film closed it. The members' written reviews follow.`,
+    `Everyone watches every film and scores it 0.01–10.00. The films below are listed in WATCH ORDER — the order the club actually watched them, first to last. Film 1 opened the month; the last film closed it. Each film includes a short "about" summary of what it is. The members' written reviews follow.`,
     ``,
     `FILMS (in watch order):`,
     filmLines,
@@ -95,7 +96,7 @@ function buildPrompt(monthLabel: string, films: any[], reviews: any[], nameColli
     `REVIEWS:`,
     reviewLines,
     ``,
-    `Write a warm, witty, specific recap of the month (2–3 short paragraphs, ~150–220 words). Reference the actual films, the standout scores (highs, lows, and any big disagreements), and the general mood — like a friend who watched along. ${namingRule} HONOR THE WATCH ORDER: only film 1 "opened"/"kicked off" the month and only the last film "closed"/"ended" it — never call a later film the opener or an earlier film the closer, and don't claim two films "bookend" the month unless they are literally the first and last. Do not invent facts not present above. Plain prose (you may use light markdown emphasis); no headings.`,
+    `Write a warm, witty, specific recap of the month (2–4 short paragraphs, ~170–250 words). Reference the actual films, the standout scores (highs, lows, and any big disagreements), and the general mood — like a friend who watched along. Where it adds colour, briefly work in what a film is actually ABOUT — its premise, themes, director, or a notable fact — drawing on the "about" summaries above and your own knowledge of these (mostly well-known) films; keep each such mention to a phrase or a sentence, never a plot dump, and don't spoil endings. ${namingRule} HONOR THE WATCH ORDER: only film 1 "opened"/"kicked off" the month and only the last film "closed"/"ended" it — never call a later film the opener or an earlier film the closer, and don't claim two films "bookend" the month unless they are literally the first and last. You may use the "about" summaries and general knowledge for film background, but do NOT invent facts about the club, the members, or their scores beyond what's given above. Plain prose (you may use light markdown emphasis); no headings.`,
     ``,
     `Then choose the single best-written review of the month from the REVIEWS list (most insightful, funny, or well-crafted). If there are no reviews, set best_review_id to null.`,
     ``,
@@ -150,7 +151,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // order the club watched them) — the recap must not contradict it (e.g. call
     // the last film the one that "kicked off" the month).
     const { data: filmRows } = await admin.from("movies")
-      .select("id, title, year_released, director, genre, historical_avg_score, picked_by_user_id")
+      .select("id, title, year_released, director, genre, historical_avg_score, picked_by_user_id, plot_summary")
       .eq("month_id", monthId)
       .order("scoring_deadline", { ascending: true, nullsFirst: false })
       .order("id", { ascending: true });
@@ -198,6 +199,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return {
         title: f.title, year: f.year_released, director: f.director, genre: f.genre,
         pickerName: f.picked_by_user_id ? userById[f.picked_by_user_id]?.name ?? null : null,
+        plot: typeof f.plot_summary === "string" ? f.plot_summary.trim() : null,
         clubAvg, memberScores,
       };
     });
