@@ -110,9 +110,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!SUPABASE_URL || !SERVICE_KEY) return json({ error: "server_misconfigured" }, 500);
     if (!apiKey) { console.error("ANTHROPIC_API_KEY not configured"); return json({ error: "ai_unavailable" }, 503); }
 
-    let body: { month_id?: string } = {};
+    let body: { month_id?: string; force?: boolean } = {};
     try { body = await req.json(); } catch { /* fallthrough */ }
     const monthId = typeof body.month_id === "string" ? body.month_id : "";
+    const force = body.force === true;
     if (!monthId) return json({ error: "month_id_required" }, 400);
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -129,6 +130,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // ── gather the month ──────────────────────────────────────────────────────
     const { data: month } = await admin.from("months").select("id, month_year").eq("id", monthId).maybeSingle();
     if (!month) return json({ error: "month_not_found" }, 404);
+
+    // Generate ONCE per month. If a recap already exists, skip (and don't spend an
+    // AI call) unless the caller explicitly forces it — the admin "Regenerate" button
+    // passes force:true; the client-soft auto-gen never does. This is the authoritative
+    // guard against the recap being silently regenerated/changed on repeat invocations.
+    if (!force) {
+      const { data: existing } = await admin.from("month_recaps").select("month_id").eq("month_id", monthId).maybeSingle();
+      if (existing) return json({ ok: true, skipped: true, reason: "recap_exists" }, 200);
+    }
 
     const { data: filmRows } = await admin.from("movies")
       .select("id, title, year_released, director, genre, historical_avg_score, picked_by_user_id")

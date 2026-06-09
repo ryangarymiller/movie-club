@@ -613,6 +613,9 @@ const autoRecapAttempted = new Set()
 // generate/regenerate manually.
 function AiRecapPanel({ months, movies, setError, setSuccess }) {
   const [recaps, setRecaps] = useState({}) // month_id -> generated_at
+  const [recapsLoaded, setRecapsLoaded] = useState(false) // gate auto-gen until the
+  // existing recaps are known (else the initial empty `recaps` makes every revealed
+  // month look "due" and regenerates it on each page load).
   const [busyId, setBusyId] = useState(null)
   const [autoBusy, setAutoBusy] = useState(false)
 
@@ -628,6 +631,7 @@ function AiRecapPanel({ months, movies, setError, setSuccess }) {
     const map = {}
     for (const r of data ?? []) map[r.month_id] = r.generated_at
     setRecaps(map)
+    setRecapsLoaded(true)
   }, [])
   useEffect(() => { loadRecaps() }, [loadRecaps])
 
@@ -635,6 +639,9 @@ function AiRecapPanel({ months, movies, setError, setSuccess }) {
   // failure (left for manual retry); the attempted-set + the created row prevent
   // re-runs. Bounded to one attempt per month per session.
   useEffect(() => {
+    // Wait until we actually know which months have recaps — otherwise the initial
+    // empty `recaps` makes every revealed month look "due".
+    if (!recapsLoaded) return
     const due = monthsWithFilms.filter(mo => mo.status === 'revealed' && !recaps[mo.id] && !autoRecapAttempted.has(mo.id))
     if (due.length === 0) return
     let cancelled = false
@@ -654,13 +661,14 @@ function AiRecapPanel({ months, movies, setError, setSuccess }) {
       if (!cancelled) setAutoBusy(false)
     })()
     return () => { cancelled = true }
-  }, [monthsWithFilms, recaps, loadRecaps, setSuccess])
+  }, [recapsLoaded, monthsWithFilms, recaps, loadRecaps, setSuccess])
 
   async function generate(mo) {
     if (busyId) return
     setBusyId(mo.id); setError(null)
     try {
-      const { data, error } = await supabase.functions.invoke('ai-recap', { body: { month_id: mo.id } })
+      // Manual button = explicit regenerate, so force past the "already exists" guard.
+      const { data, error } = await supabase.functions.invoke('ai-recap', { body: { month_id: mo.id, force: true } })
       if (error || data?.error) {
         setError(`Recap failed for ${mo.month_year}: ${data?.error || error?.message || 'unknown error'}`)
       } else {
