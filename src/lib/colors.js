@@ -96,14 +96,18 @@ export const GENRE_COLORS = {
   'Western': '#94a3b8',         // slate
 }
 
-// Unique, stable colour for a genre name. Known genres come from GENRE_COLORS;
-// any unknown string gets a deterministic hashed colour (still stable per name).
+// Unique, stable colour for a genre name. Known genres get their fixed colour from
+// GENRE_COLORS. Any genre NOT in the map (e.g. a future/non-standard one) derives a
+// distinct colour from its name via a hashed hue (golden-angle spread for good
+// separation) — so a new genre always auto-picks its own colour, stable across every
+// chart, without colliding with the small categorical palette.
 export function genreColor(name) {
   const key = String(name ?? '').trim()
   if (GENRE_COLORS[key]) return GENRE_COLORS[key]
   let h = 0
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
-  return CHART_CATEGORICAL[h % CHART_CATEGORICAL.length]
+  const hue = Math.round((h * 137.508) % 360) // golden angle → well-spread hues
+  return `hsl(${hue}, 70%, 60%)`
 }
 
 // "#a855f7" -> "168, 85, 247" for the --accent-rgb CSS token (rgba() usages).

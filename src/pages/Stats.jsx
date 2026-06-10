@@ -3111,6 +3111,16 @@ function ConnectionWeb({ movies = [], onFilm }) {
     return map
   }, [nodes, cx, cy, R])
 
+  // Films that exist in the catalog but share no actor/writer/director with any
+  // other film yet — they're not in the graph (no edges). Listed below the web so
+  // they're visible; each joins the web automatically once a future pick connects it.
+  const orphanFilms = useMemo(() => {
+    const connected = new Set(nodes.map(n => n.id))
+    return movies
+      .filter(m => !connected.has(m.id))
+      .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+  }, [movies, nodes])
+
   const selectedEdge = activeEdge != null ? (edges[activeEdge] || null) : null
   const anySelection = active != null || selectedEdge != null
 
@@ -3147,15 +3157,45 @@ function ConnectionWeb({ movies = [], onFilm }) {
     ? [nodes.find(n => n.id === selectedEdge.a)?.movie, nodes.find(n => n.id === selectedEdge.b)?.movie].filter(Boolean)
     : []
 
+  // "Not yet connected" panel — orphan films as tappable chips (open the overlay).
+  const orphanList = orphanFilms.length > 0 ? (
+    <GlassCard style={{ padding: '14px', marginTop: '12px' }}>
+      <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)', margin: '0 0 9px' }}>
+        Not yet connected · {orphanFilms.length}
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        {orphanFilms.map(m => (
+          <button
+            key={m.id}
+            onClick={() => onFilm?.(m)}
+            title={`Open ${m.title}`}
+            style={{
+              padding: '5px 11px', borderRadius: '999px',
+              background: 'rgba(var(--fg-rgb),0.04)', border: '1px solid rgba(var(--fg-rgb),0.1)',
+              color: 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif", fontSize: '12px', cursor: 'pointer',
+            }}
+          >
+            {m.title}
+          </button>
+        ))}
+      </div>
+      <p style={{ fontFamily: "'DM Sans',sans-serif", fontSize: '11px', color: 'var(--text-faint)', margin: '9px 0 0', lineHeight: 1.5 }}>
+        These share no actor, writer, or director with another film yet — each joins the web automatically once a future pick connects it.
+      </p>
+    </GlassCard>
+  ) : null
+
   if (nodes.length === 0) {
     return (
       <div>
         <ConnectionWebHeading />
-        <GlassCard style={{ padding: '28px 20px' }}>
-          <ChartPlaceholder height={90}>
-            No shared actors or directors yet — connections appear as the club watches more films.
-          </ChartPlaceholder>
-        </GlassCard>
+        {orphanFilms.length ? orphanList : (
+          <GlassCard style={{ padding: '28px 20px' }}>
+            <ChartPlaceholder height={90}>
+              No shared actors or directors yet — connections appear as the club watches more films.
+            </ChartPlaceholder>
+          </GlassCard>
+        )}
       </div>
     )
   }
@@ -3365,6 +3405,7 @@ function ConnectionWeb({ movies = [], onFilm }) {
           )}
         </div>
       </GlassCard>
+      {orphanList}
     </div>
   )
 }
