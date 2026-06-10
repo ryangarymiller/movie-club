@@ -99,6 +99,28 @@
   color-scheme: dark;
 }
 
+/* AMOLED — true-black DARK theme for OLED screens (dark-family: data-base="dark" +
+   the .dark class). Pure-black backgrounds; surfaces are subtly elevated so cards
+   stay distinguishable against the black. */
+[data-theme="amoled"] {
+  --accent-muted: #fef2f2;
+
+  --fg-rgb: 255, 255, 255;
+  --bg: #000000;
+  --bg-2: #000000;
+  --bg-3: #000000;
+  --surface: #0b0b0f;
+  --surface-2: #17181d;
+  --surface-3: #08080b;
+  --text-strong: #ffffff;
+  --text: #e3e6ea;
+  --text-muted: #bcc2cc;
+  --text-dim: #a4abb6;
+  --text-faint: #8c939e;
+  --hairline: #838b97;
+  color-scheme: dark;
+}
+
 /* Accent color variants (mode-independent) */
 [data-accent="crimson"]   { --accent: #ef4444; --accent-rgb: 239, 68, 68;  --accent-light: #fca5a5; --accent-dark: #7f1d1d; }
 [data-accent="ember"]     { --accent: #f97316; --accent-rgb: 249, 115, 22; --accent-light: #fdba74; --accent-dark: #7c2d12; }

@@ -54,13 +54,14 @@ describe('ThemeContext — setAccent', () => {
 })
 
 describe('ThemeContext — toggleMode', () => {
-  test('toggleMode switches from dark to light', () => {
+  test('toggleMode advances dark → amoled (cycle wraps at the end)', () => {
     renderWithProvider(<ThemeController />)
     expect(screen.getByTestId('mode')).toHaveTextContent('dark')
     act(() => {
       screen.getByText('Toggle Mode').click()
     })
-    expect(screen.getByTestId('mode')).toHaveTextContent('light')
+    // Cycle is light → sepia → grey → dark → amoled → (light). Default is dark.
+    expect(screen.getByTestId('mode')).toHaveTextContent('amoled')
   })
 })
 
@@ -78,7 +79,7 @@ describe('ThemeContext — localStorage persistence', () => {
     act(() => {
       screen.getByText('Toggle Mode').click()
     })
-    expect(localStorage.getItem('theme-mode')).toBe('light')
+    expect(localStorage.getItem('theme-mode')).toBe('amoled')
   })
 })
 
@@ -96,6 +97,6 @@ describe('ThemeContext — document attributes', () => {
     act(() => {
       screen.getByText('Toggle Mode').click()
     })
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('amoled')
   })
 })

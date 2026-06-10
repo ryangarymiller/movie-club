@@ -510,11 +510,11 @@ Profile "Preferences" section (own profile only): **default film sort** (`users.
 
 ## Themes
 
-32 combinations: **4 modes × 8 accent colors** (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet, Hot Pink). Implemented via CSS variables. Each member independently sets their own theme.
+40 combinations: **5 modes × 8 accent colors** (Crimson, Ember, Amber, Sage, Slate Blue, Indigo, Violet, Hot Pink). Implemented via CSS variables. Each member independently sets their own theme.
 
 **Cross-device persistence:** theme **mode + accent** are saved to the user's row (`users.theme_mode`, `users.theme_accent`) — not just localStorage — so the choice follows them across devices. `localStorage` still drives the instant first paint on a known device; a `<ThemeSync>` bridge (in `App.jsx`, inside `AuthProvider`) applies the DB value once the profile loads, so a fresh device picks up the saved theme. The Profile mode selector + accent swatches write the change to the DB (like `user_color`).
 
-**4 theme modes (lightest → darkest):** `light` · `sepia` (warm paper) · `grey` (soft slate) · `dark`. Sepia and grey are the two "in-between" options. Modes are managed in `src/context/ThemeContext.jsx` (`MODE_OPTIONS`); the Profile page has a 4-way segmented selector.
+**5 theme modes (lightest → darkest):** `light` · `sepia` (warm paper) · `grey` (soft slate) · `dark` · `amoled` (true-black for OLED screens). Sepia and grey are the two "in-between" options; amoled is darker than dark (pure-black `--bg`, subtly-elevated surfaces). `amoled` is dark-family (in `DARK_MODES` → `data-base="dark"` + `.dark`). Modes are managed in `src/context/ThemeContext.jsx` (`MODE_OPTIONS`); the Profile page has a 5-way segmented selector. The pre-paint script in `index.html` and `THEME_COLORS` must stay in sync with `MODE_OPTIONS`.
 
 Mode bindings: `data-theme` carries the exact mode (drives the palette block in `index.css`), and `data-base` (`light`|`dark`) carries the *family* — **sepia is light-family, grey is dark-family**. The light-mode Tailwind utility remaps + accent-legibility overrides key off `[data-base="light"]` so sepia inherits them; the `.dark` class (for `prefers-color-scheme`-independent dark utilities) is applied for **grey and dark**. An inline script in `index.html` applies the saved mode before first paint (no flash of default dark) and the `theme-color` meta tracks the mode. Light-family `--text-faint`/`--hairline` were darkened so captions clear ~4.5:1. Chart tooltips read `var(--surface)` (theme-aware, not a fixed dark box).
 

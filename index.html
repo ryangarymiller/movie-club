@@ -10,15 +10,15 @@
     <title>Movie Club</title>
     <script>
       // Apply the saved theme before first paint (no flash of the default dark).
-      // Keep in sync with ThemeContext: modes light/sepia/grey/dark; grey+dark are
-      // dark-family (.dark + data-base="dark").
+      // Keep in sync with ThemeContext: modes light/sepia/grey/dark/amoled;
+      // grey+dark+amoled are dark-family (.dark + data-base="dark").
       (function () {
         try {
-          var modes = ['light', 'sepia', 'grey', 'dark'];
+          var modes = ['light', 'sepia', 'grey', 'dark', 'amoled'];
           var m = localStorage.getItem('theme-mode');
           if (modes.indexOf(m) === -1) m = 'dark';
           var a = localStorage.getItem('theme-accent') || 'crimson';
-          var isDark = m === 'dark' || m === 'grey';
+          var isDark = m === 'dark' || m === 'grey' || m === 'amoled';
           var el = document.documentElement;
           el.setAttribute('data-theme', m);
           el.setAttribute('data-base', isDark ? 'dark' : 'light');

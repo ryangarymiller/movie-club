@@ -4,15 +4,16 @@ const ThemeContext = createContext(null)
 
 const ACCENT_OPTIONS = ['crimson', 'ember', 'amber', 'sage', 'slate-blue', 'indigo', 'violet', 'hot-pink']
 
-// Four modes from lightest → darkest. Sepia is a warm light theme; grey is a soft
-// dark theme — the two "in-between" options between stark light and near-black dark.
-const MODE_OPTIONS = ['light', 'sepia', 'grey', 'dark']
+// Five modes from lightest → darkest. Sepia is a warm light theme; grey is a soft
+// dark theme (the two "in-between" options); amoled is a true-black dark theme for
+// OLED screens, darker than the default dark.
+const MODE_OPTIONS = ['light', 'sepia', 'grey', 'dark', 'amoled']
 // Which modes are dark-family (get the .dark class + dark Tailwind utilities) vs
 // light-family (get data-base="light" + the light utility remaps).
-const DARK_MODES = new Set(['dark', 'grey'])
+const DARK_MODES = new Set(['dark', 'grey', 'amoled'])
 
 // Mobile browser chrome colour per mode (matches each theme's --bg in index.css).
-const THEME_COLORS = { light: '#f3f4f6', sepia: '#f3ead4', grey: '#2a2c32', dark: '#07080d' }
+const THEME_COLORS = { light: '#f3f4f6', sepia: '#f3ead4', grey: '#2a2c32', dark: '#07080d', amoled: '#000000' }
 
 export function ThemeProvider({ children }) {
   const [mode, setModeRaw] = useState(() => {

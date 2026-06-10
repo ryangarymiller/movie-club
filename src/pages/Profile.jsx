@@ -1398,13 +1398,13 @@ export default function Profile({ overlayUserId = null } = {}) {
           <span style={SECTION_LABEL}>Appearance</span>
 
           <div style={{ ...CARD, padding: '16px' }}>
-            {/* Theme mode: Light · Sepia · Grey · Dark (lightest → darkest) */}
+            {/* Theme mode: Light · Sepia · Grey · Dark · AMOLED (lightest → darkest) */}
             <div style={{ marginBottom: '20px' }}>
               <p style={{ ...LABEL_STYLE, margin: '0 0 10px' }}>
                 Theme
               </p>
               <div style={{ display: 'flex', gap: '4px', background: 'rgba(var(--fg-rgb), 0.06)', borderRadius: '10px', padding: '4px' }}>
-                {(MODE_OPTIONS ?? ['light', 'sepia', 'grey', 'dark']).map(opt => (
+                {(MODE_OPTIONS ?? ['light', 'sepia', 'grey', 'dark', 'amoled']).map(opt => (
                   <button
                     key={opt}
                     onClick={() => { if (mode !== opt) { setMode(opt); persistTheme({ theme_mode: opt }) } }}
@@ -1412,10 +1412,10 @@ export default function Profile({ overlayUserId = null } = {}) {
                     style={{
                       flex: 1,
                       fontFamily: "'DM Mono', monospace",
-                      fontSize: '11px',
-                      letterSpacing: '0.06em',
+                      fontSize: '10px',
+                      letterSpacing: '0.02em',
                       textTransform: 'capitalize',
-                      padding: '6px 4px',
+                      padding: '6px 2px',
                       borderRadius: '7px',
                       border: 'none',
                       background: mode === opt ? 'rgba(var(--fg-rgb), 0.15)' : 'transparent',
@@ -1425,7 +1425,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                       fontWeight: mode === opt ? 600 : 400,
                     }}
                   >
-                    {opt}
+                    {opt === 'amoled' ? 'AMOLED' : opt}
                   </button>
                 ))}
               </div>
@@ -1598,7 +1598,7 @@ export default function Profile({ overlayUserId = null } = {}) {
                         border: '1px solid rgba(var(--fg-rgb), 0.12)',
                         borderRadius: '9px',
                         padding: '8px 10px',
-                        colorScheme: (mode === 'dark' || mode === 'grey') ? 'dark' : 'light',
+                        colorScheme: (mode === 'dark' || mode === 'grey' || mode === 'amoled') ? 'dark' : 'light',
                       }}
                     />
                   </label>
