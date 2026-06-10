@@ -323,7 +323,13 @@ votes          — id, target_type ('review'|'comment'), target_id, user_id, val
                  (one vote per user per target; Reddit-style up/down)
 picker_guesses — id, movie_id, guessing_user_id, guessed_user_id
 score_predictions — id, movie_id, predicting_user_id, target_user_id, predicted_score
-                 (picker-only: only the film's picker predicts the other members' scores for their own pick)
+                 (picker-only: only the film's picker predicts the other members' scores for their own pick.
+                  ANONYMITY: the film overlay's predictions list masks each OTHER member's name AND
+                  actual score until picker_revealed — showing only the predicted number. Without this,
+                  the set of predicted members reveals the picker by elimination (the picker is the one
+                  member with no row), and a visible actual could be correlated to a known member's score
+                  to un-mask them. The viewer's own row and the picker's own view are never masked. Matters
+                  now that soft deadlines flip scores_revealed before the month-end picker_revealed.)
 upcoming_picks — id, user_id, month_id, tmdb_id, justification (hidden from all others until reveal)
 veto_votes     — id, movie_id, voting_user_id (3+/5 triggers picker resubmission)
 watchlist      — id, user_id, tmdb_id, title, poster_url, year_released, created_at (private per user;

@@ -734,8 +734,16 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, isPic
         </div>
         {predictions.map(p => {
           const targetUser = users.find(u => u.id === p.target_user_id)
-          const actual = ratingByUser[p.target_user_id]
-          const delta = predictionDelta(p.predicted_score, actual)
+          const isMe = p.target_user_id === profile?.id
+          // Anonymity: until the PICKER is revealed, mask other members' identity AND
+          // their actual score — the set of predicted members would otherwise reveal
+          // the picker by elimination (the picker is the one member with no row), and a
+          // visible actual could be correlated to a known member's score to un-mask
+          // them. The predicted score is safe to show on its own. Never mask the
+          // picker's own view, or the viewer's own row.
+          const masked = !movie?.picker_revealed && !isPicker && !isMe
+          const actual = masked ? null : ratingByUser[p.target_user_id]
+          const delta = masked ? null : predictionDelta(p.predicted_score, actual)
           return (
             <div
               key={p.target_user_id}
@@ -750,38 +758,43 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, isPic
               <span style={{
                 flex: 1,
                 minWidth: 0,
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: '13px',
-                color: 'rgba(var(--fg-rgb), 0.7)',
+                fontFamily: masked ? "'DM Mono', monospace" : "'DM Sans', sans-serif",
+                fontSize: masked ? '11px' : '13px',
+                fontStyle: masked ? 'italic' : 'normal',
+                color: masked ? 'rgba(var(--fg-rgb), 0.3)' : 'rgba(var(--fg-rgb), 0.7)',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                {targetUser?.name ?? 'Unknown'}
+                {masked ? 'Hidden until picker reveal' : (targetUser?.name ?? 'Unknown')}
               </span>
               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: 'rgba(var(--fg-rgb), 0.3)' }}>
                 {p.predicted_score != null ? Number(p.predicted_score).toFixed(2) : '—'}
               </span>
-              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(var(--fg-rgb), 0.2)', margin: '0 2px' }}>→</span>
-              <span style={{
-                fontFamily: "'DM Mono', monospace",
-                fontSize: '13px',
-                fontWeight: 600,
-                color: actual != null ? scoreColor(Number(actual)) : 'rgba(var(--fg-rgb), 0.2)',
-              }}>
-                {actual != null ? Number(actual).toFixed(2) : '—'}
-              </span>
-              {delta != null && (
-                <span style={{
-                  fontFamily: "'DM Mono', monospace",
-                  fontSize: '10px',
-                  color: deltaColor(delta),
-                  background: `${deltaColor(delta)}18`,
-                  border: `1px solid ${deltaColor(delta)}40`,
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  flexShrink: 0,
-                }}>
-                  ±{delta.toFixed(2)}
-                </span>
+              {!masked && (
+                <>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: 'rgba(var(--fg-rgb), 0.2)', margin: '0 2px' }}>→</span>
+                  <span style={{
+                    fontFamily: "'DM Mono', monospace",
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: actual != null ? scoreColor(Number(actual)) : 'rgba(var(--fg-rgb), 0.2)',
+                  }}>
+                    {actual != null ? Number(actual).toFixed(2) : '—'}
+                  </span>
+                  {delta != null && (
+                    <span style={{
+                      fontFamily: "'DM Mono', monospace",
+                      fontSize: '10px',
+                      color: deltaColor(delta),
+                      background: `${deltaColor(delta)}18`,
+                      border: `1px solid ${deltaColor(delta)}40`,
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      flexShrink: 0,
+                    }}>
+                      ±{delta.toFixed(2)}
+                    </span>
+                  )}
+                </>
               )}
             </div>
           )
@@ -836,7 +849,7 @@ function PredictionsSection({ movie, profile, users, ratings, predictions, isPic
           margin: 0,
           lineHeight: 1.6,
         }}>
-          The picker is predicting everyone's scores for this film — revealed when scores are.
+          The picker is predicting everyone's scores for this film — predicted scores appear when scores reveal; who they're for is hidden until the month-end picker reveal.
         </p>
       </div>
     )
