@@ -200,11 +200,9 @@ body {
 .recharts-wrapper:focus-visible,
 .recharts-surface:focus,
 .recharts-surface:focus-visible,
-.recharts-sector:focus,
-.recharts-sector:focus-visible,
-.recharts-layer:focus,
-.recharts-layer:focus-visible,
-.recharts-pie:focus,
-.recharts-pie:focus-visible {
+/* Catch-all: any focusable descendant of a chart (line / dot / bar / sector /
+   layer / …) — clicking a trend-chart point left a stray focus "bounding box". */
+.recharts-wrapper :focus,
+.recharts-wrapper :focus-visible {
   outline: none !important;
 }

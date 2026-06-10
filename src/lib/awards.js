@@ -293,16 +293,28 @@ function mapDbRow(row) {
   }
 }
 
+// Season-scope awards store period_ref = the season's UUID (the upsert conflict
+// key), so the raw label would render as a UUID. Resolve it to the season's human
+// name. Other scopes already map correctly via fmtPeriodRef.
+function applySeasonNames(awards, seasonNameById) {
+  return awards.map(a =>
+    a.scope === 'season' && seasonNameById[a.periodRef]
+      ? { ...a, period: seasonNameById[a.periodRef] }
+      : a
+  )
+}
+
 // Read this film's awards from the DB. Falls back to [] on error.
 export async function fetchAwardsForFilm(supabase, movieId) {
   if (movieId == null) return []
   try {
-    const { data, error } = await supabase
-      .from('awards')
-      .select('*')
-      .eq('movie_id', movieId)
+    const [{ data, error }, { data: seasons }] = await Promise.all([
+      supabase.from('awards').select('*').eq('movie_id', movieId),
+      supabase.from('seasons').select('id, name'),
+    ])
     if (error) return []
-    return (data ?? []).map(mapDbRow)
+    const seasonNameById = Object.fromEntries((seasons ?? []).map(s => [s.id, s.name]))
+    return applySeasonNames((data ?? []).map(mapDbRow), seasonNameById)
   } catch {
     return []
   }
@@ -312,12 +324,13 @@ export async function fetchAwardsForFilm(supabase, movieId) {
 export async function fetchAwardsForUser(supabase, userId) {
   if (userId == null) return []
   try {
-    const { data, error } = await supabase
-      .from('awards')
-      .select('*')
-      .or(`user_id.eq.${userId},picker_user_id.eq.${userId}`)
+    const [{ data, error }, { data: seasons }] = await Promise.all([
+      supabase.from('awards').select('*').or(`user_id.eq.${userId},picker_user_id.eq.${userId}`),
+      supabase.from('seasons').select('id, name'),
+    ])
     if (error) return []
-    return (data ?? []).map(mapDbRow)
+    const seasonNameById = Object.fromEntries((seasons ?? []).map(s => [s.id, s.name]))
+    return applySeasonNames((data ?? []).map(mapDbRow), seasonNameById)
   } catch {
     return []
   }

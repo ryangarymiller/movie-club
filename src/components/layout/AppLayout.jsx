@@ -155,7 +155,7 @@ export default function AppLayout() {
   const items = adminModeOn ? [...navItems, adminItem] : navItems
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex">
+    <div className="min-h-screen flex" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
       {/* Mobile: fixed top-right bell (hidden on desktop, where it lives in the sidebar) */}
       <div
         className="md:hidden fixed z-50"
@@ -165,9 +165,9 @@ export default function AppLayout() {
       </div>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-60 border-r border-gray-800 p-4 gap-1 shrink-0">
+      <aside className="hidden md:flex flex-col w-60 p-4 gap-1 shrink-0" style={{ borderRight: '1px solid rgba(var(--fg-rgb), 0.1)' }}>
         <div className="px-3 py-4 mb-2 flex items-center justify-between gap-2">
-          <div className="text-lg font-bold tracking-tight text-white flex items-center gap-2 shrink-0">
+          <div className="text-lg font-bold tracking-tight flex items-center gap-2 shrink-0" style={{ color: 'var(--text-strong)' }}>
             <FilmsIcon active={true} />
             <span className="whitespace-nowrap">Movie Club</span>
           </div>
@@ -180,12 +180,11 @@ export default function AppLayout() {
               key={item.to}
               to={item.to}
               end={item.to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors
-                 ${isActive
-                   ? 'bg-gray-800 text-white'
-                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'}`
-              }
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={({ isActive }) => ({
+                background: isActive ? 'rgba(var(--fg-rgb), 0.08)' : 'transparent',
+                color: isActive ? 'var(--text-strong)' : 'var(--text-dim)',
+              })}
             >
               {({ isActive }) => (
                 <>
@@ -205,9 +204,10 @@ export default function AppLayout() {
 
       {/* Mobile bottom tab bar */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 border-t border-gray-800 flex items-stretch z-50 w-full pb-safe"
+        className="md:hidden fixed bottom-0 left-0 right-0 flex items-stretch z-50 w-full pb-safe"
         style={{
-          background: 'rgba(9,9,15,0.92)',
+          background: 'var(--surface)',
+          borderTop: '1px solid rgba(var(--fg-rgb), 0.1)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
         }}
