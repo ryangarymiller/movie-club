@@ -7,7 +7,7 @@ import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { FilmDetailOverlay } from './Films'
 import Avatar from '../components/Avatar'
-import { userColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt } from '../lib/colors'
+import { userColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt, genreColor } from '../lib/colors'
 import {
   ResponsiveContainer,
   BarChart, Bar,
@@ -524,12 +524,12 @@ function DonutChart({ data, height = 200, onLegendClick }) {
             onClick={(_, i) => setSelectedIndex(prev => (prev === i ? null : i))}
             style={{ cursor: 'pointer', outline: 'none' }}
           >
-            {data.map((_, i) => {
+            {data.map((d, i) => {
               const isSel = selectedIndex === i
               return (
                 <Cell
                   key={i}
-                  fill={chartColorAt(i)}
+                  fill={genreColor(d.name)}
                   fillOpacity={selectedIndex == null || isSel ? 1 : 0.3}
                   stroke={isSel ? 'var(--surface)' : 'none'}
                   strokeWidth={isSel ? 3 : 0}
@@ -575,7 +575,7 @@ function DonutChart({ data, height = 200, onLegendClick }) {
                 color: active ? 'var(--text-strong)' : 'var(--text-dim)',
               }}
             >
-              <span style={{ width: '9px', height: '9px', borderRadius: '2px', background: chartColorAt(i), flexShrink: 0 }} />
+              <span style={{ width: '9px', height: '9px', borderRadius: '2px', background: genreColor(d.name), flexShrink: 0 }} />
               {d.name}
             </button>
           )

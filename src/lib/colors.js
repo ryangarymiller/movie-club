@@ -68,6 +68,44 @@ export function chartColorAt(i) {
   return CHART_CATEGORICAL[i % CHART_CATEGORICAL.length]
 }
 
+// ─── Genre colors ───────────────────────────────────────────────────────────────
+// A FIXED, unique colour per TMDB genre — so a genre is the SAME colour in every
+// genre chart (Most Picked Genres, Picks by Genre, …) and no two genres ever share
+// one. Hues are spread + interleaved so genres that commonly co-occur (crime/drama/
+// thriller, action/adventure/sci-fi, comedy/romance) stay visually distinct. Covers
+// all 19 TMDB genres; anything outside the map gets a stable hashed fallback.
+export const GENRE_COLORS = {
+  'Action': '#38bdf8',          // sky
+  'Adventure': '#ef4444',       // red
+  'Animation': '#a3e635',       // lime
+  'Comedy': '#facc15',          // yellow
+  'Crime': '#a855f7',           // purple
+  'Documentary': '#2dd4bf',     // teal
+  'Drama': '#f472b6',           // pink
+  'Family': '#fb923c',          // orange
+  'Fantasy': '#6366f1',         // indigo
+  'History': '#4ade80',         // green
+  'Horror': '#d946ef',          // fuchsia
+  'Music': '#22d3ee',           // cyan
+  'Mystery': '#3b82f6',         // blue
+  'Romance': '#8b5cf6',         // violet
+  'Science Fiction': '#10b981', // emerald
+  'Thriller': '#f43f5e',        // rose
+  'TV Movie': '#f59e0b',        // amber
+  'War': '#a16207',             // brown
+  'Western': '#94a3b8',         // slate
+}
+
+// Unique, stable colour for a genre name. Known genres come from GENRE_COLORS;
+// any unknown string gets a deterministic hashed colour (still stable per name).
+export function genreColor(name) {
+  const key = String(name ?? '').trim()
+  if (GENRE_COLORS[key]) return GENRE_COLORS[key]
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
+  return CHART_CATEGORICAL[h % CHART_CATEGORICAL.length]
+}
+
 // "#a855f7" -> "168, 85, 247" for the --accent-rgb CSS token (rgba() usages).
 // Returns null for non-hex input (e.g. a CSS var) so callers can fall back.
 export function hexToRgbTriple(hex) {
