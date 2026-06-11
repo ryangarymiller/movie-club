@@ -208,7 +208,14 @@ export function PickChangeRequestsAdminPanel() {
         setBusyId(null); return
       }
       // Fetch fresh metadata for the new film, then swap the movie row wholesale.
-      let meta = { year_released: req.requested_year ?? null, director: null, runtime_minutes: null, genre: null, plot_summary: null, streaming_providers: null }
+      // genre must be a text[] (the column is an array — a joined string fails),
+      // and the credits we already fetch populate cast/writers/vote stats so the
+      // swapped film keeps its Connection Web / Cast & Crew data.
+      let meta = {
+        year_released: req.requested_year ?? null, director: null, runtime_minutes: null,
+        genre: null, plot_summary: null, streaming_providers: null,
+        tmdb_cast: null, tmdb_writers: null, tmdb_vote_average: null, tmdb_vote_count: null, tmdb_popularity: null,
+      }
       try {
         const [detRes, provRes] = await Promise.all([
           fetch(`https://api.themoviedb.org/3/movie/${req.requested_tmdb_id}?append_to_response=credits`, { headers: { Authorization: `Bearer ${TMDB_TOKEN}` } }),
@@ -220,9 +227,14 @@ export function PickChangeRequestsAdminPanel() {
             year_released: d.release_date ? parseInt(d.release_date.slice(0, 4), 10) : (req.requested_year ?? null),
             director: d.credits?.crew?.find(c => c.job === 'Director')?.name ?? null,
             runtime_minutes: d.runtime ?? null,
-            genre: d.genres?.map(g => g.name).join(', ') ?? null,
+            genre: (d.genres ?? []).map(g => g.name),
             plot_summary: d.overview ?? null,
             streaming_providers: null,
+            tmdb_cast: (d.credits?.cast ?? []).map(c => c.name).filter(Boolean),
+            tmdb_writers: [...new Set((d.credits?.crew ?? []).filter(c => c.department === 'Writing').map(c => c.name).filter(Boolean))],
+            tmdb_vote_average: d.vote_average ?? null,
+            tmdb_vote_count: d.vote_count ?? null,
+            tmdb_popularity: d.popularity ?? null,
           }
         }
         if (provRes.ok) {
@@ -236,7 +248,8 @@ export function PickChangeRequestsAdminPanel() {
         year_released: meta.year_released, director: meta.director, runtime_minutes: meta.runtime_minutes,
         genre: meta.genre, plot_summary: meta.plot_summary, streaming_providers: meta.streaming_providers,
         pick_justification: null,
-        tmdb_cast: null, tmdb_writers: null, tmdb_vote_average: null, tmdb_vote_count: null, tmdb_popularity: null,
+        tmdb_cast: meta.tmdb_cast, tmdb_writers: meta.tmdb_writers,
+        tmdb_vote_average: meta.tmdb_vote_average, tmdb_vote_count: meta.tmdb_vote_count, tmdb_popularity: meta.tmdb_popularity,
       }).eq('id', req.movie_id)
       if (mvErr) { setActionError('Could not swap the film. No changes were made.'); setBusyId(null); return }
 

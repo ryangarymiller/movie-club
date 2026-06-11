@@ -8,6 +8,7 @@ import { FilmDetailOverlay } from './Films'
 import { userColor } from '../lib/colors'
 import { useBackClose } from '../lib/useBackClose'
 import { useCollapseScroll } from '../lib/useCollapseScroll'
+import { useRevealRefresh } from '../lib/useRevealRefresh'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -612,7 +613,10 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
     setQueueSourceId(sourceQueueId)
     try {
       const [detail, providersData, clubCheck] = await Promise.all([
-        tmdbFetch(`/movie/${result.id}`),
+        // credits ride along so the pick captures director + full cast + writers —
+        // activate_month copies them into the movies row at materialization, which
+        // feeds the Connection Web / Cast & Crew / person pages with zero backfill.
+        tmdbFetch(`/movie/${result.id}?append_to_response=credits`),
         tmdbFetch(`/movie/${result.id}/watch/providers`),
         supabase.from('movies').select('id').eq('tmdb_id', result.id).maybeSingle(),
       ])
@@ -626,6 +630,10 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
       }
 
       const director = detail.credits?.crew?.find(c => c.job === 'Director')?.name ?? null
+      const cast = (detail.credits?.cast ?? []).map(c => c.name).filter(Boolean)
+      const writers = [...new Set(
+        (detail.credits?.crew ?? []).filter(c => c.department === 'Writing').map(c => c.name).filter(Boolean)
+      )]
 
       setSelected({
         tmdb_id: detail.id,
@@ -637,6 +645,11 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
         genre: detail.genres?.map(g => g.name).join(', ') ?? null,
         plot_summary: detail.overview ?? null,
         streaming_providers: streamingProviders,
+        tmdb_cast: cast,
+        tmdb_writers: writers,
+        tmdb_vote_average: detail.vote_average ?? null,
+        tmdb_vote_count: detail.vote_count ?? null,
+        tmdb_popularity: detail.popularity ?? null,
       })
 
       if (clubCheck.data) setAlreadyWatched(true)
@@ -693,6 +706,13 @@ function PickSubmissionFlow({ profile, nextMonth, onPickSaved }) {
           plot_summary: selected.plot_summary,
           streaming_providers: selected.streaming_providers,
           justification: justification.trim() || null,
+          // Full TMDB enrichment, captured at pick time. activate_month copies
+          // these into the movies row when the pick materializes.
+          tmdb_cast: selected.tmdb_cast ?? null,
+          tmdb_writers: selected.tmdb_writers ?? null,
+          tmdb_vote_average: selected.tmdb_vote_average ?? null,
+          tmdb_vote_count: selected.tmdb_vote_count ?? null,
+          tmdb_popularity: selected.tmdb_popularity ?? null,
         },
       }, { onConflict: 'user_id,month_target' })
 
@@ -1829,6 +1849,10 @@ export default function ThisMonth() {
 
     return () => supabase.removeChannel(channel)
   }, [activeMonth, loadData])
+
+  // Server-side reveals + month activations broadcast on the 'reveals' topic —
+  // refetch so a cron activation/reveal repaints this page with no refresh.
+  useRevealRefresh(loadData)
 
   function openModal(movie, rating) {
     setModalMovie(movie)

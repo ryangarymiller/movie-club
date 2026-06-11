@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useRevealTick } from '../lib/useRevealRefresh'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { FilmDetailOverlay } from './Films.jsx'
 
@@ -2737,6 +2738,8 @@ export default function Awards() {
   const [allRatings, setAllRatings] = useState([])
   const [users, setUsers] = useState([])
   const [guesses, setGuesses] = useState([]) // picker_guesses (for Master of Disguise)
+  // Bumps on live reveal/activation broadcasts → refetch (deps of the load effect).
+  const revealTick = useRevealTick()
 
   useEffect(() => {
     async function fetchAll() {
@@ -2774,7 +2777,9 @@ export default function Awards() {
     }
 
     fetchAll()
-  }, [])
+    // revealTick: refetch on live reveal/activation broadcasts so newly-revealed
+    // months' awards appear with no manual refresh.
+  }, [revealTick])
 
   // Scroll + highlight the target award card after tab + sub-tab resolve
   useAwardDeepLink(activeTab, loading, deepLink)

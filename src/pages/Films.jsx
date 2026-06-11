@@ -17,6 +17,7 @@ import FilmTags from '../components/FilmTags'
 import { RecapProse } from '../components/MonthReveal'
 import Avatar from '../components/Avatar'
 import { canSeeScores } from '../lib/visibility'
+import { useRevealRefresh } from '../lib/useRevealRefresh'
 import { useBackClose } from '../lib/useBackClose'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
 import { memberColor, userColor, MEMBER_COLORS } from '../lib/colors'
@@ -2944,6 +2945,10 @@ export default function Films() {
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [profile, loadMovies])
+
+  // Server-side reveals (deadline cron / activation) broadcast on the 'reveals'
+  // topic — refetch so scores/picker reveal state repaints live.
+  useRevealRefresh(loadMovies)
 
   // A discussion post (comment/review id) to scroll to + highlight after opening,
   // carried from a notification deep-link.

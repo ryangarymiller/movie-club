@@ -8,6 +8,7 @@ import { useMemberStatsOverlay } from '../context/MemberStatsOverlayContext'
 import { FilmDetailOverlay } from './Films'
 import Avatar from '../components/Avatar'
 import { userColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt, genreColor } from '../lib/colors'
+import { useRevealTick } from '../lib/useRevealRefresh'
 import {
   ResponsiveContainer,
   BarChart, Bar,
@@ -4958,6 +4959,10 @@ export default function Stats() {
   const [monthsById, setMonthsById] = useState({})
   const [loading, setLoading] = useState(true)
 
+  // Bumps when a server-side reveal/activation broadcasts — re-runs the data
+  // load so reveal-gated stats repaint live (no manual refresh).
+  const revealTick = useRevealTick()
+
   useEffect(() => {
     if (!profile) return
     async function load() {
@@ -5026,7 +5031,8 @@ export default function Stats() {
       setLoading(false)
     }
     load()
-  }, [profile])
+    // revealTick: refetch on live reveal/activation broadcasts.
+  }, [profile, revealTick])
 
   // The viewed member's own ratings, sliced from the shared (already test/Zack-
   // filtered) set — no extra fetch needed since allRatings carries user_id.

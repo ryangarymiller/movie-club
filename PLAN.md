@@ -6,6 +6,15 @@
 
 ---
 
+## Session 14 — Pick-time enrichment + live reveal bus + RT removed
+
+- **TMDB enrichment at pick time:** the pick flow now fetches details **with credits** (fixing a latent bug — `detail.credits` was never fetched, so pick-time `director` was always null) and stores the full payload (director/year/runtime/genre/plot/streaming/cast/writers/vote stats) in `upcoming_picks.metadata`; `activate_month` copies it all into the movies row at materialization. Pick-change approval no longer nulls cast/writers (and stores `genre` as a proper array — the joined string would have failed the `text[]` column); veto-resubmit already handled it. Admin's genre-only backfill → **TMDB Metadata Backfill** (fills any missing field, never overwrites manual edits; auto-runs).
+- **Live reveal bus:** `broadcast_reveal()` trigger sends a minimal `{table,id}` on the public `'reveals'` topic when movies reveal flags or month status change (covers the cron paths); `<RevealBus>` + `useRevealRefresh`/`useRevealTick` (src/lib/useRevealRefresh.js) make Home/ThisMonth/Films/Stats/Awards refetch live. `movies` deliberately NOT in the realtime publication (postgres_changes ignores column-level grants → picker leak).
+- **Rotten Tomatoes:** removed from scope entirely (Ryan's call); TMDB `vote_average` is the permanent mainstream-consensus comparison.
+- **Plugins:** Ryan installed 14 plugins (playwright, vercel, github, code-review, coderabbit, code-simplifier, security-guidance, claude-md-management, remember, supabase, superpowers, frontend-design, explanatory-output-style, agentforce-adlc) — memory updated to route to them when relevant; playwright enables browser QA.
+
+---
+
 ## Session 13 — Phase 4c live + recap fidelity + docs congruence
 
 - **Soft deadline enforcement ON (4c):** new `cron_enforce_due_deadlines()` + hourly `enforce-due-deadlines` pg_cron job — a film's **scores** auto-reveal once `scoring_deadline + app_settings.deadline_grace_days` (default 1) passes. Soft model: scores only (picker stays hidden), non-scorers absent (not zeroed), late scores still accepted. Admin **"Deadline Grace"** panel tunes the grace. Revealed the 4 overdue May films as the first run.
@@ -20,7 +29,7 @@
 - **Admin club-wide export** (`ClubExportPanel` + `gatherClubData`/`buildClubCsv`): JSON/CSV of all members' films/scores/reviews/comments (test excluded).
 - **Day-before deadline reminder** (`cron_notify_due_soon`, `notify-due-soon` cron, type `deadline_soon` + 📅 glyph): pings non-scorers 24h before a film's deadline.
 - **Awards DB refresh** — client-soft `triggerAwardsWrite()` on Admin dashboard mount so the persisted `awards` table stays current after server-side reveals (cron/activation). (Awards were already persisted on admin reveals — corrected an earlier "unbuilt" misread.)
-- **RT comparison — decision:** no public Rotten Tomatoes API (Fandango partner-only). OMDb returns RT Tomatometer for many films (free key, spotty coverage) — the only practical proxy. Left unbuilt pending a call on whether the partial coverage is worth a second backfill; TMDB `vote_average` remains the consensus proxy.
+- **RT comparison — REMOVED from scope (Ryan, session 14):** no public Rotten Tomatoes API exists (Fandango partner-only) and the OMDb proxy has spotty coverage. The club-vs-mainstream comparison uses TMDB `vote_average`, permanently.
 
 ---
 
@@ -487,7 +496,7 @@ Tables: `users` (+`is_op`), `seasons`, `months` (+`active_date`), `movies`, `rat
 - [x] Guess-the-picker results + score-prediction charts — implemented in Stats
 - [x] Taste compatibility heatmap (member × member score correlation)
 - [x] Winning / scoring-streak tracker
-- [ ] **Rotten Tomatoes comparison** — **NOT built**; Stats uses TMDB `vote_average` as a proxy (real RT data needs RT API access — TBD).
+- [x] ~~Rotten Tomatoes comparison~~ — **removed from scope** (no public RT API; TMDB `vote_average` is the permanent mainstream-consensus comparison)
 
 ## Phase 6 — Awards & Recaps
 - [x] **"The Underrated" award (💎)** (session 10) — biggest positive club-avg minus TMDB-avg gap; Monthly / Season / Annual / All-Time; badge on film + profile pages; backed by new `movies.tmdb_vote_average` column

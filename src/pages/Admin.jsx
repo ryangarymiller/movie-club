@@ -1207,14 +1207,13 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
   const [backfillStatus, setBackfillStatus] = useState(null) // null | 'running' | 'done'
   const [backfillMsg, setBackfillMsg] = useState('')
 
-  // Auto-backfill genres once on mount if any film is missing genre data
+  // Auto-backfill once on mount if any film is missing TMDB metadata
   const autoBackfillRan = useRef(false)
   useEffect(() => {
     if (autoBackfillRan.current) return
-    const needsGenre = movies.some(m => m.tmdb_id && (!m.genre || m.genre.length === 0))
-    if (!needsGenre) return
+    if (!movies.some(missingMetadata)) return
     autoBackfillRan.current = true
-    backfillGenres()
+    backfillMetadata()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movies])
 
@@ -1443,10 +1442,29 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
     }
   }
 
-  async function backfillGenres() {
-    const toBackfill = movies.filter(m => m.tmdb_id && (!m.genre || m.genre.length === 0))
+  // True when a film is missing any TMDB-sourced metadata the app uses
+  // (genre/director/plot feed the charts + recaps; cast/writers feed the
+  // Connection Web, Cast & Crew and person pages).
+  function missingMetadata(m) {
+    return !!m.tmdb_id && (
+      !m.genre || m.genre.length === 0 ||
+      !m.director ||
+      !m.plot_summary ||
+      m.year_released == null ||
+      m.runtime_minutes == null ||
+      !Array.isArray(m.tmdb_cast) || m.tmdb_cast.length === 0 ||
+      !Array.isArray(m.tmdb_writers) || m.tmdb_writers.length === 0
+    )
+  }
+
+  // Full TMDB metadata backfill (superseded the old genre-only version): for any
+  // film missing metadata, fetch details + credits and fill ONLY the missing
+  // fields — never overwrite a value an admin set by hand. Safety net behind the
+  // pick-time enrichment (covers picks made before that change, manual rows, etc.).
+  async function backfillMetadata() {
+    const toBackfill = movies.filter(missingMetadata)
     if (toBackfill.length === 0) {
-      setBackfillMsg('All films already have genre data.')
+      setBackfillMsg('All films already have full TMDB metadata.')
       setBackfillStatus('done')
       return
     }
@@ -1460,24 +1478,37 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
     for (const movie of toBackfill) {
       try {
         const resp = await fetch(
-          `https://api.themoviedb.org/3/movie/${movie.tmdb_id}`,
+          `https://api.themoviedb.org/3/movie/${movie.tmdb_id}?append_to_response=credits`,
           { headers: { Authorization: `Bearer ${tmdbToken}` } }
         )
         if (!resp.ok) throw new Error(`TMDB ${resp.status}`)
         const data = await resp.json()
+
+        const updates = {}
         const genreNames = (data.genres ?? []).map(g => g.name)
-        if (genreNames.length > 0) {
-          const { error } = await supabase
-            .from('movies')
-            .update({ genre: genreNames })
-            .eq('id', movie.id)
+        if ((!movie.genre || movie.genre.length === 0) && genreNames.length > 0) updates.genre = genreNames
+        const director = data.credits?.crew?.find(c => c.job === 'Director')?.name
+        if (!movie.director && director) updates.director = director
+        if (!movie.plot_summary && data.overview) updates.plot_summary = data.overview
+        if (movie.year_released == null && data.release_date) updates.year_released = parseInt(data.release_date.slice(0, 4), 10)
+        if (movie.runtime_minutes == null && data.runtime) updates.runtime_minutes = data.runtime
+        const cast = (data.credits?.cast ?? []).map(c => c.name).filter(Boolean)
+        if ((!Array.isArray(movie.tmdb_cast) || movie.tmdb_cast.length === 0) && cast.length > 0) updates.tmdb_cast = cast
+        const writers = [...new Set((data.credits?.crew ?? []).filter(c => c.department === 'Writing').map(c => c.name).filter(Boolean))]
+        if ((!Array.isArray(movie.tmdb_writers) || movie.tmdb_writers.length === 0) && writers.length > 0) updates.tmdb_writers = writers
+        if (movie.tmdb_vote_average == null && data.vote_average != null) updates.tmdb_vote_average = data.vote_average
+        if (movie.tmdb_vote_count == null && data.vote_count != null) updates.tmdb_vote_count = data.vote_count
+        if (movie.tmdb_popularity == null && data.popularity != null) updates.tmdb_popularity = data.popularity
+
+        if (Object.keys(updates).length > 0) {
+          const { error } = await supabase.from('movies').update(updates).eq('id', movie.id)
           if (error) throw error
         }
         done++
         setBackfillMsg(`Backfilling… ${done}/${toBackfill.length} done`)
       } catch (e) {
         errors++
-        console.error(`Genre backfill failed for ${movie.title}:`, e)
+        console.error(`Metadata backfill failed for ${movie.title}:`, e)
       }
       // Rate-limit: 200ms between requests
       await new Promise(r => setTimeout(r, 200))
@@ -1604,15 +1635,15 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
         </p>
       </div>
 
-      {/* Genre backfill */}
+      {/* TMDB metadata backfill (genre, director, plot, year, runtime, cast, writers, vote stats) */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
-        <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 10px' }}>Genre Backfill</p>
+        <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 10px' }}>TMDB Metadata Backfill</p>
         <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: '0 0 12px', fontFamily: "'DM Mono',monospace" }}>
-          Fetches genre data from TMDB for all films that have a TMDB ID but no genre set.
+          Fills any missing genre, director, plot, year, runtime, cast, writers, or TMDB vote stats from TMDB. Only empty fields are written — manual edits are never overwritten. Runs automatically when something's missing; picks made in-app arrive already enriched.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <button
-            onClick={backfillGenres}
+            onClick={backfillMetadata}
             disabled={backfillStatus === 'running'}
             style={{
               padding: '9px 16px', borderRadius: '8px',
@@ -1624,7 +1655,7 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
               opacity: backfillStatus === 'running' ? 0.6 : 1,
             }}
           >
-            {backfillStatus === 'running' ? 'Running…' : 'Backfill genres from TMDB'}
+            {backfillStatus === 'running' ? 'Running…' : 'Backfill metadata from TMDB'}
           </button>
           {backfillMsg && (
             <span style={{ color: backfillStatus === 'done' ? '#4ade80' : '#fbbf24', fontSize: '12px', fontFamily: "'DM Mono',monospace" }}>

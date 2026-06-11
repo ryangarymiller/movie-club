@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useRevealRefresh } from '../lib/useRevealRefresh'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import ScoreModal from '../components/ScoreModal'
 import ReadjustmentBanner from '../components/ReadjustmentBanner'
@@ -395,6 +396,10 @@ export default function Home() {
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [profile, load])
+
+  // Server-side reveals (deadline cron / month activation) broadcast on the
+  // 'reveals' topic — refetch so reveal state repaints with no manual refresh.
+  useRevealRefresh(load)
 
   function openModal(movie, rating) {
     setModalMovie(movie)

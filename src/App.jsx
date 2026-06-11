@@ -28,6 +28,7 @@ const Profile = lazy(() => import('./pages/Profile'))
 const Admin = lazy(() => import('./pages/Admin'))
 import GuidedTour from './components/GuidedTour'
 import { TourProvider } from './context/TourContext'
+import { RevealBus } from './lib/useRevealRefresh'
 
 function RequireAuth({ children }) {
   const { session, profile, profileLoaded, profileError, loading } = useAuth()
@@ -201,6 +202,7 @@ export default function App() {
         <AuthProvider>
           <ThemeSync />
           <PresencePing />
+          <RevealBus />
           <NotificationsProvider>
             <ReadjustmentProvider>
               <MemberOverlayProvider>
