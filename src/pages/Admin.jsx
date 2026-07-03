@@ -320,8 +320,10 @@ function MonthActivationPanel({ months, onRefresh, setError, setSuccess }) {
       .update({ active_date: activeDate || defaultActiveDate(target), auto_activate: autoActivate })
       .eq('id', target.id)
     // Orchestrated activation: enforces single-active, materializes + splits, and
-    // guarantees a next upcoming month for picks.
-    const { error: rpcErr } = await supabase.rpc('activate_month', { p_month_id: target.id })
+    // guarantees a next upcoming month for picks. p_force: true — this is the
+    // deliberate admin "Activate now" action, the one path allowed to bypass the
+    // pick-completeness gate (auto-activation waits until every pick is in).
+    const { error: rpcErr } = await supabase.rpc('activate_month', { p_month_id: target.id, p_force: true })
     if (rpcErr) {
       setBusy(false)
       setError('Activation failed: ' + rpcErr.message)

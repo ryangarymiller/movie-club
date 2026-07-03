@@ -192,6 +192,8 @@ A DB trigger (`email_notification`) POSTs to the Resend API via the `pg_net` ext
 
 **Self-perpetuating cadence:** `activate_month` now creates each next `upcoming` month with `auto_activate = true` (and `active_date` = the 1st), so after one manual kickoff the chain runs itself — every month auto-activates at 12am PT on the 1st, revealing the prior month + materializing the new one. An admin can still flip a specific month's `auto_activate` off, change its `active_date`, or hit "Activate now" manually (the Admin "This month" controls). *(Months created before this change keep their original `auto_activate=false`; e.g. June 2026 is a manual kickoff, July onward is automatic.)*
 
+**Auto-activation is gated on a complete pick slate (`month_picks_complete`).** A month only *auto*-activates once **every expected member's pick is in** — expected = active, non-test members who had joined by that month and aren't in `month_absences` (mirrors the Zack-excluded-pre-April / test-excluded rule). Without this, a due month activated at 12am PT on the 1st with however many picks happened to be in and rolled everyone over to picking the *next* month (this is exactly what bit July 2026: it went active with a single pick). `activate_month` now takes `p_force boolean default false`; **only a deliberate admin "Activate now" (which passes `p_force = true`) bypasses the gate.** EVERY passive/scheduled path is gated — the `cron_auto_activate_due_months` job (also pre-filters on `month_picks_complete`), the client-soft `autoActivateDueMonths()` page-load trigger, **and an admin merely loading the app** (the old admin-bypass keyed on role, so an admin's page load force-activated an incomplete slate — the `p_force` split fixes that). The single-arg `activate_month(uuid)` was dropped in favour of `activate_month(uuid, boolean)` so one-arg callers resolve to the gated default. So a month reopens/stays in selection until its slate is full, then auto-activates on/after its `active_date`; an admin can always force-start early via "Activate now".
+
 **Soft deadline enforcement is now ON.** `pg_cron` runs `public.cron_enforce_due_deadlines()` hourly (`'20 * * * *'`, job `enforce-due-deadlines`): for each film in the **active** month whose `scoring_deadline + app_settings.deadline_grace_days` (default 1) has passed in absolute time and which is still unrevealed, it flips `scores_revealed = true`. It is a **soft** model: only **scores** reveal (the `picker_revealed` flag is untouched — guess-the-picker stays a month-end game); non-scorers are simply **absent** (excluded from the average, never zeroed — averages already compute from available scores only); and **late scores are still accepted** and recalculate (no submission lock — the rolling `ratings` RLS + ScoreModal already allow scoring a revealed film). `notify_scores_revealed` sends the per-film "scores revealed" notification. Function EXECUTE revoked from anon/authenticated; runs in cron context. The grace is admin-tunable in the Admin dashboard **"Deadline Grace"** panel (writes `app_settings.deadline_grace_days`; 0 = reveal right at the deadline).
 
 ---
@@ -383,11 +385,16 @@ auth_events    — id, user_id (nullable), event, user_initiated (bool), detail 
                   deliberateSignOut() tags user-initiated sign-outs;
                   logs SIGNED_OUT with user_initiated + visibility/online, and profile-fetch retries/errors)
 
-RPC: public.activate_month(p_month_id uuid) SECURITY DEFINER
+RPC: public.activate_month(p_month_id uuid, p_force boolean default false) SECURITY DEFINER
      — THE activation orchestration: single-active invariant + materialize + split deadlines +
-       guarantee a next upcoming month + auto-open prior season's readjustment. Admin-gated,
-       except a genuinely-due scheduled month (auto_activate + date passed in PT) which any
-       client may trigger (soft auto-activation).
+       guarantee a next upcoming month + auto-open prior season's readjustment. Passive/scheduled
+       activation (cron, client-soft page-load, incl. an admin's page-load) is gated on the month
+       being genuinely due (auto_activate + date passed in PT) AND `month_picks_complete` (every
+       expected member's pick submitted). Only a deliberate admin "Activate now" (p_force=true)
+       bypasses the gate to force-start. (Old single-arg signature dropped for the gated default.)
+RPC: public.month_picks_complete(p_month_id uuid) SECURITY DEFINER STABLE
+     — true once every expected picker (active, non-test, joined by that month, not in
+       month_absences) has an upcoming_pick for the month; gates auto-activation.
 RPC: public.materialize_and_split_month(p_month_id uuid) SECURITY DEFINER
      — legacy materialize+split (still present); activation now goes through activate_month.
 RPC: public.is_admin(uuid) SECURITY DEFINER STABLE — recursion-safe admin check used by RLS
