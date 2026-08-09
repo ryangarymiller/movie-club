@@ -1252,10 +1252,10 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
       // Film metadata (TMDB-sourced fields)
       title: movie.title ?? '',
       poster_url: movie.poster_url ?? '',
-      overview: movie.overview ?? '',
+      plot_summary: movie.plot_summary ?? '',
       year_released: movie.year_released ?? '',
       director: movie.director ?? '',
-      runtime: movie.runtime ?? '',
+      runtime_minutes: movie.runtime_minutes ?? '',
       tmdb_id: movie.tmdb_id ?? '',
       genre: existingGenre,
     })
@@ -1308,7 +1308,7 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
     // Film metadata (TMDB-sourced fields)
     updates.title = editForm.title?.trim() || null
     updates.poster_url = editForm.poster_url?.trim() || null
-    updates.overview = editForm.overview?.trim() || null
+    updates.plot_summary = editForm.plot_summary?.trim() || null
     updates.director = editForm.director?.trim() || null
     updates.genre = editForm.genre
       ? editForm.genre.split(',').map(s => s.trim()).filter(Boolean)
@@ -1320,11 +1320,11 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
     } else {
       updates.year_released = null
     }
-    if (editForm.runtime !== '' && editForm.runtime != null) {
-      const r = parseInt(editForm.runtime, 10)
-      updates.runtime = isNaN(r) ? null : r
+    if (editForm.runtime_minutes !== '' && editForm.runtime_minutes != null) {
+      const r = parseInt(editForm.runtime_minutes, 10)
+      updates.runtime_minutes = isNaN(r) ? null : r
     } else {
-      updates.runtime = null
+      updates.runtime_minutes = null
     }
     if (editForm.tmdb_id !== '' && editForm.tmdb_id != null) {
       const t = parseInt(editForm.tmdb_id, 10)
@@ -1429,10 +1429,10 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
       setEditForm(f => ({
         ...f,
         title: data.title ?? f.title,
-        overview: data.overview ?? f.overview,
+        plot_summary: data.overview ?? f.plot_summary,
         poster_url: data.poster_path ?? f.poster_url,
         year_released: data.release_date ? new Date(data.release_date).getFullYear() : f.year_released,
-        runtime: data.runtime ?? f.runtime,
+        runtime_minutes: data.runtime ?? f.runtime_minutes,
         director: director ?? f.director,
         genre: genreNames.length > 0 ? genreNames.join(', ') : f.genre,
       }))
@@ -1758,8 +1758,8 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
                           <Label>Runtime (min)</Label>
                           <input
                             type="number"
-                            value={editForm.runtime}
-                            onChange={e => setEditForm(f => ({ ...f, runtime: e.target.value }))}
+                            value={editForm.runtime_minutes}
+                            onChange={e => setEditForm(f => ({ ...f, runtime_minutes: e.target.value }))}
                             placeholder="e.g. 137"
                             style={{
                               display: 'block', width: '100%', marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
@@ -1815,8 +1815,8 @@ function FilmsTab({ movies, ratings, months, onRefresh, setError, setSuccess }) 
                       <div>
                         <Label>Overview (plot)</Label>
                         <textarea
-                          value={editForm.overview}
-                          onChange={e => setEditForm(f => ({ ...f, overview: e.target.value }))}
+                          value={editForm.plot_summary}
+                          onChange={e => setEditForm(f => ({ ...f, plot_summary: e.target.value }))}
                           placeholder="Plot summary"
                           rows={4}
                           style={{
