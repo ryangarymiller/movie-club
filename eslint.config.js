@@ -34,6 +34,9 @@ export default defineConfig([
     files: ['**/*.test.{js,jsx}', 'src/test/**/*.{js,jsx}'],
     languageOptions: {
       globals: {
+        // Node globals: test files run under Vitest in Node (e.g. reading source
+        // with node:fs + process.cwd() in adminMoviesSchema.test.js).
+        ...globals.node,
         describe: 'readonly', it: 'readonly', test: 'readonly', expect: 'readonly',
         vi: 'readonly', beforeEach: 'readonly', afterEach: 'readonly',
         beforeAll: 'readonly', afterAll: 'readonly',
