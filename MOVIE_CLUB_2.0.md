@@ -3,7 +3,36 @@
 > Status: **design, not built.** Captured from the club's 2.0 rules (Ryan Bey, Sept 2026) plus
 > Ryan Miller's decisions. This is the input document for high-level planning.
 > Source-of-truth order still applies: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → `PLAN.md`.
-> Nothing here is implemented yet; 1.0 remains live.
+> Nothing here is implemented yet; **1.0 remains live and untouched.**
+
+---
+
+## 0. Two hard rules (imperatives, not preferences)
+
+### R1 — 2.0 must be revertible to 1.0 at any time
+We are not required to build anything *new* in 1.0, but reverting must remain **possible**.
+Concretely, this means the 2.0 work is bound by:
+
+- **Additive-only schema.** The 2.0 migrations must never `DROP` or destructively `ALTER` any 1.0
+  table, column, view, function, trigger, or cron job. New concepts get new tables.
+- **Guard, don't delete.** 1.0 machinery that must not fire during 2.0 (the auto-activation cron,
+  the deadline-enforcement cron, the completeness gate) gets **scoped off** by a mode discriminator,
+  not removed.
+- **Revert = flip a flag.** Reverting must not require a data migration or a code rollback.
+- **Shared history survives a revert.** Films watched under 2.0 still live in `movies`/`ratings`,
+  so stats and history stay intact in either direction.
+
+### R2 — Every 1.0 feature gets an explicit, verified verdict
+Carry over as much as possible — but **every single feature must be individually checked on two
+axes**, and the check must be real (exercised), not assumed:
+
+1. **Does it still work?** (functionally intact against the new data model)
+2. **Does it still make sense?** (coherent in a 1-film-at-a-time, vote-elected world)
+
+No feature is carried over by default or by assumption. The output is a complete inventory of every
+feature, page, component, RPC, trigger, cron, award, and stat with a verdict of
+**carry as-is / adapt / retire**, plus evidence for the "works" claim. This is the single largest
+piece of the 2.0 effort and is well suited to parallel agents.
 
 ---
 
@@ -51,98 +80,134 @@ Consequence: the film, not the month, becomes the unit of the watch cycle. A mon
 | # | Decision |
 |---|---|
 | A1 | **Borda count.** Top-3 ranked ballot: 1st = 3 pts, 2nd = 2, 3rd = 1. Highest total wins. Ties → **random** (rule 9). |
-| A2 | **No hard enforcement deadline on voting/watching.** The process is self-gating — the next round can't start until everyone has done their part. Social pressure from the group is the intended mechanism. (See open Q1 re: the *submission* deadline, which rule 5 does treat as final.) |
+| A2 | **No hard enforcement deadline on voting/watching.** Self-gating — the next round can't start until everyone has done their part; group pressure is the intended mechanism. |
 | A3 | **Re-vote** for each subsequent film from the same list — not a reuse of the original tally. |
 | B4 | **Submitting your score is the "I've watched it" signal.** No separate watched button. |
-| B5 | **Admin can mark a member absent** to unblock a stalled cycle. This is the escape hatch for rule 1. |
-| C6 | **Submissions are anonymous** on the voting list. The anonymity/reveal system survives. |
-| C7 | **Track picker and voter separately.** Who submitted a film and who voted for it are distinct, separately-stored facts. |
-| D8 | Aim for **≥1 film/month, possibly more**. If a film isn't finished by month end, the next month **doesn't start until everyone finishes** — the month then simply **starts late**. Months drift off the calendar by design. |
+| B5 | **Admin can mark a member absent** to unblock a stalled cycle. Escape hatch for rule 1. |
+| C6 | **Submissions are anonymous** during voting. |
+| C7 | **Track picker and voter separately** — who submitted and who voted for it are distinct facts. |
+| **C6b** | **The submitter is revealed once every member has scored that film.** |
+| **C7b** | **Voters and their ballots are revealed at the same moment** — after everyone has scored. |
+| **B7** | **Scores reveal the instant the last member scores.** That same event unblocks the next round. One trigger; no deadline crons. |
+| D8 | Aim for **≥1 film/month, possibly more**. If a film isn't finished by month end, the next month **doesn't start until everyone finishes** — the month then **starts late**. Months drift off the calendar by design. |
 | D9 | **Unused candidates are discarded** when a new list is created. Members may resubmit them (rule 3). |
-| D10 | Theme is a **free-text label** on the list; it does not gate or validate submissions (rule 4). *(Assumption — answer was "yes" to a two-part question; flag if wrong.)* |
-| E11 | **Mike joins** as the 6th member. Email held out of this repo (public) — goes straight into the `users` row. |
-| E12 | **Era-aware history.** Keep 1.0 and 2.0 data separable, but combine them where a stat is genuinely comparable. Boundary = the October 2026 cutover. |
-| F13 | **Don't cut corners for the Oct 1 date.** October may run manually over text; correctness first. |
+| D10 | Theme is a **free-text label**; it does not gate submissions (rule 4). *(Assumption — confirm.)* |
+| E11 | **Mike joins** as the 6th member. Email kept out of this repo (public) — goes into the `users` row. |
+| E12 | **Era-aware history.** Keep 1.0/2.0 data separable, combine where genuinely comparable. Boundary = Oct 2026. |
+| F13 | **Don't cut corners for Oct 1.** October may run manually over text; correctness first. |
+| **G1** | **Awards:** most monthly awards retire at 1–2 films/month, but a reduced set of monthly awards that still make sense should be **designed fresh** — don't just delete the tier. |
+| **G2** | **1.0 stays live** while 2.0 is built alongside it. |
 
 ---
 
-## 4. Open questions
+## 4. Running 1.0 and 2.0 in parallel
 
-1. **Submission deadline vs. self-gating.** Rule 5 says selection deadlines are final and a hard
-   date was set (Sept 28) — but A2 says nothing really has a deadline. Working read: the
-   **submission window hard-closes** at the deadline (whoever didn't submit simply has no
-   candidates in the pool, per rule 2's "0"), while **voting and watching** wait for everyone.
-   Confirm.
-2. **Re-vote mechanics.** On re-vote, watched films drop out and everyone re-ranks their top 3 of
-   what remains. What if fewer than 3 candidates remain — rank all of them?
-3. **When is the submitter revealed?** Submissions are anonymous during voting. Does the submitter
-   surface after the film is watched/scored, at month end, or never? This is what keeps
-   guess-the-picker alive.
-4. **Are votes themselves anonymous?** C7 says *track* picker and voter separately — but tracking
-   isn't displaying. Who can see who ranked what, and when?
-5. **Is the running tally visible before voting closes?** (Visible tallies change voting behavior;
-   default recommendation is to hide until close.)
-6. **Scoring model carryover.** Assume unchanged: 0.01–10.00 two decimals, pre-watch excitement,
-   recommend-outside-club, reviews/threads, rolling reveal. Confirm.
-7. **When do scores reveal?** There are no per-film deadlines any more. Natural answer: the film
-   reveals the moment the last member scores — which is the same event that unblocks the next
-   film. Confirm.
-8. **Awards rework.** Much of the catalog is month-scoped and assumes 4–5 films/month. With 1–2
-   films/month, monthly awards (Most Divisive, Pick of the Month) get thin or degenerate. Shift
-   them to per-film or per-season?
-9. **In-flight 1.0 state.** August 2026 is live (3 films, mid-scoring) and September exists as an
-   `upcoming` month expecting one-pick-per-member. Do we finish those under 1.0 rules and then cut
-   over, or clear September?
-10. **Mike's onboarding timing.** Create his user row now (inactive until Oct) or at cutover? Does
-    he take part in October's manual round?
+Yes — this works, in three layers. It's also what makes R1 (revert) real.
+
+**Layer 1 — build isolation (now).** Develop 2.0 against a **Supabase branch** (preview database)
+plus a **Vercel preview deployment**. Live 1.0 and its production data are never touched while
+building. Merge the branch only at cutover.
+
+**Layer 2 — coexistence in production (at cutover).** 2.0 is **purely additive**:
+- New tables for the new concepts (rounds/lists, submissions, ballots).
+- `movies`, `ratings`, `reviews`, `comments`, `users`, `seasons` are **shared** by both eras — which
+  is exactly what E12's era-aware history needs.
+- A **mode discriminator** on `months` (e.g. `mode 'v1' | 'v2'`, default `'v1'`) records which
+  lifecycle governs each month. 1.0's crons and gates get `mode = 'v1'` guards instead of deletion.
+
+**Layer 3 — the switch.** A single app-level setting (e.g. `app_settings.club_mode`) decides which
+flow the UI serves for the current round. Flipping it back is the revert.
+
+**The one real constraint:** two *lifecycles* can't govern the **same month**. August and September
+finish under v1; the first v2 round begins on its own month marked `mode='v2'`. "Parallel" means
+both code paths are live and both eras are queryable — not two competing active rounds.
 
 ---
 
-## 5. What carries over vs. what retires
+## 5. Open questions
 
-**Survives largely intact**
+1. **Submission deadline vs. self-gating.** Rule 5 says selection deadlines are final (Sept 28 was
+   set), but A2 says nothing really has a deadline. Working read: the **submission window
+   hard-closes** (a non-submitter simply has 0 candidates in, per rule 2), while **voting and
+   watching** wait for everyone. Confirm.
+2. **Re-vote mechanics.** Watched films drop out and everyone re-ranks their top 3 of the remainder.
+   If fewer than 3 candidates remain, rank all of them?
+3. **Is the running tally visible before voting closes?** Default recommendation: hide until close.
+4. **Scoring model carryover.** Assume unchanged: 0.01–10.00, pre-watch excitement,
+   recommend-outside-club, reviews/threads, rolling reveal. Confirm. *(Subject to R2 anyway.)*
+5. **Mike's onboarding timing.** Create his user row now (inactive until Oct) or at cutover? Does he
+   take part in October's manual round?
+
+---
+
+## 6. What carries over vs. what retires
+
+> **Subject to R2** — nothing below is settled until individually verified. This is a starting
+> hypothesis for the audit, not its conclusion.
+
+**Expected to survive largely intact**
 - Scoring engine (0.01–10.00, excitement, recommend, back-calculation)
 - Reviews / threaded discussion, reactions, votes, @mentions
 - Anonymity + rolling reveal (C6 keeps this alive)
-- Guess-the-picker (pending Q3)
+- Guess-the-picker — now "who put this on the list", revealed per C6b
 - Stats, Connection Web, person pages, film tags
 - Themes/accents, avatars, notifications, push/email, guest mode
 - Seasons + seasonal readjustment
 
 **Needs rework**
-- Awards catalog — month-scoped awards assume 4–5 films/month (Q8)
-- "Picker" semantics — a film now wins by vote, not by one person's pick; picker credit and
-  voter credit are now separate axes (C7)
-- Stats that count "films picked per member" — meaning changes across the era boundary (E12)
+- Awards catalog — monthly tier must be redesigned, not deleted (G1)
+- "Picker" semantics — a film wins by vote, not by one person's pick; picker and voter are now
+  separate axes (C7), and both reveal together (C6b/C7b)
+- Stats counting "films picked per member" — meaning changes across the era boundary (E12)
 
-**Retires**
+**Expected to retire**
 - `upcoming_picks` one-per-member-per-month model
 - `month_picks_complete` completeness gate + gated auto-activation
-- Per-film staggered `scoring_deadline` splitting, and the `enforce-due-deadlines` cron
-- Calendar-driven auto-activation (`cron_auto_activate_due_months`, `active_date`,
-  `auto_activate`) — progression is people-gated now, not date-gated
+- Per-film staggered `scoring_deadline` splitting and `enforce-due-deadlines`
+- Calendar-driven auto-activation (`cron_auto_activate_due_months`, `active_date`, `auto_activate`)
+  — progression is people-gated now
+
+*(Per R1 these are **scoped off**, not dropped.)*
 
 ---
 
-## 6. Data model sketch (for planning, not final)
+## 7. Data model sketch (for planning, not final)
 
 New concepts:
-- **list / selection round** — themed candidate pool, belongs to a month; has a submission window,
-  a state (collecting → voting → watching → closed), and a discard-on-close rule (D9).
+- **list / selection round** — themed candidate pool belonging to a month; submission window; state
+  (collecting → voting → watching → closed); discard-on-close (D9).
 - **submission** — 0..2 per member per round; anonymous until reveal; repeatable across rounds (rule 3).
-- **ballot** — one per member per vote, carrying an ordered top-3; Borda-scored (A1); re-issued per
-  film (A3).
-- **watch cycle** — the elected film + the set of members who still need to score it (B4); completion
-  unblocks the next round.
-- **absence** — admin-set, excludes a member from blocking a cycle (B5).
+- **ballot** — one per member per vote, ordered top-3, Borda-scored (A1); re-issued per film (A3).
+- **watch cycle** — the elected film plus the set of members who still owe a score (B4); completion
+  reveals scores + submitter + voters (B7/C6b/C7b) and unblocks the next round.
+- **absence** — admin-set; excludes a member from blocking a cycle (B5).
 
-`movies` stays the film record. `months` stays the container but loses its date-driven activation
-machinery (D8 — months start late rather than being forced).
+`movies` stays the film record. `months` stays the container, gains `mode`, and loses its
+date-driven activation machinery in v2 months.
 
 ---
 
-## 7. Cutover
+## 8. Known debt to fold in
 
-- 1.0 stays live until 2.0 is ready; October likely runs manually over text (F13).
+**Test account is hardcoded in 41 places across 25 files.** The filter
+`email <> '<test account>'` is inlined across `src/`, the `ai-recap` edge function, and numerous SQL
+migrations. Proper fix: add a **`users.is_test` boolean** flag, set it once, and replace every
+hardcoded comparison with it.
+
+Notes:
+- Historical migrations are append-only records — they are not rewritten. The live functions get
+  **redefined by a new migration**.
+- Scrubbing current files does **not** remove the address from **git history**; a true purge needs a
+  history rewrite + force-push of a public repo. (Mitigating: it is Ryan's own test address, not a
+  member's.)
+- Every one of those 41 sites is a "hide this member" rule inside a feature that **R2 requires us to
+  audit anyway** — so this refactor should ride along with the parity audit rather than be a
+  separate pass.
+
+---
+
+## 9. Cutover
+
+- 1.0 stays live until 2.0 is ready; October likely runs manually over text (F13, G2).
 - Era boundary at Oct 2026 for stats separability (E12).
-- Jan–Sep 2026 history is preserved exactly as-is.
+- Jan–Sep 2026 history preserved exactly as-is.
