@@ -147,17 +147,20 @@ Borda is pure SQL and gets a unit-test fixture (ties, <3 candidates, absent vote
    (auth trigger, `ensure_rls`, cron jobs) → `20260924000000_baseline_v1.sql`; archive the 57
    historical files; `supabase db diff --linked` must be empty. Procedure: `supabase/BASELINE.md`.
    *(Blocked on the laptop: the cloud container cannot open a raw Postgres connection.)*
-2. ✅ SQL / 🔄 client **`users.is_test`** — `20260924010000` (column, data, 5 functions, 3 views,
-   orphan `handle_new_auth_user` dropped). Client `src/lib/members.js` + 18 sites + `ai-recap`: in progress.
-3. ✅ SQL / 🔄 client **`expected_members()` kernel** — `20260924020000`. Client Zack name-hacks → `joined_at`: in progress.
+2. ✅ **`users.is_test`** — SQL `20260924010000` (column, data, 5 functions, 3 views, orphan
+   `handle_new_auth_user` dropped); client `src/lib/members.js` replaces all 18 sites + `ai-recap`.
+   `grep -rn` for the address across `src`, `supabase/functions`, `CLAUDE.md` is empty.
+3. ✅ **`expected_members()` kernel** — SQL `20260924020000`; client Zack name-hacks → `joined_at`
+   (`joinedMonth` / `memberEligibleForMonth` / `lateJoinersForSeason`).
 4. ✅ **Fix `handle_auth_user_created`** — `20260924020000`. Was broken twice (non-existent tables;
    children re-pointed before the parent row existed under NO ACTION FKs). Now insert-new → move
    children over every FK dynamically → delete placeholder.
 5. ✅ **Mode plumbing + guards** — `20260924030000`: `months.mode/theme/submissions_close_at/started_at`,
    `app_settings.club_mode`, guards on `activate_month`, 3 crons, `month_picks_complete`, picker
    reveal (now absence-aware), veto. Validated end-to-end against prod in an aborted transaction.
-6. ✅ SQL / 🔄 client Side fixes: `anon` grants revoked (`20260924030000`); CLAUDE.md doc fixes done;
-   duplicate `GuessThePicker`: in progress. Bonus: latent `resubmit_vetoed_pick` text→text[] bug fixed.
+6. ✅ Side fixes: `anon` grants revoked (`20260924030000`); CLAUDE.md doc fixes; duplicate
+   `GuessThePicker` consolidated. Bonus: latent `resubmit_vetoed_pick` text→text[] bug fixed.
+   Verified on the branch: build clean, 308/308 tests, lint 0 errors.
 7. ❌ **Dev isolation** — decided: local `supabase start` on Ryan's always-on laptop (H2). Needs
    Docker + Supabase CLI + repo clone there, and either Remote Control or Tailscale onboarding on a
    new cloud environment for me to drive it.
