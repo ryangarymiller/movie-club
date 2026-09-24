@@ -20,7 +20,26 @@ A private web app for a 5-person movie club. Each month every member picks one f
 **Club founding date:** January 5, 2026  
 **Member details:** See `PRIVATE.md` (not public)  
 **Zack joined:** April 2026 — exclude him from Jan–Mar stats entirely  
-**Test account:** `i.am.ryan.the.miller@gmail.com` (Ryan Miller Test) — can sign in but must be invisible in all UI: stats, members lists, scores, awards, etc. Filter it out by email in all queries/displays.
+**Test account:** the `users` row with `is_test = true` (Ryan Miller Test) — can sign in but must be invisible in all UI: stats, members lists, scores, awards, notifications, gates. Filter on `users.is_test` (client: `src/lib/members.js` — `clubUsers()` / `testUserIds()`; SQL: `not u.is_test`). Never by email — the address is deliberately not in this repo.
+
+---
+
+## Movie Club 2.0 (in progress — Phase 0)
+
+The club is moving to a new model (themed candidate pool → Borda top-3 vote → one film at a time,
+people-gated). **1.0 stays live and must remain revertible** while 2.0 is built alongside it.
+- Design + decisions: `MOVIE_CLUB_2.0.md` · Plan: `MOVIE_CLUB_2.0_PLAN.md` · Evidence: `docs/2.0-inventory/`.
+- **R1 (revertibility):** 2.0 is additive. `months.mode` (`'v1'|'v2'`) says which lifecycle governs a
+  month; `app_settings.club_mode` is the UI switch and the revert. Every 1.0 lifecycle object
+  (`activate_month`, the three crons, `month_picks_complete`, the month-wide picker reveal, veto)
+  is scoped to `mode='v1'` by redefinition — never dropped.
+- **R2 (parity):** no 1.0 feature carries into 2.0 by assumption; each gets an exercised
+  works / makes-sense verdict.
+- **Membership kernel:** `public.expected_members(p_month_id)` is the one answer to "who counts as a
+  member for this month" (active ∧ not test ∧ joined by that month ∧ not absent). Gates, reveals and
+  rosters call it; the old Zack-by-name checks are retired in favour of `users.joined_at`.
+- **Schema baseline:** prod carries migrations the repo never tracked; `supabase/BASELINE.md` is the
+  laptop-side procedure that makes `supabase start` reproduce prod.
 
 ---
 
@@ -292,8 +311,9 @@ The signed-in user's own pick (for the upcoming month) shows inline on This Mont
 ## Key Data Models
 
 ```
-users          — id, name, email, avatar_id, user_color, role, is_op (bool), timezone, joined_at,
-                 is_active, has_completed_onboarding, admin_mode_enabled,
+users          — id, name, email, avatar_id, user_color, role, is_op (bool), timezone, joined_at (date),
+                 is_active, is_test (bool — the hidden test account; the ONLY way to identify it),
+                 has_completed_onboarding, admin_mode_enabled,
                  last_online_at, show_last_online, created_at
                  (is_op: sole power to grant/revoke admin; an op is also an admin — role stays 'admin')
 seasons        — id, name, start_date, end_date, readjustment_open (bool), readjustment_ends_at (timestamptz),
@@ -303,9 +323,14 @@ seasons        — id, name, start_date, end_date, readjustment_open (bool), rea
                   readjustment_* drive the Phase 6 seasonal readjustment window; admin-only UPDATE RLS.)
 months         — id, season_id, month_year, reveal_date, end_of_month_reveal_date, status,
                  active_date (date the month goes active; defaults to the 1st; admin-adjustable),
-                 auto_activate (bool, default false — scheduled auto-activation at 12am PT on active_date)
-                 (Invariant: always one 'active' + one 'upcoming'. Activation goes through activate_month.)
-app_settings   — id (singleton true), readjustment_length_days (int, default 7), updated_at
+                 auto_activate (bool, default false — scheduled auto-activation at 12am PT on active_date),
+                 mode ('v1'|'v2', default 'v1' — which lifecycle governs the month; the era marker),
+                 theme, submissions_close_at, started_at (2.0 only)
+                 (Invariant: always one 'active' + one 'upcoming'. 1.0 activation goes through activate_month,
+                  which refuses v2 months and refuses to demote a live v2 month.)
+app_settings   — id (singleton true), readjustment_length_days (int, default 7), veto_threshold,
+                 deadline_grace_days, club_mode ('v1'|'v2', default 'v1' — which flow the
+                 current-round UI serves; flipping back to 'v1' is the 2.0 revert), updated_at
                  (global config; RLS readable by any member, admin-write)
 movies         — id, month_id, title, tmdb_id, picked_by_user_id, pick_justification,
                  scores_revealed (bool), picker_revealed (bool), scoring_deadline,
@@ -335,7 +360,9 @@ score_predictions — id, movie_id, predicting_user_id, target_user_id, predicte
                   member with no row), and a visible actual could be correlated to a known member's score
                   to un-mask them. The viewer's own row and the picker's own view are never masked. Matters
                   now that soft deadlines flip scores_revealed before the month-end picker_revealed.)
-upcoming_picks — id, user_id, month_id, tmdb_id, justification (hidden from all others until reveal)
+upcoming_picks — id, user_id, month_target (text = months.month_year — NOT a month_id), tmdb_id, title,
+                 poster_url, metadata jsonb (full TMDB enrichment + justification), submitted_at;
+                 unique(user_id, month_target). 1.0 only; hidden from all others until reveal.
 veto_votes     — id, movie_id, voting_user_id (3+/5 triggers picker resubmission)
 watchlist      — id, user_id, tmdb_id, title, poster_url, year_released, created_at (private per user;
                  unique(user_id,tmdb_id); RLS own-only). Films a member wants to watch.
@@ -392,9 +419,13 @@ RPC: public.activate_month(p_month_id uuid, p_force boolean default false) SECUR
        being genuinely due (auto_activate + date passed in PT) AND `month_picks_complete` (every
        expected member's pick submitted). Only a deliberate admin "Activate now" (p_force=true)
        bypasses the gate to force-start. (Old single-arg signature dropped for the gated default.)
+RPC: public.expected_members(p_month_id uuid) returns setof uuid — SECURITY DEFINER STABLE
+     — THE membership kernel: active ∧ not is_test ∧ joined_at's month ≤ month_year ∧ not in
+       month_absences. Every gate, reveal and roster asks this one function. (A per-film
+       overload for 2.0 cycles arrives with cycle_absences in Phase 1.)
 RPC: public.month_picks_complete(p_month_id uuid) SECURITY DEFINER STABLE
-     — true once every expected picker (active, non-test, joined by that month, not in
-       month_absences) has an upcoming_pick for the month; gates auto-activation.
+     — 1.0 only (returns false for a v2 month): true once every expected_members() picker has
+       an upcoming_pick for the month; gates auto-activation.
 RPC: public.materialize_and_split_month(p_month_id uuid) SECURITY DEFINER
      — legacy materialize+split (still present); activation now goes through activate_month.
 RPC: public.is_admin(uuid) SECURITY DEFINER STABLE — recursion-safe admin check used by RLS
