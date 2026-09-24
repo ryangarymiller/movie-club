@@ -17,6 +17,7 @@ import FilmTags from '../components/FilmTags'
 import { RecapProse } from '../components/MonthReveal'
 import Avatar from '../components/Avatar'
 import { canSeeScores } from '../lib/visibility'
+import { clubUsers, testUserIds } from '../lib/members'
 import { useRevealRefresh } from '../lib/useRevealRefresh'
 import { useBackClose } from '../lib/useBackClose'
 import { getAwardsForFilm, fetchAwardsForFilm } from '../lib/awards'
@@ -1027,7 +1028,7 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
         .eq('movie_id', movieId),
       supabase
         .from('users')
-        .select('id, name, email, role, joined_at, user_color, avatar_id'),
+        .select('id, name, email, role, joined_at, is_test, user_color, avatar_id'),
       supabase
         .from('score_predictions')
         .select('id, predicting_user_id, target_user_id, predicted_score')
@@ -1037,8 +1038,8 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
     let resolvedMovie = movieData ?? movieFallback
 
     // Resolve the film's calendar month (YYYY-MM) so the recommend stat can be
-    // computed out of the members who were in the club that month (pre-Zack 4,
-    // post-Zack 5, test excluded).
+    // computed out of the members who were in the club that month (by
+    // joined_at, test accounts excluded).
     if (resolvedMovie && resolvedMovie.month_id && resolvedMovie._monthYear == null) {
       const { data: monthRow } = await supabase
         .from('months')
@@ -1108,15 +1109,14 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
       }
     }
 
-    // Exclude the test account from every list shown in the overlay (scores,
-    // prediction targets). Spec: filter by email in all queries/displays.
-    const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
-    const testId = (usersData ?? []).find(u => u.email === TEST_EMAIL)?.id ?? null
+    // Exclude test accounts (users.is_test) from every list shown in the overlay
+    // (scores, prediction targets).
+    const testIds = testUserIds(usersData)
 
     setFullMovie(resolvedMovie)
-    setRatings((ratingsData ?? []).filter(r => r.user_id !== testId))
-    setUsers((usersData ?? []).filter(u => u.email !== TEST_EMAIL))
-    setPredictions((predictionsData ?? []).filter(p => p.predicting_user_id !== testId && p.target_user_id !== testId))
+    setRatings((ratingsData ?? []).filter(r => !testIds.has(r.user_id)))
+    setUsers(clubUsers(usersData))
+    setPredictions((predictionsData ?? []).filter(p => !testIds.has(p.predicting_user_id) && !testIds.has(p.target_user_id)))
     setDetailLoading(false)
   }, [])
 
@@ -1148,7 +1148,7 @@ export function FilmDetailOverlay({ movie, onClose, focusPostId = null, onScored
       ] = await Promise.all([
         supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-        supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color, avatar_id'),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active, is_test, user_color, avatar_id'),
         supabase.from('months').select('id, season_id, month_year, status'),
         supabase.from('seasons').select('id, name, start_date, end_date'),
       ])
@@ -2858,7 +2858,7 @@ export default function Films() {
         ),
         supabase.from('months').select('id, month_year, season_id, status').order('month_year', { ascending: true }),
         supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: true }),
-        supabase.from('users').select('id, name, email, user_color, avatar_id'),
+        supabase.from('users').select('id, name, email, is_test, user_color, avatar_id'),
         supabase.from('ratings').select('movie_id, user_id, score'),
       ])
 
@@ -2873,12 +2873,11 @@ export default function Films() {
       ;(seasonsData ?? []).forEach(s => { seasonById[s.id] = s })
 
       // Scores per movie (for stddev-based "divisive" sorting + computed fallback avg).
-      // Exclude the test account by user id.
-      const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
-      const testUserId = (usersData ?? []).find(u => u.email === TEST_EMAIL)?.id ?? null
+      // Exclude test accounts (users.is_test) by user id.
+      const testIds = testUserIds(usersData)
       const scoresByMovie = {}
       for (const r of (ratingsData ?? [])) {
-        if (r.user_id === testUserId) continue
+        if (testIds.has(r.user_id)) continue
         if (r.score == null) continue
         if (!scoresByMovie[r.movie_id]) scoresByMovie[r.movie_id] = []
         scoresByMovie[r.movie_id].push(Number(r.score))
@@ -2923,9 +2922,9 @@ export default function Films() {
         }
         })
 
-      // Build user lookup by id (exclude the test account — must be invisible in all UI)
+      // Build user lookup by id (exclude test accounts — must be invisible in all UI)
       const userLookup = {}
-      ;(usersData ?? []).forEach(u => { if (u.email !== TEST_EMAIL) userLookup[u.id] = u })
+      clubUsers(usersData).forEach(u => { userLookup[u.id] = u })
 
       setMovies(enriched)
       setSeasons(seasonsData ?? [])

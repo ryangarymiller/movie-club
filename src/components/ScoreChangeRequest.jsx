@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import Avatar from './Avatar'
+import { isTestUser } from '../lib/members'
 
 const MONO = "'DM Mono', monospace"
 const SANS = "'DM Sans', sans-serif"
@@ -9,8 +10,6 @@ const DISPLAY = "'Bebas Neue', sans-serif"
 const GREEN = '#86efac'
 const AMBER = '#fbbf24'
 const RED = '#f87171'
-
-const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 
 function fmtScore(v) {
   const n = Number(v)
@@ -424,7 +423,7 @@ export function ScoreChangeRequestsAdminPanel() {
           created_at,
           rating_id,
           user_id,
-          users:user_id ( name, email, user_color, avatar_id ),
+          users:user_id ( name, is_test, user_color, avatar_id ),
           ratings:rating_id ( score, movie_id, movies:movie_id ( title ) )
         `)
         .eq('status', 'pending')
@@ -452,11 +451,8 @@ export function ScoreChangeRequestsAdminPanel() {
     return () => { alive = false }
   }, [load])
 
-  // Hide the invisible test account entirely.
-  const visible = useMemo(
-    () => requests.filter(r => !(r.users?.email && r.users.email.toLowerCase() === TEST_EMAIL)),
-    [requests]
-  )
+  // Hide test accounts (users.is_test) entirely.
+  const visible = useMemo(() => requests.filter(r => !isTestUser(r.users)), [requests])
 
   async function approve(req) {
     if (busyId) return

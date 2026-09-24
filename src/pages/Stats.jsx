@@ -9,6 +9,7 @@ import { FilmDetailOverlay } from './Films'
 import Avatar from '../components/Avatar'
 import { userColor, CHART_NEUTRAL, CHART_CATEGORICAL, chartColorAt, genreColor } from '../lib/colors'
 import { useRevealTick } from '../lib/useRevealRefresh'
+import { clubUsers, testUserIds, memberEligibleForMonth } from '../lib/members'
 import {
   ResponsiveContainer,
   BarChart, Bar,
@@ -910,13 +911,9 @@ export function seasonForMonthYear(monthYear) {
   return { name: 'Autumn', year: y }
 }
 
-// Zack joined April 2026 — exclude him from Jan/Feb/Mar 2026 data entirely.
-const ZACK_NAME = 'Zack'
-export function isZackPreApril(userName, monthYear) {
-  if (!userName || !monthYear) return false
-  if (!userName.toLowerCase().startsWith(ZACK_NAME.toLowerCase())) return false
-  return ['2026-01', '2026-02', '2026-03'].includes(monthYear)
-}
+// Late-joiner exclusion (a member's scores on films from before their
+// users.joined_at month are dropped) lives in src/lib/members.js
+// memberEligibleForMonth — no per-person special cases.
 
 // ─── Skeleton ───────────────────────────────────────────────────────────────
 
@@ -4948,8 +4945,6 @@ export default function Stats() {
     if (g) navigate('/films?tab=All Films&genre=' + encodeURIComponent(g))
   }, [navigate])
 
-  const TEST_USER_EMAIL = 'i.am.ryan.the.miller@gmail.com'
-
   // Shared data
   const [movies, setMovies] = useState([])
   const [allRatings, setAllRatings] = useState([])
@@ -4983,7 +4978,7 @@ export default function Stats() {
           .select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
         supabase
           .from('users')
-          .select('id, name, email, role, joined_at, is_active, user_color, avatar_id')
+          .select('id, name, email, role, joined_at, is_active, is_test, user_color, avatar_id')
           .eq('is_active', true),
         supabase
           .from('ratings')
@@ -5002,23 +4997,23 @@ export default function Stats() {
       const mById = {}
       for (const m of (monthsData ?? [])) mById[m.id] = m
 
-      // Exclude test user
-      const filteredUsers = (usersData ?? []).filter(u => u.email !== TEST_USER_EMAIL)
-      const testUserId = (usersData ?? []).find(u => u.email === TEST_USER_EMAIL)?.id ?? null
+      // Exclude test accounts (users.is_test)
+      const filteredUsers = clubUsers(usersData)
+      const testIds = testUserIds(usersData)
 
-      // Lookups for the Zack pre-April exclusion: movie -> month_year, user -> name
+      // Lookups for the late-joiner exclusion: movie -> month_year, user id -> user
       const movieMonthYear = {}
       for (const m of (moviesData ?? [])) {
         movieMonthYear[m.id] = mById[m.month_id]?.month_year ?? null
       }
-      const userName = {}
-      for (const u of (usersData ?? [])) userName[u.id] = u.name
+      const userById = {}
+      for (const u of (usersData ?? [])) userById[u.id] = u
 
-      // Filter shared ratings: drop the test account everywhere, and drop Zack's
-      // scores on Jan/Feb/Mar 2026 films (he joined April 2026).
+      // Filter shared ratings: drop test accounts everywhere, and drop a member's
+      // scores on films from before the month they joined (users.joined_at).
       const cleanRatings = (ratingsData ?? []).filter(r => {
-        if (testUserId && r.user_id === testUserId) return false
-        if (isZackPreApril(userName[r.user_id], movieMonthYear[r.movie_id])) return false
+        if (testIds.has(r.user_id)) return false
+        if (!memberEligibleForMonth(userById[r.user_id], movieMonthYear[r.movie_id])) return false
         return true
       })
 
@@ -5034,8 +5029,8 @@ export default function Stats() {
     // revealTick: refetch on live reveal/activation broadcasts.
   }, [profile, revealTick])
 
-  // The viewed member's own ratings, sliced from the shared (already test/Zack-
-  // filtered) set — no extra fetch needed since allRatings carries user_id.
+  // The viewed member's own ratings, sliced from the shared (already test/late-
+  // joiner-filtered) set — no extra fetch needed since allRatings carries user_id.
   const viewedRatings = useMemo(
     () => (viewMemberId && profile && viewMemberId !== profile.id)
       ? allRatings.filter(r => r.user_id === viewMemberId)

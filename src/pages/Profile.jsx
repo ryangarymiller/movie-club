@@ -616,9 +616,9 @@ export default function Profile({ overlayUserId = null } = {}) {
       try {
         const { data } = await supabase
           .from('users')
-          .select('id, name, user_color, email')
+          .select('id, name, user_color')
           .neq('id', profile.id)
-          .neq('email', 'i.am.ryan.the.miller@gmail.com')
+          .eq('is_test', false)
         if (!alive) return
         const taken = new Set()
         for (const u of (data ?? [])) {
@@ -723,7 +723,7 @@ export default function Profile({ overlayUserId = null } = {}) {
         ] = await Promise.all([
           supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id'),
           supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-          supabase.from('users').select('id, name, email, role, joined_at, is_active'),
+          supabase.from('users').select('id, name, email, role, joined_at, is_active, is_test'),
           supabase.from('months').select('id, season_id, month_year, status'),
           supabase.from('seasons').select('id, name, start_date, end_date'),
         ])

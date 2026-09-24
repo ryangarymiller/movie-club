@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Avatar from './Avatar'
+import { clubUsers, testUserIds } from '../lib/members'
 
-const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 const EDIT_WINDOW_MS = 15 * 60 * 1000
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '👀']
 const MAX_DEPTH = 6 // cap visual nesting indentation
@@ -54,23 +54,16 @@ export default function CommentThread({ movieId, currentUserId, isAdmin, users =
   // Ticks every 30s so the 15-min edit window can expire without a manual refresh.
   const [now, setNow] = useState(() => Date.now())
 
-  // Filter out the test account up front; build lookup maps.
-  const safeUsers = useMemo(
-    () => (users || []).filter(u => u && u.email !== TEST_EMAIL),
-    [users]
-  )
+  // Filter out test accounts (users.is_test) up front; build lookup maps.
+  const safeUsers = useMemo(() => clubUsers(users), [users])
   const userById = useMemo(() => {
     const m = {}
     for (const u of safeUsers) m[u.id] = u
     return m
   }, [safeUsers])
-  // Email lookup so we can hide content authored by the test account.
-  const emailById = useMemo(() => {
-    const m = {}
-    for (const u of users || []) if (u) m[u.id] = u.email
-    return m
-  }, [users])
-  const isTestAuthor = useCallback(uid => emailById[uid] === TEST_EMAIL, [emailById])
+  // Test-account id set so we can hide content authored by a test account.
+  const testIds = useMemo(() => testUserIds(users), [users])
+  const isTestAuthor = useCallback(uid => testIds.has(uid), [testIds])
 
   // Members eligible to be @mentioned, with their handle.
   const mentionable = useMemo(

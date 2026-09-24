@@ -1,39 +1,32 @@
 // ─── Pure functions copied verbatim from Awards.jsx ───────────────────────────
 // These must stay in sync with the source of truth in src/pages/Awards.jsx.
+// Per-person eligibility comes from src/lib/members.js (joined_at-driven).
+
+import { memberEligibleForMonth, lateJoinersForSeason } from '../lib/members'
 
 function avg(arr) {
   if (!arr.length) return null
   return arr.reduce((a, b) => a + b, 0) / arr.length
 }
 
-function isWinter2026(season, months) {
-  if (!season) return false
-  const seasonMonths = months.filter(m => m.season_id === season.id)
-  return seasonMonths.some(m => {
-    const [year, month] = m.month_year.split('-').map(Number)
-    return year === 2026 && month <= 3
-  })
-}
-
-function isUserEligibleForSeason(userName, seasonIsWinter2026) {
-  if (!seasonIsWinter2026) return true
-  const isZack = userName.toLowerCase().includes('zack') || userName.toLowerCase().includes('anjoorian')
-  return !isZack
-}
-
 // computeSeasonAwards — verbatim logic from Awards.jsx
-function computeSeasonAwards(movies, allRatings, users, season, months, seasonIsWinter2026) {
+function computeSeasonAwards(movies, allRatings, users, season, months) {
   const seasonMonthIds = new Set(
     months.filter(m => m.season_id === season.id).map(m => m.id)
   )
+  const monthYearById = {}
+  months.forEach(m => { monthYearById[m.id] = m.month_year })
   const seasonMovies = movies.filter(m => seasonMonthIds.has(m.month_id) && m.scores_revealed)
   if (!seasonMovies.length) return null
 
   const movieIds = new Set(seasonMovies.map(m => m.id))
   const seasonRatings = allRatings.filter(r => movieIds.has(r.movie_id))
+  const monthYearByMovie = {}
+  seasonMovies.forEach(m => { monthYearByMovie[m.id] = monthYearById[m.month_id] })
 
   const userMap = {}
   users.forEach(u => { userMap[u.id] = u })
+  const eligibleFor = (uid, movieId) => memberEligibleForMonth(userMap[uid], monthYearByMovie[movieId])
 
   const scoresByMovie = {}
   seasonMovies.forEach(m => { scoresByMovie[m.id] = [] })
@@ -61,6 +54,7 @@ function computeSeasonAwards(movies, allRatings, users, season, months, seasonIs
   const pickerMovies = {}
   seasonMovies.forEach(m => {
     if (!m.picked_by_user_id || !m.picker_revealed) return
+    if (!eligibleFor(m.picked_by_user_id, m.id)) return
     if (!pickerMovies[m.picked_by_user_id]) pickerMovies[m.picked_by_user_id] = []
     pickerMovies[m.picked_by_user_id].push(m)
   })
@@ -71,7 +65,6 @@ function computeSeasonAwards(movies, allRatings, users, season, months, seasonIs
   Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
     const user = userMap[uid]
     if (!user) return
-    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
     const avgs = pickedFilms.map(m => movieAvgScore[m.id]).filter(v => v != null)
     if (!avgs.length) return
     const pickerAvg = avg(avgs)
@@ -88,7 +81,6 @@ function computeSeasonAwards(movies, allRatings, users, season, months, seasonIs
   Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
     const user = userMap[uid]
     if (!user) return
-    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
     const avgs = pickedFilms.map(m => movieAvgScore[m.id]).filter(v => v != null)
     if (!avgs.length) return
     const pickerAvg = avg(avgs)
@@ -103,7 +95,7 @@ function computeSeasonAwards(movies, allRatings, users, season, months, seasonIs
   seasonRatings.forEach(r => {
     const user = userMap[r.user_id]
     if (!user) return
-    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
+    if (!eligibleFor(r.user_id, r.movie_id)) return
     if (!userRatingsThisSeason[r.user_id]) userRatingsThisSeason[r.user_id] = []
     userRatingsThisSeason[r.user_id].push(r)
   })
@@ -245,42 +237,51 @@ const RATINGS = [
   { movie_id: 'mv6', user_id: 'u5', score: 9, pre_watch_excitement: 9 },
 ]
 
-// ─── isWinter2026() ────────────────────────────────────────────────────────────
+// ─── lateJoinersForSeason() (drives the season-tab note; data, not a name) ─────
 
-describe('isWinter2026()', () => {
-  test('returns true for Winter 2026 season (has Jan, Feb, Mar months)', () => {
-    expect(isWinter2026(WINTER_2026, MONTHS)).toBe(true)
+describe('lateJoinersForSeason()', () => {
+  test('Winter 2026 lists the April joiner as joined after the whole season', () => {
+    const late = lateJoinersForSeason(USERS, WINTER_2026, MONTHS)
+    expect(late.map(x => x.user.id)).toEqual(['u5'])
+    expect(late[0].joinedMonth).toBe('2026-04')
+    expect(late[0].afterSeason).toBe(true)
   })
 
-  test('returns false for Spring 2026 season (Apr–Jun, no Jan–Mar months)', () => {
-    expect(isWinter2026(SPRING_2026, MONTHS)).toBe(false)
+  test('Spring 2026 has no late joiners (u5 joined in its first month)', () => {
+    expect(lateJoinersForSeason(USERS, SPRING_2026, MONTHS)).toEqual([])
   })
 
-  test('returns false when season is null', () => {
-    expect(isWinter2026(null, MONTHS)).toBe(false)
+  test('a mid-season joiner is listed with afterSeason=false', () => {
+    const withMike = [...USERS, { id: 'u6', name: 'Mike Newmember', joined_at: '2026-05-01', is_active: true }]
+    const late = lateJoinersForSeason(withMike, SPRING_2026, MONTHS)
+    expect(late.map(x => x.user.id)).toEqual(['u6'])
+    expect(late[0].afterSeason).toBe(false)
   })
 
-  test('returns false for a season with no months in Jan–Mar', () => {
-    const futureMonths = [{ id: 'mx', season_id: 'sx', month_year: '2026-07' }]
-    const futureSeason = { id: 'sx', name: 'Summer 2026' }
-    expect(isWinter2026(futureSeason, futureMonths)).toBe(false)
+  test('test accounts are never listed; null season / no months → []', () => {
+    const withTest = [...USERS, { id: 't1', name: 'Tester', joined_at: '2026-09-01', is_test: true }]
+    expect(lateJoinersForSeason(withTest, WINTER_2026, MONTHS).map(x => x.user.id)).toEqual(['u5'])
+    expect(lateJoinersForSeason(USERS, null, MONTHS)).toEqual([])
+    expect(lateJoinersForSeason(USERS, { id: 'sx' }, MONTHS)).toEqual([])
   })
 })
 
-// ─── isUserEligibleForSeason() ─────────────────────────────────────────────────
+// ─── memberEligibleForMonth() applied per season month ─────────────────────────
 
-describe('isUserEligibleForSeason()', () => {
-  test('Zack is NOT eligible for Winter 2026 season', () => {
-    expect(isUserEligibleForSeason('Zack Anjoorian', true)).toBe(false)
+describe('memberEligibleForMonth() across season months', () => {
+  const u5 = USERS.find(u => u.id === 'u5')
+  const u1 = USERS.find(u => u.id === 'u1')
+
+  test('the April joiner is NOT eligible for any Winter 2026 month', () => {
+    for (const my of ['2026-01', '2026-02', '2026-03']) expect(memberEligibleForMonth(u5, my)).toBe(false)
   })
 
-  test('Zack IS eligible for Spring 2026 season', () => {
-    expect(isUserEligibleForSeason('Zack Anjoorian', false)).toBe(true)
+  test('the April joiner IS eligible for every Spring 2026 month', () => {
+    for (const my of ['2026-04', '2026-05', '2026-06']) expect(memberEligibleForMonth(u5, my)).toBe(true)
   })
 
-  test('other members always eligible regardless of season', () => {
-    expect(isUserEligibleForSeason('Ryan Miller', true)).toBe(true)
-    expect(isUserEligibleForSeason('Chris Deschenes', true)).toBe(true)
+  test('founding members are eligible for every month', () => {
+    for (const my of MONTHS.map(m => m.month_year)) expect(memberEligibleForMonth(u1, my)).toBe(true)
   })
 })
 
@@ -302,13 +303,13 @@ describe('Season film filtering — only movies from months in the selected seas
   test('computeSeasonAwards returns null when no movies for season', () => {
     const emptySeason = { id: 'sx', name: 'Empty Season' }
     const emptyMonths = [{ id: 'mx', season_id: 'sx', month_year: '2027-01' }]
-    const result = computeSeasonAwards(MOVIES, RATINGS, USERS, emptySeason, emptyMonths, false)
+    const result = computeSeasonAwards(MOVIES, RATINGS, USERS, emptySeason, emptyMonths)
     expect(result).toBeNull()
   })
 
   test('computeSeasonAwards returns null when no movies have scores_revealed', () => {
     const unrevealed = MOVIES.map(m => ({ ...m, scores_revealed: false }))
-    const result = computeSeasonAwards(unrevealed, RATINGS, USERS, WINTER_2026, MONTHS, true)
+    const result = computeSeasonAwards(unrevealed, RATINGS, USERS, WINTER_2026, MONTHS)
     expect(result).toBeNull()
   })
 })
@@ -318,7 +319,7 @@ describe('Season film filtering — only movies from months in the selected seas
 describe('computeSeasonAwards — Picker of Season', () => {
   // Winter 2026: u1 picked mv1 (avg 8), u2 picked mv2 (avg 6), u3 picked mv3 (avg 5)
   // Picker of Season = u1 with avg 8
-  const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS, true)
+  const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS)
 
   test('picker of Winter 2026 season is u1 (Ryan Miller) with highest pick avg', () => {
     expect(winterAwards.pickerOfSeason.name).toBe('Ryan Miller')
@@ -334,7 +335,7 @@ describe('computeSeasonAwards — Picker of Season', () => {
 
   // Spring 2026: u4 picked mv4 (avg 7), u5 picked mv5 (avg 4), u1 picked mv6 (avg 9)
   // Picker of Season = u1 with avg 9
-  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS, false)
+  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS)
 
   test('picker of Spring 2026 season is u1 (Ryan Miller) with Film Zeta avg 9', () => {
     expect(springAwards.pickerOfSeason.name).toBe('Ryan Miller')
@@ -349,7 +350,7 @@ describe('computeSeasonAwards — Picker of Season', () => {
 
 describe('computeSeasonAwards — Ice Cold (lowest picker avg)', () => {
   // Winter 2026: u3 picked mv3 (avg 5) — lowest pick avg
-  const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS, true)
+  const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS)
 
   test('Ice Cold winner for Winter 2026 is u3 (Andrew Bond) with avg 5', () => {
     expect(winterAwards.iceCold.name).toBe('Andrew Bond')
@@ -360,7 +361,7 @@ describe('computeSeasonAwards — Ice Cold (lowest picker avg)', () => {
   })
 
   // Spring 2026: u5 (Zack) picked mv5 (avg 4) — lowest pick avg
-  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS, false)
+  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS)
 
   test('Ice Cold for Spring 2026 is Zack Anjoorian (Film Epsilon avg 4)', () => {
     expect(springAwards.iceCold.name).toBe('Zack Anjoorian')
@@ -371,10 +372,11 @@ describe('computeSeasonAwards — Ice Cold (lowest picker avg)', () => {
   })
 })
 
-// ─── Zack exclusion from Winter 2026 per-person awards ────────────────────────
+// ─── Late-joiner (joined_at) exclusion from Winter 2026 per-person awards ──────
+// u5 ("Zack") joined 2026-04-01 in the fixture; nothing below keys off the name.
 
-describe('Zack exclusion — Winter 2026 per-person awards', () => {
-  const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS, true)
+describe('Late-joiner exclusion — Winter 2026 per-person awards', () => {
+  const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS)
 
   test('Zack is not Picker of Season for Winter 2026 (was not a member)', () => {
     expect(winterAwards.pickerOfSeason?.name).not.toBe('Zack Anjoorian')
@@ -393,7 +395,7 @@ describe('Zack exclusion — Winter 2026 per-person awards', () => {
   })
 
   test('Zack IS eligible for Spring 2026 per-person awards', () => {
-    const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS, false)
+    const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS)
     // Zack can appear in Spring awards — e.g. Ice Cold is Zack (worst picker avg)
     expect(springAwards.iceCold?.name).toBe('Zack Anjoorian')
   })
@@ -413,7 +415,7 @@ describe('Zack exclusion — Winter 2026 per-person awards', () => {
     ]
     const moviesWithZack = [...MOVIES, zackWinterMovie]
     const ratingsWithZack = [...RATINGS, ...zackWinterRatings]
-    const awards = computeSeasonAwards(moviesWithZack, ratingsWithZack, USERS, WINTER_2026, MONTHS, true)
+    const awards = computeSeasonAwards(moviesWithZack, ratingsWithZack, USERS, WINTER_2026, MONTHS)
     // Even with avg 10, Zack is excluded from Winter 2026 picker awards
     expect(awards.pickerOfSeason?.name).not.toBe('Zack Anjoorian')
   })
@@ -422,7 +424,7 @@ describe('Zack exclusion — Winter 2026 per-person awards', () => {
 // ─── Season film/score correctness ────────────────────────────────────────────
 
 describe('computeSeasonAwards — film and score correctness', () => {
-  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS, false)
+  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS)
 
   test('Film of Spring 2026 is Film Zeta (highest avg 9)', () => {
     expect(springAwards.filmOfSeason.title).toBe('Film Zeta')
@@ -441,7 +443,7 @@ describe('computeSeasonAwards — film and score correctness', () => {
   })
 
   test('Film of Winter 2026 is Film Alpha (highest avg 8)', () => {
-    const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS, true)
+    const winterAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, WINTER_2026, MONTHS)
     expect(winterAwards.filmOfSeason.title).toBe('Film Alpha')
   })
 })
@@ -456,7 +458,7 @@ describe('computeSeasonAwards — historical_avg_score fallback', () => {
       poster_url: null, year_released: 2019,
     }
     const onlyHistoricalMovies = [movieWithHistorical]
-    const result = computeSeasonAwards(onlyHistoricalMovies, [], USERS, WINTER_2026, MONTHS, true)
+    const result = computeSeasonAwards(onlyHistoricalMovies, [], USERS, WINTER_2026, MONTHS)
     expect(result.movieAvgScore['mvH']).toBe(9.5)
   })
 })
@@ -469,7 +471,7 @@ describe('computeSeasonAwards — Oracle (excitement vs final)', () => {
   // For mv4 avg = 7. u1 excitement = 7 (delta 0).
   // For mv5 avg = 4. u1 excitement = 5 (delta 1).
   // u1 total deltas: mv4=0, mv5=1, mv6=0 → avg delta = 1/3 ≈ 0.33
-  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS, false)
+  const springAwards = computeSeasonAwards(MOVIES, RATINGS, USERS, SPRING_2026, MONTHS)
 
   test('Oracle winner has a bestDelta value >= 0', () => {
     expect(springAwards.oracleBestDelta).toBeGreaterThanOrEqual(0)

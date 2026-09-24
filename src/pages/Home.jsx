@@ -11,6 +11,7 @@ import { FilmDetailOverlay } from './Films'
 import { MEMBER_COLORS, userColor } from '../lib/colors'
 import { useCollapseScroll } from '../lib/useCollapseScroll'
 import { clubAge, roundMilestone, memberAnniversaries, inDaysLabel } from '../lib/milestones'
+import { clubUsers } from '../lib/members'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -260,7 +261,7 @@ export default function Home() {
       supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scores_revealed, scoring_deadline'),
       supabase.from('ratings').select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at').eq('user_id', profile.id),
-      supabase.from('users').select('id, name, email, is_active, user_color, avatar_id'),
+      supabase.from('users').select('id, name, email, is_active, is_test, user_color, avatar_id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
       supabase.from('reviews').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
       supabase.from('comments').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
@@ -313,8 +314,8 @@ export default function Home() {
     setAllMovies(movies ?? [])
     setClubFilmsWatched((movies ?? []).filter(m => m.scores_revealed || m.month_id === activeMonth?.id).length)
     setMyRatings(ratings ?? [])
-    // Test account must be invisible in all UI — filter by email. Also exclude inactive members.
-    const visibleUsers = (usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com' && u.is_active !== false)
+    // Test accounts (users.is_test) must be invisible in all UI. Also exclude inactive members.
+    const visibleUsers = clubUsers(usersData).filter(u => u.is_active !== false)
     setUsers(visibleUsers)
 
     // ── Milestone stats — PERSONAL to the viewer (their own journey on their home) ──

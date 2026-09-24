@@ -4,8 +4,10 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ScoreModal from '../components/ScoreModal'
 import MonthReveal from '../components/MonthReveal'
+import GuessThePicker from '../components/GuessThePicker'
 import { FilmDetailOverlay } from './Films'
 import { userColor } from '../lib/colors'
+import { clubUsers, isTestUser } from '../lib/members'
 import { useBackClose } from '../lib/useBackClose'
 import { useCollapseScroll } from '../lib/useCollapseScroll'
 import { useRevealRefresh } from '../lib/useRevealRefresh'
@@ -81,195 +83,6 @@ function Skeleton({ style = {}, className = '' }) {
       className={`animate-pulse ${className}`}
       style={{ background: 'rgba(var(--fg-rgb), 0.05)', borderRadius: '8px', ...style }}
     />
-  )
-}
-
-// ─── Guess the Picker ────────────────────────────────────────────────────────
-
-function GuessThePicker({ movie, profile, allUsers }) {
-  const [guess, setGuess] = useState(null)      // existing guess row
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    if (!profile || !movie) return
-    supabase
-      .from('picker_guesses')
-      .select('id, guessed_user_id')
-      .eq('movie_id', movie.id)
-      .eq('guessing_user_id', profile.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        setGuess(data ?? null)
-        setLoaded(true)
-      })
-  }, [movie, profile])
-
-  if (!profile || !loaded) return null
-
-  const otherUsers = (allUsers ?? []).filter(u => u.id !== profile.id)
-
-  // After reveal — show result
-  if (movie.picker_revealed) {
-    if (!guess) return null
-    const correct = guess.guessed_user_id === movie.picked_by_user_id
-    const guessedUser = (allUsers ?? []).find(u => u.id === guess.guessed_user_id)
-    const pickerUser = (allUsers ?? []).find(u => u.id === movie.picked_by_user_id)
-      ?? (profile.id === movie.picked_by_user_id ? { name: profile.name } : null)
-    return (
-      <div style={{ marginTop: '8px' }}>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '5px',
-          padding: '4px 10px',
-          borderRadius: '999px',
-          border: `1px solid ${correct ? 'rgba(134,239,172,0.3)' : 'rgba(248,113,113,0.3)'}`,
-          background: correct ? 'rgba(134,239,172,0.06)' : 'rgba(248,113,113,0.06)',
-          fontFamily: "'DM Mono',monospace",
-          fontSize: '10px',
-          letterSpacing: '0.04em',
-          color: correct ? '#86efac' : '#f87171',
-        }}>
-          {correct ? '✓' : '✗'}
-          {correct
-            ? ` Correct! It was ${pickerUser?.name ?? 'Unknown'}`
-            : ` You guessed ${guessedUser?.name ?? '?'} — It was ${pickerUser?.name ?? 'Unknown'}`}
-        </span>
-      </div>
-    )
-  }
-
-  async function submitGuess(userId) {
-    setSaving(true)
-    setOpen(false)
-    await supabase.from('picker_guesses').upsert(
-      { movie_id: movie.id, guessing_user_id: profile.id, guessed_user_id: userId },
-      { onConflict: 'movie_id,guessing_user_id' }
-    )
-    const { data: updated } = await supabase
-      .from('picker_guesses')
-      .select('id, guessed_user_id')
-      .eq('movie_id', movie.id)
-      .eq('guessing_user_id', profile.id)
-      .maybeSingle()
-    setGuess(updated ?? null)
-    setSaving(false)
-  }
-
-  // Already guessed, not editing
-  if (guess && !open) {
-    const guessedUser = otherUsers.find(u => u.id === guess.guessed_user_id)
-    return (
-      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '4px 10px',
-          borderRadius: '999px',
-          border: '1px solid rgba(var(--fg-rgb), 0.1)',
-          background: 'rgba(var(--fg-rgb), 0.04)',
-          fontFamily: "'DM Mono',monospace",
-          fontSize: '10px',
-          color: 'var(--text-muted)',
-          letterSpacing: '0.04em',
-        }}>
-          Guess: {guessedUser?.name ?? '?'}
-        </span>
-        <button
-          onClick={() => setOpen(true)}
-          style={{
-            padding: '4px 9px',
-            borderRadius: '999px',
-            border: '1px solid rgba(var(--fg-rgb), 0.1)',
-            background: 'transparent',
-            color: 'var(--text-dim)',
-            fontFamily: "'DM Mono',monospace",
-            fontSize: '10px',
-            cursor: 'pointer',
-            letterSpacing: '0.04em',
-          }}
-        >
-          Edit
-        </button>
-      </div>
-    )
-  }
-
-  // Dropdown open or no guess yet
-  return (
-    <div style={{ marginTop: '8px' }}>
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          disabled={saving}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-            padding: '4px 10px',
-            borderRadius: '999px',
-            border: '1px solid rgba(var(--fg-rgb), 0.1)',
-            background: 'rgba(var(--fg-rgb), 0.03)',
-            color: 'var(--text-dim)',
-            fontFamily: "'DM Mono',monospace",
-            fontSize: '10px',
-            letterSpacing: '0.04em',
-            cursor: 'pointer',
-          }}
-        >
-          Guess picker →
-        </button>
-      )}
-      {open && (
-        <div style={{
-          borderRadius: '10px',
-          border: '1px solid rgba(var(--fg-rgb), 0.08)',
-          overflow: 'hidden',
-          background: 'rgba(var(--fg-rgb), 0.03)',
-        }}>
-          {otherUsers.map((u, i) => (
-            <button
-              key={u.id}
-              onClick={() => submitGuess(u.id)}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: '8px 12px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: i < otherUsers.length - 1 ? '1px solid rgba(var(--fg-rgb), 0.05)' : 'none',
-                color: 'rgba(var(--fg-rgb), 0.75)',
-                fontFamily: "'DM Sans',sans-serif",
-                fontSize: '13px',
-                cursor: 'pointer',
-              }}
-            >
-              {u.name}
-            </button>
-          ))}
-          <button
-            onClick={() => setOpen(false)}
-            style={{
-              width: '100%',
-              padding: '7px',
-              background: 'transparent',
-              border: 'none',
-              borderTop: '1px solid rgba(var(--fg-rgb), 0.05)',
-              color: 'var(--text-faint)',
-              fontFamily: "'DM Mono',monospace",
-              fontSize: '10px',
-              cursor: 'pointer',
-              letterSpacing: '0.06em',
-            }}
-          >
-            CANCEL
-          </button>
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -433,9 +246,19 @@ function FilmCard({ movie, rating, clubAvg = null, onScorePress, onOpen, pickerN
         )
       })()}
 
-      {/* Guess the Picker */}
+      {/* Guess the Picker — the shared component (src/components/GuessThePicker).
+          Stop propagation so guessing doesn't also open the film overlay (the card
+          itself is clickable). */}
       {profile && (
-        <GuessThePicker movie={movie} profile={profile} allUsers={allUsers} />
+        <div style={{ marginTop: '8px' }} onClick={e => e.stopPropagation()}>
+          <GuessThePicker
+            movieId={movie.id}
+            currentUserId={profile.id}
+            users={allUsers ?? []}
+            pickerRevealed={!!movie.picker_revealed}
+            pickedByUserId={movie.picked_by_user_id ?? null}
+          />
+        </div>
       )}
     </div>
   )
@@ -1450,11 +1273,11 @@ function PicksTab({ profile, onOpenFilm }) {
       // hidden until reveal. Join user info for the picker label/color.
       const { data: picksData } = await supabase
         .from('upcoming_picks')
-        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, submitted_at, users(name, email, user_color, avatar_id)')
+        .select('id, user_id, tmdb_id, title, poster_url, month_target, metadata, submitted_at, users(name, is_test, user_color, avatar_id)')
         .eq('month_target', month.month_year)
         .order('submitted_at', { ascending: true })
-      // Test account must be invisible in all UI — filter by email.
-      setPicks((picksData ?? []).filter(p => p.users?.email !== 'i.am.ryan.the.miller@gmail.com'))
+      // Test accounts (users.is_test) must be invisible in all UI.
+      setPicks((picksData ?? []).filter(p => !isTestUser(p.users)))
     } else {
       setPicks([])
     }
@@ -1773,13 +1596,13 @@ export default function ThisMonth() {
       supabase.from('ratings')
         .select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at')
         .eq('user_id', profile.id),
-      supabase.from('users').select('id, name, email, user_color, avatar_id'),
+      supabase.from('users').select('id, name, is_test, user_color, avatar_id'),
     ])
 
     setActiveMonth(month)
     setRevealMonth(revealed ?? null)
-    // Test account must be invisible in all UI — filter by email.
-    setUsers((usersData ?? []).filter(u => u.email !== 'i.am.ryan.the.miller@gmail.com'))
+    // Test accounts (users.is_test) must be invisible in all UI.
+    setUsers(clubUsers(usersData))
 
     if (month) {
       const { data: movieData } = await supabase

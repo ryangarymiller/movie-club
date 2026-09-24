@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useRevealTick } from '../lib/useRevealRefresh'
+import { clubUsers, testUserIds, memberEligibleForMonth, lateJoinersForSeason, monthYearLabel } from '../lib/members'
 import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { FilmDetailOverlay } from './Films.jsx'
 
@@ -224,16 +225,9 @@ function computeTmdbAwards(candidates, refMovies, movieAvgScore) {
   return { underratedMovie, underratedGap, deepCutMovie, deepCutVoteCount }
 }
 
-// Zack Anjoorian joined April 2026 — exclude from Jan–Mar
-function isZackEligible(userName, monthYear) {
-  if (!userName || !monthYear) return true
-  const isZack = userName.toLowerCase().includes('zack') || userName.toLowerCase().includes('anjoorian')
-  if (!isZack) return true
-  const [year, month] = monthYear.split('-').map(Number)
-  // Exclude Jan (01), Feb (02), Mar (03) 2026
-  if (year === 2026 && month < 4) return false
-  return true
-}
+// Per-person eligibility is driven by users.joined_at (see src/lib/members.js
+// memberEligibleForMonth): a member's scores/picks count toward a film only if
+// they had joined by that film's month. No per-person special cases.
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
@@ -250,25 +244,6 @@ function Skeleton({ height = 120 }) {
     />
   )
 }
-
-// Detect if a season is Winter 2026 by checking if any of its months are Jan–Mar 2026
-export function isWinter2026(season, months) {
-  if (!season) return false
-  const seasonMonths = months.filter(m => m.season_id === season.id)
-  return seasonMonths.some(m => {
-    const [year, month] = m.month_year.split('-').map(Number)
-    return year === 2026 && month <= 3
-  })
-}
-
-// For a given season, check if user is eligible (Zack excluded from Winter 2026)
-function isUserEligibleForSeason(userName, seasonIsWinter2026) {
-  if (!seasonIsWinter2026) return true
-  const isZack = userName.toLowerCase().includes('zack') || userName.toLowerCase().includes('anjoorian')
-  return !isZack
-}
-
-
 
 // ─── Award Card ──────────────────────────────────────────────────────────────
 
@@ -573,12 +548,12 @@ function StatMiniCard({ label, value, onClick }) {
 
 // ─── Season Awards computation ───────────────────────────────────────────────
 
-export function computeSeasonAwards(movies, allRatings, users, season, months, seasonIsWinter2026) {
+export function computeSeasonAwards(movies, allRatings, users, season, months) {
   // Get all months in this season
   const seasonMonthIds = new Set(
     months.filter(m => m.season_id === season.id).map(m => m.id)
   )
-  // Month year lookup by month_id (needed for Zack eligibility in per-user monthly checks)
+  // Month year lookup by month_id (drives per-person joined_at eligibility)
   const monthYearById = {}
   months.forEach(m => { monthYearById[m.id] = m.month_year })
 
@@ -588,9 +563,14 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
 
   const movieIds = new Set(seasonMovies.map(m => m.id))
   const seasonRatings = allRatings.filter(r => movieIds.has(r.movie_id))
+  const monthYearByMovie = {}
+  seasonMovies.forEach(m => { monthYearByMovie[m.id] = monthYearById[m.month_id] })
 
   const userMap = {}
   users.forEach(u => { userMap[u.id] = u })
+  // Per-person eligibility: a member's pick/score counts for a film only if they
+  // had joined (users.joined_at) by that film's month.
+  const eligibleFor = (uid, movieId) => memberEligibleForMonth(userMap[uid], monthYearByMovie[movieId])
 
   // Per-movie scores
   const scoresByMovie = {}
@@ -629,10 +609,11 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
   const flopOfSeason = _flopSeason && _flopSeason.id !== filmOfSeason?.id ? _flopSeason : null
 
   // 3–10: Per-user/per-picker computations
-  // Build per-picker data (picker_revealed=true)
+  // Build per-picker data (picker_revealed=true; picker eligible for that film's month)
   const pickerMovies = {}
   seasonMovies.forEach(m => {
     if (!m.picked_by_user_id || !m.picker_revealed) return
+    if (!eligibleFor(m.picked_by_user_id, m.id)) return
     if (!pickerMovies[m.picked_by_user_id]) pickerMovies[m.picked_by_user_id] = []
     pickerMovies[m.picked_by_user_id].push(m)
   })
@@ -644,7 +625,6 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
   Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
     const user = userMap[uid]
     if (!user) return
-    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
     const avgs = pickedFilms
       .map(m => movieAvgScore[m.id])
       .filter(v => v != null)
@@ -671,7 +651,6 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
     Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
       const user = userMap[uid]
       if (!user) return
-      if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
       const avgs = pickedFilms.map(m => movieAvgScore[m.id]).filter(v => v != null)
       if (avgs.length < 2) return
       const a = avg(avgs)
@@ -686,7 +665,6 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
   Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
     const user = userMap[uid]
     if (!user) return
-    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
     const avgs = pickedFilms
       .map(m => movieAvgScore[m.id])
       .filter(v => v != null)
@@ -706,7 +684,6 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
   Object.entries(pickerMovies).forEach(([uid, pickedFilms]) => {
     const user = userMap[uid]
     if (!user) return
-    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
     const avgs = pickedFilms.map(m => movieAvgScore[m.id]).filter(v => v != null)
     if (avgs.length < 2) return
     const sd = stddev(avgs)
@@ -736,12 +713,12 @@ export function computeSeasonAwards(movies, allRatings, users, season, months, s
       })
     : null
 
-  // Per-user ratings this season — filtered by Zack eligibility
+  // Per-user ratings this season — only films the member had joined by (joined_at)
   const userRatingsThisSeason = {}
   seasonRatings.forEach(r => {
     const user = userMap[r.user_id]
     if (!user) return
-    if (!isUserEligibleForSeason(user.name, seasonIsWinter2026)) return
+    if (!eligibleFor(r.user_id, r.movie_id)) return
     if (!userRatingsThisSeason[r.user_id]) userRatingsThisSeason[r.user_id] = []
     userRatingsThisSeason[r.user_id].push(r)
   })
@@ -874,10 +851,11 @@ export function computeAnnualAwards(movies, allRatings, users, year, guesses = [
   const movieIds = new Set(revealedMovies.map(m => m.id))
   const userMap = {}
   users.forEach(u => { userMap[u.id] = u })
-  // Exclude Zack's pre-April-2026 scores from per-member critic stats (movie
-  // averages stay authoritative via historical_avg_score, computed below).
+  // Exclude scores a member gave to films from before they joined (joined_at)
+  // from per-member critic stats (movie averages stay authoritative via
+  // historical_avg_score, computed below).
   const relevantRatings = allRatings.filter(r =>
-    movieIds.has(r.movie_id) && isZackEligible(userMap[r.user_id]?.name, monthYearByMovie[r.movie_id]))
+    movieIds.has(r.movie_id) && memberEligibleForMonth(userMap[r.user_id], monthYearByMovie[r.movie_id]))
 
   // Per-movie scores
   const scoresByMovie = {}
@@ -1149,12 +1127,12 @@ export function computeMonthlyAwards(movies, allRatings, users, selectedMonth) {
   const userMap = {}
   users.forEach(u => { userMap[u.id] = u })
 
-  // Per-user ratings for this month, filtered by Zack eligibility
+  // Per-user ratings for this month — only members who had joined by this month
   const userRatingsThisMonth = {}
   monthRatings.forEach(r => {
     const user = userMap[r.user_id]
     if (!user) return
-    if (!isZackEligible(user.name, selectedMonth?.month_year)) return
+    if (!memberEligibleForMonth(user, selectedMonth?.month_year)) return
     if (!userRatingsThisMonth[r.user_id]) userRatingsThisMonth[r.user_id] = []
     userRatingsThisMonth[r.user_id].push(r)
   })
@@ -1287,10 +1265,11 @@ export function computeAllTimeAwards(movies, allRatings, users, guesses = [], mo
   const movieIds = new Set(revealedMovies.map(m => m.id))
   const userMap = {}
   users.forEach(u => { userMap[u.id] = u })
-  // Exclude Zack's pre-April-2026 scores from per-member critic stats (movie
-  // averages stay authoritative via historical_avg_score, computed below).
+  // Exclude scores a member gave to films from before they joined (joined_at)
+  // from per-member critic stats (movie averages stay authoritative via
+  // historical_avg_score, computed below).
   const relevantRatings = allRatings.filter(r =>
-    movieIds.has(r.movie_id) && isZackEligible(userMap[r.user_id]?.name, monthYearByMovie[r.movie_id]))
+    movieIds.has(r.movie_id) && memberEligibleForMonth(userMap[r.user_id], monthYearByMovie[r.movie_id]))
 
   // Per-movie scores
   const scoresByMovie = {}
@@ -1388,13 +1367,8 @@ export function computeAllTimeAwards(movies, allRatings, users, guesses = [], mo
     })
   }
 
-  // 6–8: Per-user stats (all time, respecting Zack eligibility)
-  // We need to figure out which month each movie belongs to — we have month_id on movies
-  // We'll need to filter ratings properly. For simplicity, exclude ratings by Zack on
-  // movies from months before Apr 2026. We'll use submitted_at or approximate via movie month.
-  // Since we have months data available, we'll pass month map to this function if available,
-  // but for now we approximate: just check user name vs month_year we don't have here.
-  // Instead, we rely on the fact that for all-time stats we include everyone but note the join date.
+  // 6–8: Per-user stats (all time; relevantRatings already respects joined_at
+  // eligibility via monthYearByMovie)
 
   const userScoresGiven = {}   // uid → [scores given]
   const userDeviations = {}    // uid → [|personal - film_avg|]
@@ -2001,15 +1975,17 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealedSeasons, deepLink?.ref])
 
-  const seasonIsWinter2026 = useMemo(
-    () => isWinter2026(selectedSeason, months),
-    [selectedSeason, months]
+  // Members who joined after this season began (data-driven from joined_at) —
+  // their scores on the season's earlier films don't count toward per-person awards.
+  const lateJoiners = useMemo(
+    () => lateJoinersForSeason(users, selectedSeason, months),
+    [users, selectedSeason, months]
   )
 
   const awards = useMemo(() => {
     if (!selectedSeason) return null
-    return computeSeasonAwards(movies, allRatings, users, selectedSeason, months, seasonIsWinter2026)
-  }, [selectedSeason, movies, allRatings, users, months, seasonIsWinter2026])
+    return computeSeasonAwards(movies, allRatings, users, selectedSeason, months)
+  }, [selectedSeason, movies, allRatings, users, months])
 
   const aid = useCallback(
     (key) => selectedSeason ? `season:${key}:${selectedSeason.id}` : undefined,
@@ -2081,8 +2057,8 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
         })}
       </div>
 
-      {/* Zack Winter note */}
-      {seasonIsWinter2026 && (
+      {/* Late-joiner note (driven by users.joined_at, not a name) */}
+      {lateJoiners.length > 0 && (
         <p style={{
           fontFamily: "'DM Mono',monospace",
           fontSize: '10px',
@@ -2090,7 +2066,12 @@ function SeasonTab({ seasons, months, movies, allRatings, users, loading, onFilm
           letterSpacing: '0.1em',
           margin: '0 0 16px',
         }}>
-          * Zack joined April 2026 — excluded from per-person awards this season
+          {lateJoiners.map(({ user, joinedMonth: jm, afterSeason }) => {
+            const first = (user.name || '').trim().split(/\s+/)[0] || 'A member'
+            return afterSeason
+              ? `* ${first} joined ${monthYearLabel(jm)} — excluded from per-person awards this season`
+              : `* ${first} joined ${monthYearLabel(jm)} — counted toward per-person awards from then on`
+          }).join(' · ')}
         </p>
       )}
 
@@ -2756,23 +2737,20 @@ export default function Awards() {
         supabase.from('months').select('id, season_id, month_year, status').order('month_year', { ascending: true }),
         supabase.from('movies_safe').select('id, month_id, title, poster_url, year_released, director, genre, scores_revealed, picker_revealed, historical_avg_score, picked_by_user_id, tmdb_vote_average, tmdb_vote_count, tmdb_popularity').eq('scores_revealed', true),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
-        supabase.from('users').select('id, name, email, role, joined_at, is_active').eq('is_active', true),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active, is_test').eq('is_active', true),
         supabase.from('picker_guesses').select('movie_id, guessing_user_id, guessed_user_id'),
       ])
 
-      const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
-      const filteredUsers = (usersData ?? []).filter(u => u.email !== TEST_EMAIL)
-      const testUserIds = new Set(
-        (usersData ?? []).filter(u => u.email === TEST_EMAIL).map(u => u.id)
-      )
-      const filteredRatings = (ratingsData ?? []).filter(r => !testUserIds.has(r.user_id))
+      const filteredUsers = clubUsers(usersData)
+      const testIds = testUserIds(usersData)
+      const filteredRatings = (ratingsData ?? []).filter(r => !testIds.has(r.user_id))
 
       setSeasons(seasonsData ?? [])
       setMonths(monthsData ?? [])
       setMovies(moviesData ?? [])
       setAllRatings(filteredRatings)
       setUsers(filteredUsers)
-      setGuesses((guessesData ?? []).filter(g => !testUserIds.has(g.guessing_user_id)))
+      setGuesses((guessesData ?? []).filter(g => !testIds.has(g.guessing_user_id)))
       setLoading(false)
     }
 

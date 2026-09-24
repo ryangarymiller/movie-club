@@ -7,10 +7,9 @@ import { useMemberOverlay } from '../context/MemberOverlayContext'
 import { useBackClose } from '../lib/useBackClose'
 import { userColor } from '../lib/colors'
 import Avatar from './Avatar'
-import { MeTab, firstLast, isZackPreApril } from '../pages/Stats'
+import { MeTab, firstLast } from '../pages/Stats'
 import { FilmDetailOverlay } from '../pages/Films'
-
-const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+import { clubUsers, testUserIds, memberEligibleForMonth } from '../lib/members'
 
 // "#a855f7" -> "168, 85, 247" for the --accent-rgb token.
 function hexToRgbTriple(hex) {
@@ -50,19 +49,20 @@ export default function MemberStatsOverlay() {
       const [{ data: movies }, { data: ratings }, { data: users }, { data: months }, { data: guesses }] = await Promise.all([
         supabase.from('movies_safe').select('id, month_id, title, tmdb_id, poster_url, year_released, director, tmdb_cast, tmdb_writers, genre, scores_revealed, picker_revealed, picked_by_user_id, historical_avg_score, runtime_minutes'),
         supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
-        supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color, avatar_id').eq('is_active', true),
+        supabase.from('users').select('id, name, email, role, joined_at, is_active, is_test, user_color, avatar_id').eq('is_active', true),
         supabase.from('months').select('id, month_year'),
         supabase.from('picker_guesses').select('movie_id, guessed_user_id').eq('guessing_user_id', memberId),
       ])
       if (!alive) return
       const mById = {}; for (const m of (months ?? [])) mById[m.id] = m
-      const fUsers = (users ?? []).filter(u => u.email !== TEST_EMAIL)
-      const testId = (users ?? []).find(u => u.email === TEST_EMAIL)?.id ?? null
+      const fUsers = clubUsers(users)
+      const testIds = testUserIds(users)
       const movieMY = {}; for (const m of (movies ?? [])) movieMY[m.id] = mById[m.month_id]?.month_year ?? null
-      const uName = {}; for (const u of (users ?? [])) uName[u.id] = u.name
+      const uById = {}; for (const u of (users ?? [])) uById[u.id] = u
+      // Drop test accounts + a member's scores on films from before they joined.
       const clean = (ratings ?? []).filter(r => {
-        if (testId && r.user_id === testId) return false
-        if (isZackPreApril(uName[r.user_id], movieMY[r.movie_id])) return false
+        if (testIds.has(r.user_id)) return false
+        if (!memberEligibleForMonth(uById[r.user_id], movieMY[r.movie_id])) return false
         return true
       })
       setData({
