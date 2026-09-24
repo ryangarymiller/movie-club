@@ -4,6 +4,11 @@
 > Ryan Miller's decisions. This is the input document for high-level planning.
 > Source-of-truth order still applies: `MOVIE_CLUB_SPEC.md` → `CLAUDE.md` → `PLAN.md`.
 > Nothing here is implemented yet; **1.0 remains live and untouched.**
+>
+> **The plan:** `MOVIE_CLUB_2.0_PLAN.md` (architecture, phases, parallel-agent map, open decisions).
+> **The evidence:** `docs/2.0-inventory/` — four codebase inventories (ui-surface, db-layer,
+> awards-stats, membership-identity), each item tagged with its 1.0 assumptions and a preliminary
+> carry / adapt / retire verdict. These are the input to the R2 parity audit.
 
 ---
 
