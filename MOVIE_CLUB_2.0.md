@@ -102,6 +102,10 @@ Consequence: the film, not the month, becomes the unit of the watch cycle. A mon
 | F13 | **Don't cut corners for Oct 1.** October may run manually over text; correctness first. |
 | **G1** | **Awards:** most monthly awards retire at 1–2 films/month, but a reduced set of monthly awards that still make sense should be **designed fresh** — don't just delete the tier. |
 | **G2** | **1.0 stays live** while 2.0 is built alongside it. |
+| **H1** | **Plan approved** (`MOVIE_CLUB_2.0_PLAN.md`); Phase 0 runs autonomously with one report at exit. First prod apply is still a checkpoint. |
+| **H2** | **Dev isolation = local `supabase start` on Ryan's gaming laptop**, kept as an always-on device. Not in the cloud container, not a Supabase branch, not a second project. |
+| **H3** | **One submitter per film per round.** A second member submitting the same film sees "already on the list". Keeps the submitter single-valued (guess-the-picker, predictions, picker credit). Across rounds, repeats stay allowed (rule 3). |
+| **H4** | Defaults accepted for the remaining §5 / plan §6 questions unless Ryan objects: submission deadline hard-locks via cron · <3 candidates → rank all, 1 auto-elects · tally hidden until close · scoring model unchanged · admin one-tap opens the next vote / closes the month · veto scoped off in v2 · submitter makes score predictions · non-winning submissions revealed at month close · Mike created at cutover after the trigger fix. |
 
 ---
 
