@@ -142,7 +142,7 @@ Borda is pure SQL and gets a unit-test fixture (ties, <3 candidates, absent vote
 
 ## 3. Phases
 
-### Phase 0 — Foundation 🔄 *(prod-safe; zero behavior change; prerequisite for all else)*
+### Phase 0 — Foundation ✅ (except the laptop-side baseline, step 1) *(prod-safe; zero behavior change)*
 1. ❌ **Schema baseline.** Laptop-side: `pg_dump --schema=public` + `supabase/baseline_addendum.sql`
    (auth trigger, `ensure_rls`, cron jobs) → `20260924000000_baseline_v1.sql`; archive the 57
    historical files; `supabase db diff --linked` must be empty. Procedure: `supabase/BASELINE.md`.
@@ -164,8 +164,10 @@ Borda is pure SQL and gets a unit-test fixture (ties, <3 candidates, absent vote
 7. ❌ **Dev isolation** — decided: local `supabase start` on Ryan's always-on laptop (H2). Needs
    Docker + Supabase CLI + repo clone there, and either Remote Control or Tailscale onboarding on a
    new cloud environment for me to drive it.
-8. ❌ **Prod apply** of 010000/020000/030000 — *checkpoint; ask first.* Independent of step 1's
-   baseline (they are additive against the live schema).
+8. ✅ **Prod apply** of 010000/020000/030000 (2026-10-01) — post-apply checks green: 1 test row,
+   `expected_members(Aug)=5`, all months `v1`, `club_mode='v1'`, anon off `movies_safe`, zero
+   functions carry the literal, 3 migrations recorded. **Merged to main as PR #2** (`862aec1`);
+   Vercel deploys the client half.
 
 *Exit:* baseline diff empty on the laptop; prod behaves identically after apply; `club_mode='v1'`.
 
