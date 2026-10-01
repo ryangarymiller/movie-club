@@ -44,3 +44,6 @@ dist-ssr
 .vercel
 movie-avatars.rar
 Pictures.rar
+
+# Keep the shared permission allowlist (no secrets); the rest of .claude/ stays personal
+!.claude/settings.json

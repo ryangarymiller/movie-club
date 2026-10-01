@@ -8,6 +8,7 @@ import { ScoreChangeRequestsAdminPanel } from '../components/ScoreChangeRequest'
 import { PickChangeRequestsAdminPanel } from '../components/PickChangeRequest'
 import Avatar from '../components/Avatar'
 import { AVATAR_PACKS, avatarSrc, storageAvatarId } from '../lib/avatars'
+import { isTestUser, clubUsers } from '../lib/members'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -18,30 +19,21 @@ if (!document.getElementById('mc-fonts')) {
 }
 
 const PROTECTED_EMAIL = 'ryan.gary.miller@gmail.com'
-const TEST_USER_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 
-// Zack joined April 2026 — exclude him from pre-April films
-const ZACK_NAME = 'Zack Anjoorian'
-const ZACK_JOIN_MONTH = '2026-04' // first month Zack is included
-
-// Members joined_at cutoffs for expected-score calculations
-// Always excludes the test user. Uses joined_at logic to handle Zack's April join.
+// Members joined_at cutoffs for expected-score calculations.
+// Always excludes test accounts (users.is_test). A member is expected for a
+// month iff they joined (users.joined_at) in or before that month — no
+// per-person special cases (a late joiner is excluded from earlier months
+// automatically).
 function expectedMembersList(monthYear, allUsers) {
   return allUsers.filter(u => {
     if (!u.is_active) return false
-    if (u.email === TEST_USER_EMAIL) return false
-    if (isZackPreApril(u, monthYear)) return false
+    if (isTestUser(u)) return false
     return joinedByMonth(u, monthYear)
   })
 }
 function expectedMemberCount(monthYear, allUsers) {
   return expectedMembersList(monthYear, allUsers).length
-}
-
-// Whether a given user is Zack and the film is pre-April 2026
-function isZackPreApril(user, monthYear) {
-  if (user.name !== ZACK_NAME) return false
-  return monthYear < ZACK_JOIN_MONTH
 }
 
 // Was a user a club member during a given film month?
@@ -157,7 +149,7 @@ function UpcomingPicksPanel({ months }) {
       const [{ data: up }, { data: hist }, { data: usersData }] = await Promise.all([
         secretMonths.length
           ? supabase.from('upcoming_picks')
-              .select('id, user_id, title, month_target, metadata, users(name, email)')
+              .select('id, user_id, title, month_target, metadata, users(name, is_test)')
               .in('month_target', secretMonths).order('month_target', { ascending: true })
           : Promise.resolve({ data: [] }),
         // Read picker via movies_safe (exposes picked_by_user_id to admins; these are
@@ -168,14 +160,14 @@ function UpcomingPicksPanel({ months }) {
               .select('id, title, month_id, picked_by_user_id')
               .in('month_id', revealedIds)
           : Promise.resolve({ data: [] }),
-        supabase.from('users').select('id, name, email'),
+        supabase.from('users').select('id, name, is_test'),
       ])
       if (!alive) return
       const userById = Object.fromEntries((usersData ?? []).map(u => [u.id, u]))
-      setPicks((up ?? []).filter(p => p.users?.email !== TEST_USER_EMAIL))
+      setPicks((up ?? []).filter(p => !isTestUser(p.users)))
       setHistorical((hist ?? [])
         .map(m => ({ ...m, picker: userById[m.picked_by_user_id] ?? null }))
-        .filter(m => m.picked_by_user_id && m.picker?.email !== TEST_USER_EMAIL))
+        .filter(m => m.picked_by_user_id && !isTestUser(m.picker)))
       setLoading(false)
     })()
     return () => { alive = false }
@@ -867,7 +859,7 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
   months.forEach(mo => { monthMap[mo.id] = mo })
 
   // Non-test users only
-  const activeUsers = users.filter(u => u.email !== TEST_USER_EMAIL)
+  const activeUsers = clubUsers(users)
 
   // Films with missing scores
   const missingScoreFilms = movies.filter(m => {
@@ -879,8 +871,8 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
       // Exclude test user
       const ratingUser = activeUsers.find(u => u.id === r.user_id)
       if (!ratingUser) return false
-      // Exclude Zack on pre-April films
-      if (isZackPreApril(ratingUser, mo.month_year)) return false
+      // Exclude scores from before the member joined (joined_at)
+      if (!joinedByMonth(ratingUser, mo.month_year)) return false
       return true
     }).length
     return actual < expected
@@ -1173,7 +1165,7 @@ async function triggerAwardsWrite() {
       // no longer granted on base movies. Awards attribute films to their pickers.
       supabase.from('movies_safe').select('*').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-      supabase.from('users').select('id, name, email, role, joined_at, is_active, user_color, avatar_id'),
+      supabase.from('users').select('id, name, email, role, joined_at, is_active, is_test, user_color, avatar_id'),
       supabase.from('months').select('id, season_id, month_year, status').order('month_year'),
       supabase.from('seasons').select('*').order('start_date'),
       supabase.from('picker_guesses').select('movie_id, guessing_user_id, guessed_user_id'),
@@ -2193,7 +2185,7 @@ function MembersTab({ users, currentProfile, onRefresh, setError, setSuccess }) 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <InviteCard onRefresh={onRefresh} setSuccess={setSuccess} currentProfile={currentProfile} />
       {/* Test account is invisible in all UI — never list it here. */}
-      {users.filter(u => u.email !== TEST_USER_EMAIL).map(user => (
+      {clubUsers(users).map(user => (
         <div key={user.id} style={{
           background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)',
           borderRadius: '12px', overflow: 'hidden',
@@ -2393,7 +2385,7 @@ function ScoresTab({ movies, users, ratings, months, preselectFilmId, onConsumeP
   months.forEach(mo => { monthMap[mo.id] = mo })
 
   // Non-test users only
-  const activeUsers = users.filter(u => u.email !== TEST_USER_EMAIL)
+  const activeUsers = clubUsers(users)
 
   // Build set of existing ratings: "movieId:userId"
   const ratingSet = new Set(ratings.map(r => `${r.movie_id}:${r.user_id}`))
@@ -2414,10 +2406,7 @@ function ScoresTab({ movies, users, ratings, months, preselectFilmId, onConsumeP
   const matrixMovies = showAllFilms ? sortedMovies : sortedMovies.filter(m => {
     const mo = monthMap[m.month_id]
     if (!mo) return false
-    const expUsers = activeUsers.filter(u => {
-      if (isZackPreApril(u, mo.month_year)) return false
-      return joinedByMonth(u, mo.month_year)
-    })
+    const expUsers = activeUsers.filter(u => joinedByMonth(u, mo.month_year))
     const missing = expUsers.some(u => !ratingSet.has(`${m.id}:${u.id}`))
     return missing
   })
@@ -2569,27 +2558,25 @@ function ScoresTab({ movies, users, ratings, months, preselectFilmId, onConsumeP
                       </td>
                       {activeUsers.map(u => {
                         const hasScore = ratingSet.has(`${m.id}:${u.id}`)
-                        const naForZack = isZackPreApril(u, monthYear)
-                        // Whether this user was a club member during this film's month.
+                        // Whether this user was a club member during this film's month (joined_at).
                         const isExpected = joinedByMonth(u, monthYear)
                         // Every cell is clickable to preselect this film + member in the backfill
-                        // form above — including N/A cells, so an admin can still manually enter a
-                        // score for Zack on a pre-April film he actually watched.
-                        const cellTitle = naForZack
-                          ? `Backfill ${u.name} for "${m.title}" (N/A — not in club this month, but you can still enter a score)`
-                          : `Backfill ${u.name} for "${m.title}"`
+                        // form above — including not-yet-a-member cells, so an admin can still
+                        // manually enter a score for a film a late joiner actually watched.
+                        const cellTitle = isExpected
+                          ? `Backfill ${u.name} for "${m.title}"`
+                          : `Backfill ${u.name} for "${m.title}" (not in club this month, but you can still enter a score)`
                         let mark
-                        if (naForZack || !isExpected) {
-                          // N/A (Zack pre-April) and not-yet-a-member both render the same way:
-                          // a crossed-out marker. Scored cells below override with a ✓.
+                        if (!isExpected) {
+                          // Not-yet-a-member renders a dash. Scored cells below override with a ✓.
                           mark = hasScore
                             ? <span style={{ color: '#4ade80', fontSize: '14px' }}>✓</span>
                             : (
                               <span style={{
-                                color: 'var(--hairline)', fontSize: naForZack ? '11px' : '12px',
-                                fontFamily: "'DM Mono',monospace", textDecoration: naForZack ? 'line-through' : 'none',
+                                color: 'var(--hairline)', fontSize: '12px',
+                                fontFamily: "'DM Mono',monospace",
                               }}>
-                                {naForZack ? 'N/A' : '–'}
+                                –
                               </span>
                             )
                         } else if (hasScore) {
@@ -2833,7 +2820,7 @@ export default function Admin() {
       // client-side from the users load below (PostgREST can't embed through the view).
       supabase.from('movies_safe').select('*').order('id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, pre_watch_excitement, submitted_at'),
-      supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, admin_mode_enabled').order('joined_at'),
+      supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, is_test, admin_mode_enabled').order('joined_at'),
       supabase.from('months').select('id, season_id, month_year, status, active_date, auto_activate').order('month_year'),
       supabase.from('seasons').select('id, name, start_date, end_date, readjustment_open, readjustment_ends_at, readjustment_auto').order('start_date'),
     ])

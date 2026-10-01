@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import Avatar from './Avatar'
+import { isTestUser } from '../lib/members'
 
 const MONO = "'DM Mono', monospace"
 const SANS = "'DM Sans', sans-serif"
@@ -8,8 +9,6 @@ const DISPLAY = "'Bebas Neue', sans-serif"
 
 const GREEN = '#86efac'
 const RED = '#f87171'
-
-const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 
 function Label({ children }) {
   return (
@@ -31,17 +30,14 @@ export default function GuessThePicker({ movieId, currentUserId, users = [], pic
     const m = new Map()
     for (const u of users) {
       if (!u || !u.id) continue
-      if (u.email && u.email.toLowerCase() === TEST_EMAIL) continue
+      if (isTestUser(u)) continue
       m.set(u.id, u)
     }
     return m
   }, [users])
 
   const nameOf = useCallback((id) => userMap.get(id)?.name || 'Unknown member', [userMap])
-  const isTest = useCallback((id) => {
-    const u = users.find(x => x && x.id === id)
-    return !!(u && u.email && u.email.toLowerCase() === TEST_EMAIL)
-  }, [users])
+  const isTest = useCallback((id) => isTestUser(users.find(x => x && x.id === id)), [users])
 
   // Candidates you may guess: everyone except yourself and the hidden test account.
   const candidates = useMemo(

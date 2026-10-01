@@ -1,6 +1,8 @@
 // ─── Pure calculation functions (verbatim from source) ───────────────────────
 // Sourced from src/pages/Awards.jsx and src/pages/Stats.jsx
 
+import { memberEligibleForMonth, isTestUser, clubUsers, testUserIds } from '../lib/members'
+
 function avg(arr) {
   if (!arr.length) return null
   return arr.reduce((a, b) => a + b, 0) / arr.length
@@ -13,17 +15,8 @@ function stddev(arr) {
   return Math.sqrt(variance)
 }
 
-// Zack Anjoorian joined April 2026 — exclude from Jan–Mar
-// Verbatim from Awards.jsx
-function isZackEligible(userName, monthYear) {
-  if (!userName || !monthYear) return true
-  const isZack = userName.toLowerCase().includes('zack') || userName.toLowerCase().includes('anjoorian')
-  if (!isZack) return true
-  const [year, month] = monthYear.split('-').map(Number)
-  // Exclude Jan (01), Feb (02), Mar (03) 2026
-  if (year === 2026 && month < 4) return false
-  return true
-}
+// Per-person eligibility is joined_at-driven (src/lib/members.js
+// memberEligibleForMonth) — imported above, no name checks.
 
 // Helper introduced for testing film avg fallback behaviour
 function filmAvg(movieId, ratings, historicalAvg) {
@@ -192,48 +185,78 @@ describe('filmAvg()', () => {
   })
 })
 
-describe('isZackEligible() — Zack excluded from Jan–Mar 2026', () => {
-  test('non-Zack member is always eligible regardless of month', () => {
-    expect(isZackEligible('Ryan Miller', '2026-01')).toBe(true)
-    expect(isZackEligible('Andrew Bond', '2026-02')).toBe(true)
+describe('memberEligibleForMonth() — joined_at-driven late-joiner exclusion', () => {
+  const founder = { id: 'u1', name: 'Ryan Miller', joined_at: '2026-01-05' }
+  const aprilJoiner = { id: 'u5', name: 'Zack Anjoorian', joined_at: '2026-04-01' }
+  const octoberJoiner = { id: 'u6', name: 'Mike Newmember', joined_at: '2026-10-01' }
+
+  test('a founding member is eligible for every month from their join month on', () => {
+    expect(memberEligibleForMonth(founder, '2026-01')).toBe(true)
+    expect(memberEligibleForMonth(founder, '2026-02')).toBe(true)
+    expect(memberEligibleForMonth(founder, '2026-12')).toBe(true)
   })
 
-  test('Zack is eligible for April 2026 (the month he joined)', () => {
-    expect(isZackEligible('Zack Anjoorian', '2026-04')).toBe(true)
+  test('same-month joiner counts (joined Jan 5 → eligible for the Jan film month)', () => {
+    expect(memberEligibleForMonth({ joined_at: '2026-01-05' }, '2026-01')).toBe(true)
   })
 
-  test('Zack is eligible for months after April 2026', () => {
-    expect(isZackEligible('Zack Anjoorian', '2026-05')).toBe(true)
-    expect(isZackEligible('Zack Anjoorian', '2026-12')).toBe(true)
+  test('April joiner is eligible for April 2026 (the month they joined)', () => {
+    expect(memberEligibleForMonth(aprilJoiner, '2026-04')).toBe(true)
   })
 
-  test('Zack is NOT eligible for January 2026', () => {
-    expect(isZackEligible('Zack Anjoorian', '2026-01')).toBe(false)
+  test('April joiner is eligible for months after April 2026', () => {
+    expect(memberEligibleForMonth(aprilJoiner, '2026-05')).toBe(true)
+    expect(memberEligibleForMonth(aprilJoiner, '2026-12')).toBe(true)
   })
 
-  test('Zack is NOT eligible for February 2026', () => {
-    expect(isZackEligible('Zack Anjoorian', '2026-02')).toBe(false)
+  test('April joiner is NOT eligible for Jan/Feb/Mar 2026', () => {
+    expect(memberEligibleForMonth(aprilJoiner, '2026-01')).toBe(false)
+    expect(memberEligibleForMonth(aprilJoiner, '2026-02')).toBe(false)
+    expect(memberEligibleForMonth(aprilJoiner, '2026-03')).toBe(false)
   })
 
-  test('Zack is NOT eligible for March 2026', () => {
-    expect(isZackEligible('Zack Anjoorian', '2026-03')).toBe(false)
+  test('works for ANY later joiner, not a hardcoded name (October joiner)', () => {
+    expect(memberEligibleForMonth(octoberJoiner, '2026-09')).toBe(false)
+    expect(memberEligibleForMonth(octoberJoiner, '2026-10')).toBe(true)
+    expect(memberEligibleForMonth(octoberJoiner, '2027-01')).toBe(true)
   })
 
-  test('name match works on first-name-only "Zack"', () => {
-    expect(isZackEligible('Zack', '2026-01')).toBe(false)
-    expect(isZackEligible('Zack', '2026-04')).toBe(true)
+  test('accepts an ISO timestamp joined_at and a month_year with a day suffix', () => {
+    expect(memberEligibleForMonth({ joined_at: '2026-04-01T00:00:00+00:00' }, '2026-03')).toBe(false)
+    expect(memberEligibleForMonth({ joined_at: '2026-04-01T00:00:00+00:00' }, '2026-04-01')).toBe(true)
   })
 
-  test('name match works on last name "Anjoorian" alone', () => {
-    expect(isZackEligible('Anjoorian', '2026-02')).toBe(false)
+  test('lenient: unknown user / missing joined_at / missing month → eligible', () => {
+    expect(memberEligibleForMonth(undefined, '2026-01')).toBe(true)
+    expect(memberEligibleForMonth({ name: 'No Join Date' }, '2026-01')).toBe(true)
+    expect(memberEligibleForMonth(aprilJoiner, null)).toBe(true)
+  })
+})
+
+describe('test-account helpers — users.is_test is the source of truth', () => {
+  const roster = [
+    { id: 'u1', name: 'Ryan Miller', is_test: false },
+    { id: 'u2', name: 'Ryan Miller Test', is_test: true },
+    { id: 'u3', name: 'No Flag' },
+  ]
+
+  test('isTestUser only trusts an explicit true flag', () => {
+    expect(isTestUser(roster[0])).toBe(false)
+    expect(isTestUser(roster[1])).toBe(true)
+    expect(isTestUser(roster[2])).toBe(false)
+    expect(isTestUser(null)).toBe(false)
   })
 
-  test('returns true when userName is null', () => {
-    expect(isZackEligible(null, '2026-01')).toBe(true)
+  test('clubUsers drops test accounts and keeps everyone else', () => {
+    expect(clubUsers(roster).map(u => u.id)).toEqual(['u1', 'u3'])
+    expect(clubUsers(null)).toEqual([])
   })
 
-  test('returns true when monthYear is null', () => {
-    expect(isZackEligible('Zack Anjoorian', null)).toBe(true)
+  test('testUserIds is the id set of flagged accounts', () => {
+    const ids = testUserIds(roster)
+    expect(ids.has('u2')).toBe(true)
+    expect(ids.has('u1')).toBe(false)
+    expect(ids.size).toBe(1)
   })
 })
 

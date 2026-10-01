@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { isTestUser } from '../lib/members'
 
 // Phase 7 — film tags. Members tag a film with descriptive labels at rating time;
 // tags display in aggregate (tag · count) on the film page. Backed by `film_tags`
@@ -8,8 +9,6 @@ import { supabase } from '../lib/supabase'
 //   • full     — in the film overlay (renders its own leading divider + "Tags" label)
 // Self-contained: loads on mount, writes immediately, optimistic UI. Returns null
 // when there's nothing to show and the viewer can't edit (keeps the overlay clean).
-
-const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 
 // Curated suggestions — lower friction + nudge a shared vocabulary.
 const SUGGESTED = [
@@ -31,10 +30,10 @@ export default function FilmTags({ movieId, userId, canEdit = false, compact = f
     if (!movieId) return
     const { data } = await supabase
       .from('film_tags')
-      .select('id, tag, user_id, users(email)')
+      .select('id, tag, user_id, users(is_test)')
       .eq('movie_id', movieId)
-    // Test account must be invisible everywhere.
-    setRows((data ?? []).filter(r => r.users?.email !== TEST_EMAIL))
+    // Test accounts must be invisible everywhere.
+    setRows((data ?? []).filter(r => !isTestUser(r.users)))
   }, [movieId])
 
   useEffect(() => { load() }, [load])

@@ -16,7 +16,6 @@ import { corsHeaders } from "./cors.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
-const TEST_EMAIL = "i.am.ryan.the.miller@gmail.com";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -159,17 +158,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!films.length) return json({ error: "no_films" }, 422);
     const filmIds = films.map((f) => f.id);
 
-    const { data: userRows } = await admin.from("users").select("id, name, email");
+    // Test accounts are flagged by users.is_test (the DB is the source of truth).
+    const { data: userRows } = await admin.from("users").select("id, name, is_test");
     const users = userRows ?? [];
-    const userById: Record<string, { name: string; email: string }> = {};
-    for (const u of users) userById[u.id] = { name: u.name, email: u.email };
-    const isTest = (id: string | null) => !!id && (userById[id]?.email ?? "").toLowerCase() === TEST_EMAIL;
+    const userById: Record<string, { name: string; is_test: boolean }> = {};
+    for (const u of users) userById[u.id] = { name: u.name, is_test: u.is_test === true };
+    const isTest = (id: string | null) => !!id && userById[id]?.is_test === true;
 
     // Detect members who share a first name (e.g. the two Ryans) so the recap can
     // be told to disambiguate them by full/last name instead of a bare first name.
     const firstNameGroups: Record<string, Set<string>> = {};
     for (const u of users) {
-      if ((u.email ?? "").toLowerCase() === TEST_EMAIL) continue;
+      if (u.is_test === true) continue;
       const first = (u.name ?? "").trim().split(/\s+/)[0];
       if (!first) continue;
       (firstNameGroups[first] ??= new Set<string>()).add(u.name);

@@ -10,6 +10,8 @@
 // an arbitrary id; the caller passes the signed-in `profile`. (RLS also guards
 // each table, but we never even ask for anyone else's rows.)
 
+import { testUserIds } from './members'
+
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
 // Resolve the title (+ a little context) for a set of movie ids via movies_safe —
@@ -373,15 +375,13 @@ export function downloadBlob(filename, content, mimeType) {
 //
 // The whole club's data in one file — every member's films, scores, reviews and
 // comments. Admin-only (RLS lets admins read all rows; the dashboard panel that
-// calls this is already admin-gated). The test account is filtered out everywhere,
-// same as the rest of the app. Picker identities come via `movies_safe`, which
-// exposes them to admins.
-
-const CLUB_TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+// calls this is already admin-gated). Test accounts (users.is_test) are filtered
+// out everywhere, same as the rest of the app. Picker identities come via
+// `movies_safe`, which exposes them to admins.
 
 export async function gatherClubData(supabase) {
   const [usersRes, monthsRes, moviesRes, ratingsRes, reviewsRes, commentsRes] = await Promise.all([
-    supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, timezone'),
+    supabase.from('users').select('id, name, email, role, is_op, joined_at, is_active, is_test, timezone'),
     supabase.from('months').select('id, month_year, status'),
     supabase.from('movies_safe').select('id, month_id, title, year_released, director, genre, picked_by_user_id, scores_revealed, picker_revealed, scoring_deadline, historical_avg_score'),
     supabase.from('ratings').select('movie_id, user_id, score, pre_watch_excitement, recommend_outside_club, submitted_at'),
@@ -393,7 +393,7 @@ export async function gatherClubData(supabase) {
   }
 
   const allUsers = usersRes.data ?? []
-  const testIds = new Set(allUsers.filter(u => (u.email ?? '').toLowerCase() === CLUB_TEST_EMAIL).map(u => u.id))
+  const testIds = testUserIds(allUsers)
   const nameById = Object.fromEntries(allUsers.map(u => [u.id, u.name]))
   const notTest = (uid) => uid && !testIds.has(uid)
 

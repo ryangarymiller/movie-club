@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { isTestUser } from '../lib/members'
 
 // Member-facing "request a different pick" (for a locked active-month pick, only
 // while the film has no scores — the admin enforces that on approval) + an admin
@@ -10,7 +11,6 @@ const SANS = "'DM Sans', sans-serif"
 const GREEN = '#86efac'
 const AMBER = '#fbbf24'
 const RED = '#f87171'
-const TEST_EMAIL = 'i.am.ryan.the.miller@gmail.com'
 const TMDB_TOKEN = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN
 
 const STATUS_META = {
@@ -186,7 +186,7 @@ export function PickChangeRequestsAdminPanel() {
     setLoading(true)
     const { data } = await supabase
       .from('pick_change_requests')
-      .select('id, requested_tmdb_id, requested_title, requested_poster_url, requested_year, reason, status, created_at, movie_id, user_id, users:user_id ( name, email ), movies:movie_id ( title, month_id )')
+      .select('id, requested_tmdb_id, requested_title, requested_poster_url, requested_year, reason, status, created_at, movie_id, user_id, users:user_id ( name, is_test ), movies:movie_id ( title, month_id )')
       .eq('status', 'pending').order('created_at', { ascending: true })
     setRequests(data ?? [])
     setLoading(false)
@@ -194,7 +194,7 @@ export function PickChangeRequestsAdminPanel() {
 
   useEffect(() => { load() }, [load])
 
-  const visible = useMemo(() => requests.filter(r => (r.users?.email || '').toLowerCase() !== TEST_EMAIL), [requests])
+  const visible = useMemo(() => requests.filter(r => !isTestUser(r.users)), [requests])
 
   async function approve(req) {
     if (busyId) return

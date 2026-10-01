@@ -17,19 +17,19 @@
 //   { key, label, emoji, scope, period, movieId?, userId?, metric? }
 //
 // HARD RULES honoured here:
-//   • Test account i.am.ryan.the.miller@gmail.com is excluded from all data.
-//   • Zack (joined Apr 2026) exclusion for Jan–Mar 2026 is handled inside the
-//     compute functions (monthly/season) which we reuse unchanged.
+//   • Test accounts (users.is_test) are excluded from all data — see
+//     src/lib/members.js; the users passed in must carry `is_test`.
+//   • Late-joiner exclusion (a member's scores don't count for months before
+//     their users.joined_at) is handled inside the compute functions
+//     (monthly/season/annual/all-time) which we reuse unchanged.
 
 import {
   computeMonthlyAwards,
   computeSeasonAwards,
   computeAnnualAwards,
   computeAllTimeAwards,
-  isWinter2026,
 } from '../pages/Awards.jsx'
-
-export const TEST_USER_EMAIL = 'i.am.ryan.the.miller@gmail.com'
+import { clubUsers } from './members'
 
 // ─── Award definitions ────────────────────────────────────────────────────────
 // For each scope, a list describing how to extract winners from a compute result.
@@ -110,11 +110,9 @@ const ALLTIME_DEFS = [
 
 // ─── Data filtering ───────────────────────────────────────────────────────────
 
-// Remove the test account from users (and its ratings) before computing anything.
+// Remove test accounts from users (and their ratings) before computing anything.
 function sanitize(data) {
-  const users = (data.users ?? []).filter(
-    u => (u.email ?? '').toLowerCase() !== TEST_USER_EMAIL
-  )
+  const users = clubUsers(data.users)
   const allowedUserIds = new Set(users.map(u => u.id))
   const ratings = (data.ratings ?? []).filter(r => allowedUserIds.has(r.user_id))
   return {
@@ -187,8 +185,7 @@ function computeAllAwardRecords(rawData) {
     const seasonMonthIds = new Set(months.filter(m => m.season_id === season.id).map(m => m.id))
     const hasRevealed = movies.some(m => seasonMonthIds.has(m.month_id) && m.scores_revealed)
     if (!hasRevealed) return
-    const winter = isWinter2026(season, months)
-    const result = computeSeasonAwards(movies, ratings, users, season, months, winter)
+    const result = computeSeasonAwards(movies, ratings, users, season, months)
     pushFrom(SEASON_DEFS, result, 'season', season.name, season.id)
   })
 
