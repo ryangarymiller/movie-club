@@ -171,7 +171,7 @@ Borda is pure SQL and gets a unit-test fixture (ties, <3 candidates, absent vote
 
 *Exit:* baseline diff empty on the laptop; prod behaves identically after apply; `club_mode='v1'`.
 
-### Phase 1 — Engine ❌ *(DB only; on the branch)*
+### Phase 1 — Engine 🔄 *(DB only; on the branch — written + committed, dry run pending approval)*
 Tables + RLS + column grants + definer views (§2.2) · the RPCs and triggers (§2.4) · Borda fixture ·
 broadcast events · notification types. Parallelizable in three lanes: (a) tables/RLS/views,
 (b) election/ballot RPCs + tally, (c) completion/absence triggers + broadcasts + notifications.

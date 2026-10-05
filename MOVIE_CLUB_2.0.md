@@ -84,7 +84,7 @@ Consequence: the film, not the month, becomes the unit of the watch cycle. A mon
 
 | # | Decision |
 |---|---|
-| A1 | **Borda count.** Top-3 ranked ballot: 1st = 3 pts, 2nd = 2, 3rd = 1. Highest total wins. Ties → **random** (rule 9). |
+| A1 | **Weighted top-3 ballot; ties → random (rule 9).** Originally Borda 3/2/1 — but the club's hand-run October 2026 vote used **6/4/3**, and on that exact list the two schemes disagree (6/4/3: Weapons 13 beats Primal Fear 12; 3/2/1: they tie 6–6). Weights now live in `app_settings.vote_points`, **default `{6,4,3}`** to match club practice. *(Open: Ryan to confirm 6/4/3 vs 3/2/1.)* |
 | A2 | **No hard enforcement deadline on voting/watching.** Self-gating — the next round can't start until everyone has done their part; group pressure is the intended mechanism. |
 | A3 | **Re-vote** for each subsequent film from the same list — not a reuse of the original tally. |
 | B4 | **Submitting your score is the "I've watched it" signal.** No separate watched button. |
