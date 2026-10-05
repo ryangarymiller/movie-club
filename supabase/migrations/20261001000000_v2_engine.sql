@@ -126,12 +126,18 @@ $$;
 revoke all on function public.v2_notify_all(uuid,text,text,text,text,jsonb,uuid) from public;
 
 -- Borda tally. Pure; testable. firsts = #1 ranks (informational).
+-- Rank weights live in app_settings.vote_points (default {6,4,3} — what the club used for
+-- October 2026's hand-run vote; Borda 3/2/1 was the plan's A1 default, changeable by an admin).
+alter table public.app_settings add column if not exists vote_points integer[] not null default '{6,4,3}';
+comment on column public.app_settings.vote_points is '2.0: points for 1st/2nd/3rd on a ballot. Club practice is 6/4/3.';
+
 create or replace function public.v2_tally(p_election_id uuid)
 returns table (submission_id uuid, points integer, firsts integer)
 language sql stable security definer set search_path to 'public'
 as $$
+  with w as (select coalesce((select vote_points from public.app_settings limit 1), '{6,4,3}'::int[]) as pts)
   select s.id,
-         coalesce(sum(case br.rank when 1 then 3 when 2 then 2 when 3 then 1 else 0 end), 0)::int,
+         coalesce(sum(coalesce((select pts[br.rank] from w), 0)), 0)::int,
          coalesce(sum(case when br.rank = 1 then 1 else 0 end), 0)::int
   from public.elections e
   join public.submissions s on s.month_id = e.month_id and s.withdrawn_at is null
