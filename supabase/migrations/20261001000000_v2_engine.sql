@@ -623,3 +623,42 @@ create or replace view public.movies_safe as
     tmdb_vote_average, tmdb_vote_count, tmdb_popularity, tmdb_cast, tmdb_writers, veto_resubmit_required,
     election_id, submission_id
    from movies m;
+
+-- =====================================================================================
+-- 8. Progress RPCs — "waiting on…" (A2: social pressure is the gate's enforcement)
+--    Expose WHO has acted, never WHAT they voted or scored, so anonymity holds.
+-- =====================================================================================
+
+create or replace function public.v2_vote_progress(p_election_id uuid)
+returns table (user_id uuid, name text, has_voted boolean)
+language sql stable security definer set search_path to 'public'
+as $$
+  select u.id, u.name,
+         exists (select 1 from public.ballots b where b.election_id = p_election_id and b.user_id = u.id)
+  from public.elections e
+  join public.users u on u.id in (select * from public.expected_members(e.month_id))
+  where e.id = p_election_id
+  order by u.name;
+$$;
+revoke all on function public.v2_vote_progress(uuid) from public;
+grant execute on function public.v2_vote_progress(uuid) to authenticated;
+
+create or replace function public.v2_film_progress(p_movie_id uuid)
+returns table (user_id uuid, name text, has_scored boolean, absent boolean)
+language sql stable security definer set search_path to 'public'
+as $$
+  select u.id, u.name,
+         exists (select 1 from public.ratings r where r.movie_id = p_movie_id and r.user_id = u.id and r.score is not null),
+         exists (select 1 from public.cycle_absences ca where ca.movie_id = p_movie_id and ca.user_id = u.id)
+  from public.movies mv
+  join public.months mo on mo.id = mv.month_id
+  join public.users u on u.is_active and not u.is_test
+       and date_trunc('month', u.joined_at)::date <= coalesce(mo.started_at::date, (mo.month_year || '-01')::date)
+  where mv.id = p_movie_id
+    and not exists (select 1 from public.month_absences ma where ma.month_id = mo.id and ma.user_id = u.id)
+  order by u.name;
+$$;
+revoke all on function public.v2_film_progress(uuid) from public;
+grant execute on function public.v2_film_progress(uuid) to authenticated;
+
+-- Members read club_mode to pick a flow; only admins may flip it (existing app_settings RLS).
