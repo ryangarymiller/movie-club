@@ -41,6 +41,11 @@ begin
   if (select points from public.v2_tally(e1) where submission_id=wail)   <> 7  then raise exception 'Wailing != 7'; end if;
   if (select points from public.v2_tally(e1) where submission_id=pulse)  <> 7  then raise exception 'Pulse != 7'; end if;
   if (select points from public.v2_tally(e1) where submission_id=angel)  <> 0  then raise exception 'Angel != 0'; end if;
+  -- Security: a non-admin member cannot close a vote, even passing p_force => true.
+  perform set_config('request.jwt.claims', json_build_object('sub', (select id from users where role='member' and is_active and not is_test limit 1)::text, 'role','authenticated')::text, true);
+  begin perform public.v2_close_election(e1, true); raise exception 'member force-closed a vote';
+  exception when others then if sqlerrm not like '%admin only%' then raise; end if; end;
+  perform set_config('request.jwt.claims', '', true);
   mv1 := public.v2_close_election(e1, true);
   if (select winner_submission_id from elections where id=e1) <> weap then raise exception 'winner should be Weapons'; end if;
   if (select tie_broken_randomly from elections where id=e1) then raise exception 'false tie'; end if;

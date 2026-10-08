@@ -299,7 +299,7 @@ begin
   select count(*) into v_expected from public.expected_members(e.month_id);
   select count(*) into v_cast from ballots b where b.election_id = p_election_id
     and b.user_id in (select * from public.expected_members(e.month_id));
-  if v_cast >= v_expected then perform public.v2_close_election(p_election_id, true); end if;
+  if v_cast >= v_expected then perform public.v2_finalize_election(p_election_id); end if;
 end $function$;
 grant execute on function public.v2_cast_ballot(uuid,uuid[]) to authenticated;
 
@@ -329,7 +329,7 @@ begin
   end if;
   if v_cands = 1 then
     -- Q2: a single candidate is elected without a vote.
-    perform public.v2_close_election(v_id, true);
+    perform public.v2_finalize_election(v_id);
     return v_id;
   end if;
   perform public.v2_notify_all(p_month_id, 'vote_open', 'Vote is open 🗳️',
@@ -339,14 +339,15 @@ begin
 end $function$;
 grant execute on function public.v2_open_election(uuid) to authenticated;
 
-create or replace function public.v2_close_election(p_election_id uuid, p_force boolean default false)
+-- Internal: tally + materialize. Called by the system paths (last ballot cast, single candidate)
+-- and by the admin wrapper below. No API role may call it directly.
+create or replace function public.v2_finalize_election(p_election_id uuid)
 returns uuid language plpgsql security definer set search_path to 'public'
 as $function$
 declare e record; v_top int; v_winner uuid; v_tie boolean := false; v_movie uuid; v_tally jsonb; v_title text; v_cnt int;
 begin
-  if not p_force and not public.v2_is_system_or_admin() then raise exception 'admin only'; end if;
   select * into e from elections where id = p_election_id for update;
-  if e is null or e.status <> 'closed' then null; end if;
+  if not found then raise exception 'election not found'; end if;
   if e.status = 'closed' then return e.movie_id; end if;
 
   select max(points) into v_top from public.v2_tally(p_election_id);
@@ -374,6 +375,16 @@ begin
     'The club picked ' || v_title || case when v_tie then ' (tie broken at random)' else '' end || '. Watch it and score it.',
     '/films?film=' || v_movie, jsonb_build_object('movie_id', v_movie, 'election_id', p_election_id));
   return v_movie;
+end $function$;
+
+-- Admin: close the open vote early (non-voters simply don't count). p_force is accepted for
+-- signature compatibility but never bypasses the admin check.
+create or replace function public.v2_close_election(p_election_id uuid, p_force boolean default false)
+returns uuid language plpgsql security definer set search_path to 'public'
+as $function$
+begin
+  if not public.v2_is_system_or_admin() then raise exception 'admin only'; end if;
+  return public.v2_finalize_election(p_election_id);
 end $function$;
 grant execute on function public.v2_close_election(uuid,boolean) to authenticated;
 
@@ -662,3 +673,63 @@ revoke all on function public.v2_film_progress(uuid) from public;
 grant execute on function public.v2_film_progress(uuid) to authenticated;
 
 -- Members read club_mode to pick a flow; only admins may flip it (existing app_settings RLS).
+
+-- =====================================================================================
+-- 9. Grant hygiene. Supabase grants EXECUTE on new public functions to anon and
+--    authenticated by default, so `revoke ... from public` alone protects nothing.
+--    Internal helpers: callable only by other definer functions (and the owner).
+--    Member/admin RPCs: authenticated only (each re-checks its own authorization).
+-- =====================================================================================
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'public.v2_is_system_or_admin()',
+    'public.v2_notify_all(uuid,text,text,text,text,jsonb,uuid)',
+    'public.v2_tally(uuid)',
+    'public.v2_materialize_submission(uuid,uuid)',
+    'public.v2_check_film_complete(uuid)',
+    'public.v2_finalize_election(uuid)',
+    'public.ensure_season_for(date)',
+    'public.v2_cron_close_due_submissions()',
+    'public.v2_on_score()',
+    'public.v2_enforce_submission_cap()'
+  ] loop
+    execute format('revoke all on function %s from public, anon, authenticated', f);
+  end loop;
+  foreach f in array array[
+    'public.expected_members_for_film(uuid)',
+    'public.v2_candidates(uuid)',
+    'public.v2_submit(uuid,integer,text,text,jsonb,text)',
+    'public.v2_withdraw(uuid)',
+    'public.v2_cast_ballot(uuid,uuid[])',
+    'public.v2_open_election(uuid)',
+    'public.v2_close_election(uuid,boolean)',
+    'public.v2_close_submissions(uuid)',
+    'public.v2_mark_absent(uuid,uuid,text)',
+    'public.v2_close_month(uuid,boolean)',
+    'public.v2_vote_progress(uuid)',
+    'public.v2_film_progress(uuid)'
+  ] loop
+    execute format('revoke all on function %s from public, anon', f);
+    execute format('grant execute on function %s to authenticated', f);
+  end loop;
+end $$;
+revoke all on public.submissions_safe, public.ballots_safe, public.elections_safe from anon;
+revoke insert, update, delete, truncate, references, trigger on public.submissions_safe, public.ballots_safe, public.elections_safe from authenticated;
+revoke all on table public.submissions, public.elections, public.ballots, public.ballot_ranks, public.cycle_absences from anon;
+
+-- Self-check: fail the migration if any internal helper is executable by an API role.
+do $$
+declare v_bad text;
+begin
+  select string_agg(p.oid::regprocedure::text || ' -> ' || r.rolname, ', ') into v_bad
+  from pg_proc p cross join pg_roles r
+  where p.pronamespace = 'public'::regnamespace
+    and p.proname in ('v2_is_system_or_admin','v2_notify_all','v2_tally','v2_materialize_submission',
+                      'v2_check_film_complete','v2_finalize_election','ensure_season_for',
+                      'v2_cron_close_due_submissions','v2_on_score','v2_enforce_submission_cap')
+    and r.rolname in ('anon','authenticated')
+    and has_function_privilege(r.oid, p.oid, 'EXECUTE');
+  if v_bad is not null then raise exception 'internal v2 helpers are API-callable: %', v_bad; end if;
+end $$;
