@@ -179,7 +179,15 @@ broadcast events · notification types. Parallelizable in three lanes: (a) table
 *Exit:* a scripted end-to-end round (submit → close → ballot → elect → score → reveal → next vote →
 close month) passes on the branch with 6 simulated members, including an absence and a tie.
 
-### Phase 2 — Surfaces ❌ *(UI; on the preview deploy)*
+### Phase 2 — Surfaces 🔄 *(UI built on the branch; awaiting engine in prod + a live dry run)*
+✅ Built (2026-10-09): `src/lib/v2.js` data layer + `ClubModeContext` (admin-only local
+"preview 2.0"); This Month v2 (submit → ballot → now watching → reveal, `src/pages/ThisMonthV2.jsx`
++ `src/components/v2/`); Home "Your Turn" v2; Admin round controls (club-mode switch, start
+month, close submissions / vote / month, mark absent, vote weights); notification types + mute
+rows; mode-aware GuidedTour. 1.0's pick-target queries now filter `mode='v1'` so a 2.0 month can
+never leak into the 1.0 pick flow. Verified: build clean, 385/385 tests, lint 0 errors.
+❌ Remaining: exercise it end-to-end against the real engine (needs Phase 1 applied), then the
+six-person dry run.
 - **This Month v2** — rewritten as the state machine: Submissions (0–2, editable, anonymous, draft-queue
   quick-pick) → Ballot (rank top 3) → Now Watching (one hero film + "waiting on …" roster) → Cycle
   reveal (submitter, ballots, tally) → repeat. Nothing in the current page maps 1:1.

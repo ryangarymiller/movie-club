@@ -14,7 +14,9 @@ function validateScore(val) {
   return null
 }
 
-export default function ScoreModal({ movie, existingRating, onClose, onSaved }) {
+// skipExcitementStep (optional, default false): open straight on the final score — used by
+// 2.0's "I watched it — score it" CTA, where submitting a score IS the watched signal (B4).
+export default function ScoreModal({ movie, existingRating, onClose, onSaved, skipExcitementStep = false }) {
   const { profile } = useAuth()
   const { isMonthReadjustable } = useReadjustment()
   const [scoreInput, setScoreInput] = useState('')
@@ -29,7 +31,7 @@ export default function ScoreModal({ movie, existingRating, onClose, onSaved }) 
   const [confirmBold, setConfirmBold] = useState(false)
   // Lets a member who's already watched the film jump straight to their final
   // score, skipping the (optional) pre-watch excitement step.
-  const [skipExcitement, setSkipExcitement] = useState(false)
+  const [skipExcitement, setSkipExcitement] = useState(skipExcitementStep)
   const [visible, setVisible] = useState(false)
   const inputRef = useRef(null)
 

@@ -11,6 +11,8 @@ import { clubUsers, isTestUser } from '../lib/members'
 import { useBackClose } from '../lib/useBackClose'
 import { useCollapseScroll } from '../lib/useCollapseScroll'
 import { useRevealRefresh } from '../lib/useRevealRefresh'
+import { useClubMode } from '../context/ClubModeContext'
+import ThisMonthV2 from './ThisMonthV2'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -63,7 +65,7 @@ async function autoActivateDueMonths() {
     const { data: due } = await supabase
       .from('months')
       .select('id, active_date')
-      .eq('status', 'upcoming')
+      .eq('status', 'upcoming').eq('mode', 'v1')
       .eq('auto_activate', true)
       .order('month_year', { ascending: true })
     const target = (due ?? []).find(m => m.active_date && String(m.active_date).slice(0, 10) <= todayPT)
@@ -1258,7 +1260,7 @@ function PicksTab({ profile, onOpenFilm }) {
     const [{ data: active }, { data: upcoming }] = await Promise.all([
       supabase.from('months').select('id, month_year').eq('status', 'active')
         .order('month_year', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('months').select('id, month_year, active_date, auto_activate').eq('status', 'upcoming')
+      supabase.from('months').select('id, month_year, active_date, auto_activate').eq('status', 'upcoming').eq('mode', 'v1')
         .order('month_year', { ascending: true }).limit(1).maybeSingle(),
     ])
 
@@ -1564,7 +1566,21 @@ function PickRow({ pick, isOwn = false, expanded, onToggle, onChange }) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+// 2.0 switch (R1): app_settings.club_mode (or an admin's local preview) decides which
+// lifecycle this tab serves. Two components, so hook order never depends on the mode —
+// and 1.0's autoActivateDueMonths() only ever runs inside ThisMonthV1, never in 2.0.
+// While club_mode is still loading we render nothing rather than briefly mounting 1.0
+// (whose loader would fire autoActivateDueMonths in a 2.0 club — server-guarded, but noisy).
 export default function ThisMonth() {
+  const { isV2, loading } = useClubMode()
+  if (isV2) return <ThisMonthV2 />
+  if (loading) return <div aria-busy="true" style={{ minHeight: '100vh', background: 'var(--bg)' }} />
+  return <ThisMonthV1 />
+}
+
+// ─── 1.0 This Month (unchanged) ─────────────────────────────────────────────
+
+function ThisMonthV1() {
   const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
   const [movies, setMovies] = useState([])

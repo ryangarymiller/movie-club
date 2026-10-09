@@ -43,6 +43,11 @@ const NOTIF_TYPES = [
   { key: 'score_change',    glyph: '✏️',  label: 'My score-change decisions', desc: 'Admin approves or denies your request' },
   { key: 'pick_change',     glyph: '🎬',  label: 'My pick-change decisions', desc: 'Admin approves or denies a pick swap' },
   { key: 'veto',            glyph: '🚫',  label: 'My pick vetoed', desc: 'The club votes to veto your pick' },
+  // Movie Club 2.0 round events
+  { key: 'submissions_open', glyph: '🎬', label: 'Submissions open', desc: 'A new themed list opens for films' },
+  { key: 'vote_open',        glyph: '🗳️', label: 'Vote open', desc: 'Time to rank your top 3 from the list' },
+  { key: 'film_elected',     glyph: '🍿', label: 'Film picked', desc: 'The vote picks the next film to watch' },
+  { key: 'waiting_on_you',   glyph: '⏳', label: 'Waiting on you', desc: 'A nudge when the club needs your vote or score' },
 ]
 
 // ─── Style helpers ──────────────────────────────────────────────────────────────

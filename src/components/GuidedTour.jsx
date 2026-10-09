@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTour } from '../context/TourContext'
+import { useClubMode } from '../context/ClubModeContext'
 
 // A skippable, replayable guided tour. Opens automatically for members who haven't
 // completed onboarding, and on demand via useTour().startTour() (Profile → replay).
 // A modal carousel (no DOM anchoring) so it works identically on mobile + desktop
 // and regardless of which page you're on.
 
-const STEPS = [
+// 1.0 copy (one pick per member, all films watched in parallel). Kept verbatim.
+const STEPS_V1 = [
   {
     glyph: '🎬',
     title: 'Welcome to Movie Club',
@@ -46,9 +48,26 @@ const STEPS = [
   },
 ]
 
+// 2.0 copy (themed list → ranked vote → one film at a time, people-gated). Same steps and
+// order as 1.0 — only the lifecycle-specific bodies change, keyed by step index.
+const V2_OVERRIDES = {
+  0: {
+    body: 'Each month has a theme. Members put films on an anonymous list, the club votes on what to watch next, and everyone watches that one film together — no spoilers before the reveal.',
+  },
+  1: {
+    body: 'Add up to 2 films to the themed list, then rank your top 3 when the vote opens. Watch the winner and score it — your score is your “I’ve watched it”. Nobody moves on until everyone has watched; then the reveal shows who submitted it and how everyone voted.',
+  },
+  5: {
+    body: 'The bell flags when the list opens, when a vote starts, which film won, reveals, replies, and @mentions. Fine-tune what you get (and quiet hours) under Profile → Notifications.',
+  },
+}
+const STEPS_V2 = STEPS_V1.map((step, i) => ({ ...step, ...V2_OVERRIDES[i] }))
+
 export default function GuidedTour() {
   const { profile, fetchProfile } = useAuth()
   const { tourOpen, closeTour } = useTour()
+  const { isV2 } = useClubMode()
+  const STEPS = isV2 ? STEPS_V2 : STEPS_V1
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
 

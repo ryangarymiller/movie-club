@@ -50,6 +50,11 @@ const TYPE_META = {
   deadline_soon:   { glyph: '📅', fallback: 'A film is due soon' },
   pick_change:     { glyph: '🎬', fallback: 'Pick change' },
   veto:            { glyph: '🚫', fallback: 'Your pick was vetoed' },
+  // Movie Club 2.0 (themed list → ranked vote → one film at a time)
+  submissions_open: { glyph: '🎬', fallback: 'Submissions open' },
+  vote_open:        { glyph: '🗳️', fallback: 'Vote open' },
+  film_elected:     { glyph: '🍿', fallback: 'Film picked' },
+  waiting_on_you:   { glyph: '⏳', fallback: 'The club is waiting on you' }, // reserved: nudge, not yet emitted
 }
 const DEFAULT_META = { glyph: '🔔', fallback: 'Notification' }
 

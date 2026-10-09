@@ -12,6 +12,8 @@ import { MEMBER_COLORS, userColor } from '../lib/colors'
 import { useCollapseScroll } from '../lib/useCollapseScroll'
 import { clubAge, roundMilestone, memberAnniversaries, inDaysLabel } from '../lib/milestones'
 import { clubUsers } from '../lib/members'
+import { useClubMode } from '../context/ClubModeContext'
+import YourTurnV2 from '../components/v2/YourTurnV2'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -214,6 +216,10 @@ export default function Home() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const { openMember } = useMemberOverlay()
+  // 2.0 (themed list → vote → one film at a time) swaps in its own Your Turn card and
+  // retires the 1.0 per-member pick reminder; every other Home section is shared.
+  const { isV2 } = useClubMode()
+  const [v2RefreshKey, setV2RefreshKey] = useState(0)
   const [loading, setLoading] = useState(true)
   const [activeMovies, setActiveMovies] = useState([])
   const [activeClubAvgs, setActiveClubAvgs] = useState({}) // movie_id → rolling club avg (RLS-gated)
@@ -258,19 +264,20 @@ export default function Home() {
       { data: recentComments },
       { data: upcoming },
     ] = await Promise.all([
-      supabase.from('months').select('id, month_year').eq('status', 'active').maybeSingle(),
+      supabase.from('months').select('id, month_year').eq('status', 'active').eq('mode', isV2 ? 'v2' : 'v1').maybeSingle(),
       supabase.from('movies_safe').select('id, month_id, title, poster_url, historical_avg_score, picked_by_user_id, picker_revealed, scores_revealed, scoring_deadline'),
       supabase.from('ratings').select('id, movie_id, score, pre_watch_excitement, recommend_outside_club, submitted_at').eq('user_id', profile.id),
       supabase.from('users').select('id, name, email, is_active, is_test, user_color, avatar_id'),
       supabase.from('ratings').select('id, movie_id, user_id, score, submitted_at').order('submitted_at', { ascending: false }).limit(12),
       supabase.from('reviews').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
       supabase.from('comments').select('id, movie_id, user_id, created_at').order('created_at', { ascending: false }).limit(12),
-      supabase.from('months').select('id, month_year, active_date, auto_activate').eq('status', 'upcoming').order('month_year', { ascending: true }).limit(1).maybeSingle(),
+      supabase.from('months').select('id, month_year, active_date, auto_activate').eq('status', 'upcoming').eq('mode', 'v1').order('month_year', { ascending: true }).limit(1).maybeSingle(),
     ])
 
     // Pick reminder: does the viewer still need to pick for the upcoming month?
+    // 1.0 only — 2.0 has no per-member pick (YourTurnV2 covers submissions).
     let nextPick = null
-    if (upcoming) {
+    if (upcoming && !isV2) {
       const { data: myPick } = await supabase.from('upcoming_picks')
         .select('id').eq('user_id', profile.id).eq('month_target', upcoming.month_year).maybeSingle()
       if (!myPick) {
@@ -378,7 +385,7 @@ export default function Home() {
     events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     setActivity(events.slice(0, 12))
     setLoading(false)
-  }, [profile])
+  }, [profile, isV2])
 
   useEffect(() => {
     load()
@@ -391,7 +398,7 @@ export default function Home() {
     if (!profile) return
     const channel = supabase
       .channel('home-activity')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => { load(); setV2RefreshKey(k => k + 1) })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => load())
       .subscribe()
@@ -464,7 +471,7 @@ export default function Home() {
           <p style={{ fontSize: '10px', letterSpacing: '0.2em', color: 'var(--text-faint)', textTransform: 'uppercase', fontFamily: "'DM Mono',monospace", marginBottom: '12px' }}>
             Your Turn
           </p>
-          {!loading && pickPrompt && (
+          {!isV2 && !loading && pickPrompt && (
             <div
               onClick={() => navigate('/this-month')}
               className="flex items-center gap-3 p-4 rounded-xl mb-3 transition-colors"
@@ -478,7 +485,9 @@ export default function Home() {
               <span style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: "'DM Mono',monospace" }}>Pick now →</span>
             </div>
           )}
-          {loading ? (
+          {isV2 ? (
+            <YourTurnV2 onScore={openModal} refreshKey={v2RefreshKey} />
+          ) : loading ? (
             <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
           ) : pendingFilms.length === 0 ? (
             <div
@@ -534,7 +543,7 @@ export default function Home() {
             </div>
           ) : activeMovies.length === 0 ? (
             <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: 0 }}>
-              No picks yet for {monthName(activeMonthYear)}.
+              {isV2 ? `No film picked yet for ${monthName(activeMonthYear)}.` : `No picks yet for ${monthName(activeMonthYear)}.`}
             </p>
           ) : (
             <>
@@ -805,6 +814,7 @@ export default function Home() {
           onSaved={() => {
             closeModal()
             load()
+            setV2RefreshKey(k => k + 1)
           }}
         />
       )}

@@ -9,6 +9,8 @@ import { PickChangeRequestsAdminPanel } from '../components/PickChangeRequest'
 import Avatar from '../components/Avatar'
 import { AVATAR_PACKS, avatarSrc, storageAvatarId } from '../lib/avatars'
 import { isTestUser, clubUsers } from '../lib/members'
+import { useClubMode } from '../context/ClubModeContext'
+import AdminRoundPanel from '../components/v2/AdminRoundPanel'
 
 if (!document.getElementById('mc-fonts')) {
   const link = document.createElement('link')
@@ -835,6 +837,11 @@ function ClubExportPanel({ setError, setSuccess }) {
 }
 
 function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfillFilm, onRefresh, setError, setSuccess }) {
+  // 2.0: when the club is live on 2.0 (not mere admin preview), the 1.0-only lifecycle
+  // panels collapse into a "1.0 controls (inactive)" disclosure — kept mounted and reachable
+  // so a revert to 1.0 (club_mode='v1') has them right where they were.
+  const { clubMode } = useClubMode()
+  const v1Inactive = clubMode === 'v2'
   // Keep the persisted `awards` table fresh: server-side reveals (the deadline
   // cron + activate_month) don't call triggerAwardsWrite, so refresh once when an
   // admin opens the dashboard. Idempotent upsert; the UI also live-computes as a
@@ -954,8 +961,106 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
     onRefresh()
   }
 
+  // Dashboard panels, as elements so the 1.0-only ones can be grouped (see v1Inactive).
+  // Active month status (1.0 watch order: deadline badges + reorder by swapping deadlines).
+  const activeMonthCard = (
+    <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+      <Label>Active Month</Label>
+      {activeMonth ? (
+        <div style={{ marginTop: '8px' }}>
+          <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 6px' }}>
+            {activeMonth.month_year}
+          </p>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <Badge color="gray">{activeMovies.length} films</Badge>
+            <Badge color={deadlinesSet === activeMovies.length && activeMovies.length > 0 ? 'green' : 'yellow'}>
+              {deadlinesSet}/{activeMovies.length} deadlines set
+            </Badge>
+          </div>
+
+          {/* Watch order — reorder films by swapping scoring deadlines (↑ = earlier) */}
+          {orderedActive.length > 0 && (
+            <div style={{ marginTop: '14px' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-dim)', margin: '0 0 8px' }}>
+                Watch order
+              </p>
+              {!canReorder && (
+                <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '0 0 8px' }}>
+                  Set all deadlines (activate the month) to reorder.
+                </p>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {orderedActive.map((f, i) => (
+                  <div key={f.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '8px 10px', borderRadius: '8px',
+                    border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'rgba(var(--fg-rgb), 0.02)',
+                  }}>
+                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '12px', color: 'var(--text-dim)', width: '16px', flexShrink: 0 }}>{i + 1}</span>
+                    <p style={{ flex: 1, minWidth: 0, color: 'var(--text-strong)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
+                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                      <button
+                        onClick={() => swapWatchOrder(i, -1)}
+                        disabled={!canReorder || i === 0 || reorderBusy}
+                        title="Move earlier"
+                        style={{
+                          width: '26px', height: '26px', borderRadius: '6px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
+                          background: 'rgba(var(--fg-rgb), 0.04)', color: 'var(--text)', fontSize: '13px',
+                          cursor: (!canReorder || i === 0 || reorderBusy) ? 'default' : 'pointer',
+                          opacity: (!canReorder || i === 0 || reorderBusy) ? 0.35 : 1,
+                        }}
+                      >↑</button>
+                      <button
+                        onClick={() => swapWatchOrder(i, 1)}
+                        disabled={!canReorder || i === orderedActive.length - 1 || reorderBusy}
+                        title="Move later"
+                        style={{
+                          width: '26px', height: '26px', borderRadius: '6px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
+                          background: 'rgba(var(--fg-rgb), 0.04)', color: 'var(--text)', fontSize: '13px',
+                          cursor: (!canReorder || i === orderedActive.length - 1 || reorderBusy) ? 'default' : 'pointer',
+                          opacity: (!canReorder || i === orderedActive.length - 1 || reorderBusy) ? 0.35 : 1,
+                        }}
+                      >↓</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '8px' }}>No active month</p>
+      )}
+    </div>
+  )
+  // Month activation (set active, edit active_date, materialize + split deadlines)
+  const monthActivationPanel = (
+    <MonthActivationPanel
+      months={months}
+      onRefresh={onRefresh}
+      setError={setError}
+      setSuccess={setSuccess}
+    />
+  )
+  // Soft-deadline grace period (app_settings.deadline_grace_days)
+  const deadlineGracePanel = <DeadlineGracePanel setError={setError} setSuccess={setSuccess} />
+  // Season readjustment window (open/close + end time) — shared by 1.0 and 2.0
+  const seasonReadjustmentPanel = (
+    <SeasonReadjustmentPanel
+      seasons={seasons}
+      onRefresh={onRefresh}
+      setError={setError}
+      setSuccess={setSuccess}
+    />
+  )
+  // Admin-only preview of members' still-secret upcoming picks (1.0)
+  const upcomingPicksPanel = <UpcomingPicksPanel months={months} />
+
   return (
     <div>
+      {/* Movie Club 2.0 — club mode, round controls, vote weights */}
+      <AdminRoundPanel setError={setError} setSuccess={setSuccess} />
+
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '24px' }}>
         {[
@@ -972,97 +1077,31 @@ function DashboardTab({ movies, ratings, users, months, seasons = [], onBackfill
         ))}
       </div>
 
-      {/* Active month status */}
-      <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-        <Label>Active Month</Label>
-        {activeMonth ? (
-          <div style={{ marginTop: '8px' }}>
-            <p style={{ color: 'var(--text-strong)', fontWeight: 500, fontSize: '15px', margin: '0 0 6px' }}>
-              {activeMonth.month_year}
+      {v1Inactive ? (
+        <>
+          <details style={{ background: 'rgba(var(--fg-rgb), 0.02)', border: '1px dashed rgba(var(--fg-rgb), 0.14)', borderRadius: '12px', padding: '12px 16px', marginBottom: '20px' }}>
+            <summary style={{ cursor: 'pointer', fontFamily: "'DM Mono',monospace", fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+              1.0 controls (inactive)
+            </summary>
+            <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '10px 0 14px', fontFamily: "'DM Mono',monospace", lineHeight: 1.5 }}>
+              The club is on 2.0, so these 1.0 controls (month activation, deadline grace, upcoming picks) don’t drive the current round. They’re kept here, unchanged, for a revert to 1.0.
             </p>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <Badge color="gray">{activeMovies.length} films</Badge>
-              <Badge color={deadlinesSet === activeMovies.length && activeMovies.length > 0 ? 'green' : 'yellow'}>
-                {deadlinesSet}/{activeMovies.length} deadlines set
-              </Badge>
-            </div>
-
-            {/* Watch order — reorder films by swapping scoring deadlines (↑ = earlier) */}
-            {orderedActive.length > 0 && (
-              <div style={{ marginTop: '14px' }}>
-                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-dim)', margin: '0 0 8px' }}>
-                  Watch order
-                </p>
-                {!canReorder && (
-                  <p style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '0 0 8px' }}>
-                    Set all deadlines (activate the month) to reorder.
-                  </p>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {orderedActive.map((f, i) => (
-                    <div key={f.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '10px',
-                      padding: '8px 10px', borderRadius: '8px',
-                      border: '1px solid rgba(var(--fg-rgb), 0.08)', background: 'rgba(var(--fg-rgb), 0.02)',
-                    }}>
-                      <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '12px', color: 'var(--text-dim)', width: '16px', flexShrink: 0 }}>{i + 1}</span>
-                      <p style={{ flex: 1, minWidth: 0, color: 'var(--text-strong)', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</p>
-                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                        <button
-                          onClick={() => swapWatchOrder(i, -1)}
-                          disabled={!canReorder || i === 0 || reorderBusy}
-                          title="Move earlier"
-                          style={{
-                            width: '26px', height: '26px', borderRadius: '6px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
-                            background: 'rgba(var(--fg-rgb), 0.04)', color: 'var(--text)', fontSize: '13px',
-                            cursor: (!canReorder || i === 0 || reorderBusy) ? 'default' : 'pointer',
-                            opacity: (!canReorder || i === 0 || reorderBusy) ? 0.35 : 1,
-                          }}
-                        >↑</button>
-                        <button
-                          onClick={() => swapWatchOrder(i, 1)}
-                          disabled={!canReorder || i === orderedActive.length - 1 || reorderBusy}
-                          title="Move later"
-                          style={{
-                            width: '26px', height: '26px', borderRadius: '6px', border: '1px solid rgba(var(--fg-rgb), 0.12)',
-                            background: 'rgba(var(--fg-rgb), 0.04)', color: 'var(--text)', fontSize: '13px',
-                            cursor: (!canReorder || i === orderedActive.length - 1 || reorderBusy) ? 'default' : 'pointer',
-                            opacity: (!canReorder || i === orderedActive.length - 1 || reorderBusy) ? 0.35 : 1,
-                          }}
-                        >↓</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginTop: '8px' }}>No active month</p>
-        )}
-      </div>
-
-      {/* Month activation (set active, edit active_date, materialize + split deadlines) */}
-      <MonthActivationPanel
-        months={months}
-        onRefresh={onRefresh}
-        setError={setError}
-        setSuccess={setSuccess}
-      />
-
-      {/* Soft-deadline grace period (app_settings.deadline_grace_days) */}
-      <DeadlineGracePanel setError={setError} setSuccess={setSuccess} />
-
-      {/* Season readjustment window (open/close + end time) */}
-      <SeasonReadjustmentPanel
-        seasons={seasons}
-        onRefresh={onRefresh}
-        setError={setError}
-        setSuccess={setSuccess}
-      />
-
-      {/* Admin-only preview of members' still-secret upcoming picks */}
-      <UpcomingPicksPanel months={months} />
+            {activeMonthCard}
+            {monthActivationPanel}
+            {deadlineGracePanel}
+            {upcomingPicksPanel}
+          </details>
+          {seasonReadjustmentPanel}
+        </>
+      ) : (
+        <>
+          {activeMonthCard}
+          {monthActivationPanel}
+          {deadlineGracePanel}
+          {seasonReadjustmentPanel}
+          {upcomingPicksPanel}
+        </>
+      )}
 
       {/* Missing scores */}
       <div style={{ background: 'rgba(var(--fg-rgb), 0.03)', border: '1px solid rgba(var(--fg-rgb), 0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
